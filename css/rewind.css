@@ -1,27 +1,24 @@
 .files-grid-view.active-rewind,
 .fm-empty-section.active-rewind,
-.fm-blocks-view.active-rewind,
-.out-shared-grid-view,
-.out-shared-blocks-view {
+.fm-blocks-view.active-rewind {
     display: flex;
+    border-top: 1px solid var(--mobile-border-strong);
 }
 
 .fm-blocks-view.active-rewind .file-block-scrolling,
 .files-grid-view.active-rewind .grid-scrolling-table,
-.out-shared-grid-view.active-rewind .grid-scrolling-table,
-.out-shared-blocks-view.active-rewind .out-shared-blocks-scrolling,
 .fm-empty-section.active-rewind .fm-empty-pad {
     min-width: 0;
     width: 100%;
 }
 
-.fm-empty-section.active-rewind {
+.fm-empty-section.active-rewind,
+.empty-state.active-rewind {
     flex-direction: row;
     min-height: 0;
 }
 
 .fm-blocks-view.active-rewind .file-block-scrolling,
-.out-shared-blocks-view.active-rewind .out-shared-blocks-scrolling,
 .fm-empty-section.active-rewind .fm-empty-pad {
     min-width: 456px;
 }
@@ -32,7 +29,6 @@
 }
 
 .active-rewind.files-grid-view.fm .column-settings.overlap {
-    -webkit-margin-start: -33px;
     margin-inline-start: -33px;
     border-right: 1px solid var(--stroke-grey-2);
     position: relative;
@@ -48,7 +44,7 @@
     flex-shrink: 0;
     text-align: initial;
 
-    --text-dropdown-label: 12px/24px var(--text-font-family-bold);
+    --text-dropdown-label: bold 12px/24px var(--text-font-family);
     --icon-warning: rgba(255, 210, 0, 1);
 }
 
@@ -123,8 +119,6 @@ body.theme-dark .active-rewind .rewind-sidebar {
     text-overflow: ellipsis;
     overflow: hidden;
 
-    -webkit-margin-start: 11px;
-    -webkit-margin-end: 11px;
     margin-inline: 11px;
 }
 
@@ -135,8 +129,6 @@ body.theme-dark .active-rewind .rewind-sidebar {
     font: var(--text-body2);
     color: var(--progress-bar-fill3);
     margin-inline: auto 48px;
-    -webkit-margin-start: auto;
-    -webkit-margin-end: 48px;
 }
 
 .sidebar .sidebar-container .sidebar-header .folder-details .folder-info .folder-icon {
@@ -215,7 +207,6 @@ body.theme-dark .active-rewind .rewind-sidebar {
     transition: var(--transition-opacity);
     z-index: 150;
     margin-inline-start: -80px;
-    -webkit-margin-start: -80px;
     --datepicker-overlay-background: rgba(255, 255, 255, 0.8);
 }
 
@@ -336,7 +327,6 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
 
 .rewind-calendar-tooltip span i.sprite-fm-mono {
     margin-inline-end: 4px;
-    -webkit-margin-end: 4px;
 }
 
 .rewind-list-tooltip i.icon-arrow-right {
@@ -379,7 +369,8 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
     display: flex;
     align-items: center;
     font: var(--text-body1);
-    font-family: var(--text-font-family-bold);
+    font-family: var(--text-font-family);
+    font-weight: bold;
 }
 
 .sidebar .sidebar-container .sidebar-header .folder-filter .filter-select .filter-select-button::before {
@@ -422,7 +413,6 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
 .sidebar .sidebar-container .sidebar-header .folder-filter .filter-select .filter-select-button .mega-input-dropdown .option i,
 .sidebar .sidebar-container .sidebar-header .folder-filter .filter-select .filter-select-button .filter-label i.item-icon {
     --icon-size: 12px;
-    -webkit-margin-end: 8px;
     margin-inline-end: 8px;
     vertical-align: middle;
 }
@@ -432,7 +422,6 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
 }
 
 .sidebar .sidebar-container .sidebar-header .folder-filter .filter-select .filter-select-button .mega-input-dropdown .option .radio {
-    -webkit-margin-end: 8px;
     margin-inline-end: 8px;
 }
 
@@ -442,8 +431,6 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
     cursor: none;
     padding: 0 8px;
 
-    -webkit-margin-start: 26px;
-    -webkit-margin-end: 8px;
     margin-inline: 26px 8px;
 }
 
@@ -518,6 +505,14 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
     font: var(--text-body2);
     font-weight: 700;
     text-decoration: underline;
+}
+
+
+.sidebar-container .content-upgrade .upgrade-description a.rewind-sidebar-upgrade-action::after {
+    display: block;
+    content: "\a";
+    white-space: pre;
+    height: 16px;
 }
 
 .sidebar .sidebar-container .sidebar-content .content-empty .empty-folder i {
@@ -645,19 +640,16 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-list .folder-item .folder-details .folder-timestamp span {
     --icon-size: 12px;
     margin-inline-start: 1px;
-    -webkit-margin-start: 1px;
 }
 
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-list .folder-item .folder-main label {
     flex-grow: 1;
     margin-inline-start: 3px;
-    -webkit-margin-start: 3px;
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
     max-width: 290px;
     padding-inline-end: 15px;
-    -webkit-padding-end: 15px;
 }
 
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-list .folder-item.item-removed .folder-main .folder-icon,
@@ -676,12 +668,10 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
 
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-list .sub-level-1 {
     margin-inline-start: 20px;
-    -webkit-margin-start: 20px;
 }
 
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-list .sub-level-2 {
     margin-inline-start: 40px;
-    -webkit-margin-start: 40px;
 }
 
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-list .folder-item .folder-main .folder-icon {
@@ -708,11 +698,10 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-list .folder-item .folder-main .folder-option {
     cursor: pointer;
     margin-inline-end: 16px;
-    -webkit-margin-end: 16px;
 }
 
 .sidebar .sidebar-container .sidebar-content .content-folder .folder-download {
-    background: var(--surface-main);
+    background: var(--mobile-page-background);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
     height: 84px;
     display: flex;
@@ -762,60 +751,6 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
     height: 128px;
     width: 128px;
     flex-shrink: 0;
-}
-
-.mega-dialog.rw-promo-dialog {
-    width: 543px;
-}
-
-.mega-dialog.rw-promo-dialog .img-rw-promo-dialog {
-    background-image: url("../images/mega/rewind/rewind-promo-dialog.png");
-    background-size: 327px auto;
-    background-repeat: no-repeat;
-    background-position: 50% 24px;
-    background-color: var(--surface-grey-2);
-    height: 224px !important;
-    width: 543px !important;
-    margin-bottom: 8px !important;
-    padding-top: 24px;
-}
-
-.theme-dark .mega-dialog.rw-promo-dialog .img-rw-promo-dialog {
-    background-color: var(--surface-grey-1);
-}
-
-.mega-dialog.rw-promo-dialog.dialog-template-graphic > header {
-    padding: 0 0 4px;
-    overflow: hidden;
-}
-
-.mega-dialog.rw-promo-dialog.dialog-template-graphic > header h2 {
-    font: var(--text-h2-bold);
-}
-
-.mega-dialog.rw-promo-dialog.dialog-template-graphic > header .graphic {
-    margin: 0 auto 24px;
-}
-
-.mega-dialog.rw-promo-dialog > section {
-    margin-bottom: 8px;
-}
-
-.mega-dialog.rw-promo-dialog > section a {
-    text-decoration: underline;
-}
-
-.mega-dialog.rw-promo-dialog > footer aside {
-    padding: 8px 0 24px;
-    background: unset;
-}
-
-.mega-dialog.rw-promo-dialog > footer > aside > button {
-    padding: 8px 12px;
-}
-
-.mega-dialog.rw-promo-dialog > footer aside button span {
-    font: var(--text-body1);
 }
 
 .rw-whats-new-mini-promo-container {
@@ -902,7 +837,7 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
 
 .fm-rewind-progress-section {
     position: absolute;
-    top: 48px;
+    top: 0;
     left: 0;
     width: 100%;
     height: 100%;
@@ -913,7 +848,7 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
     flex-direction: column;
     text-align: center;
     flex-grow: 1;
-    background: var(--surface-grey-1);
+    background: var(--mobile-page-background);
 }
 
 .fm-rewind-progress-section .content {
@@ -1002,4 +937,9 @@ body.theme-dark .rewind-datepicker-calendar .datepicker--cell.-current- {
     top: 0;
     background: radial-gradient(circle, transparent 40%, var(--label-blue) calc(100% - 2px), var(--label-blue) 100%);
     animation: 1.5s linear infinite onboarding-hotspot-circle;
+}
+
+.fm-header-buttons .mega-button.fm-rewind:hover + .rw-whats-new-mini-promo-container:not(.suppressed),
+.rw-whats-new-mini-promo-container:hover:not(.suppressed) {
+    display: block !important;
 }

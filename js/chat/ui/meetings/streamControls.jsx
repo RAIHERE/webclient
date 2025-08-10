@@ -44,6 +44,7 @@ export const renderEndConfirm = (onConfirm, onRecordingToggle) =>
 class StreamControls extends MegaRenderMixin {
     static NAMESPACE = 'stream-controls';
 
+    domRef = React.createRef();
     endContainerRef = React.createRef();
     endButtonRef = React.createRef();
 
@@ -78,9 +79,9 @@ class StreamControls extends MegaRenderMixin {
                 <Button
                     className="mega-button"
                     onClick={() => {
-                        const { recorder, onRecordingToggle } = this.props;
+                        const { recorderCid, call, onRecordingToggle } = this.props;
                         return (
-                            recorder && recorder === u_handle ?
+                            recorderCid && recorderCid === call.sfuClient.cid ?
                                 renderLeaveConfirm(doLeave, onRecordingToggle) :
                                 doLeave()
                         );
@@ -145,7 +146,7 @@ class StreamControls extends MegaRenderMixin {
     };
 
     renderEndCallOptions = () => {
-        const { chatRoom, recorder, onRecordingToggle, onCallEnd } = this.props;
+        const { call, chatRoom, recorderCid, onRecordingToggle, onCallEnd } = this.props;
         const { endCallOptions, endCallPending } = this.state;
         const doEnd = () => this.setState({ endCallPending: true }, () => chatRoom.endCallForAll());
         const endContainerRef = this.endContainerRef?.current;
@@ -163,7 +164,7 @@ class StreamControls extends MegaRenderMixin {
                 <div className="meetings-end-options-content">
                     <this.LeaveButton
                         chatRoom={chatRoom}
-                        recorder={recorder}
+                        recorderCid={recorderCid}
                         participants={chatRoom.getCallParticipants()}
                         onLeave={onCallEnd}
                         onConfirmDenied={onCallEnd}
@@ -175,7 +176,7 @@ class StreamControls extends MegaRenderMixin {
                             ${endCallPending ? 'disabled' : ''}
                         `}
                         onClick={() => {
-                            if (recorder && recorder === u_handle) {
+                            if (recorderCid && recorderCid === call.sfuClient.cid) {
                                 return renderEndConfirm(doEnd, onRecordingToggle);
                             }
                             return doEnd();
@@ -188,7 +189,7 @@ class StreamControls extends MegaRenderMixin {
     };
 
     renderEndCall = () => {
-        const { chatRoom, peers, recorder, onRecordingToggle, onCallEnd } = this.props;
+        const { call, chatRoom, peers, recorderCid, onRecordingToggle, onCallEnd } = this.props;
 
         return (
             <div
@@ -209,7 +210,7 @@ class StreamControls extends MegaRenderMixin {
                     }
 
                     // Call recording is ongoing -> confirm before ending the call
-                    if (recorder && recorder === u_handle) {
+                    if (recorderCid && recorderCid === call.sfuClient.cid) {
                         return chatRoom.type === 'private' ?
                             renderEndConfirm(onCallEnd, onRecordingToggle) :
                             renderLeaveConfirm(onCallEnd, onRecordingToggle);
@@ -595,6 +596,7 @@ class StreamControls extends MegaRenderMixin {
             <>
                 {blocked && renderBlockedWarning()}
                 <div
+                    ref={this.domRef}
                     className={StreamControls.NAMESPACE}>
                     {d && localStorage.callDebug ? this.renderDebug() : ''}
                     <ul>

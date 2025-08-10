@@ -108,7 +108,7 @@ var psa = {
 
         // PSA container
         innerNode = document.querySelector('.psa-holder') || mCreateElement('div', {
-            'class': `psa-holder${is_mobile ? '' : ' theme-light-forced'}`// Light theme until design is ready
+            'class': 'psa-holder'
         }, wrapperNode);
 
         // Create PSA banner
@@ -336,10 +336,10 @@ var psa = {
      * Repositions the account loading bar so it is above the PSA if it is being shown
      */
     repositionAccountLoadingBar: function() {
-
         'use strict';
+        const lpb = document.querySelector('.loader-progressbar');
 
-        if (is_mobile) {
+        if (is_mobile || !lpb) {
             return false;
         }
 
@@ -348,11 +348,11 @@ var psa = {
         // If the PSA is visible
         if (bannerNode && psa.visible) {
             // Move the progress bar up above the PSA otherwise it's not visible
-            document.querySelector('.loader-progressbar').style.bottom = `${bannerNode.offsetHeight}px`;
+            lpb.style.bottom = `${bannerNode.offsetHeight}px`;
         }
         else {
             // Reset to the bottom
-            document.querySelector('.loader-progressbar').style.removeProperty('bottom');
+            lpb.style.removeProperty('bottom');
         }
     }
 };

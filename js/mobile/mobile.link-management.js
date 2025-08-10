@@ -7,17 +7,23 @@ mobile.linkManagement = {
      * Show the overlay
      * @param {String} nodeHandle A public or regular node handle
      */
-    showOverlay: function(nodeHandle) {
+    async showOverlay(nodeHandle) {
         'use strict';
 
         this.handle = nodeHandle;
         this.node = M.getNodeByHandle(this.handle);
+        const linkExists = !!this.node.ph;
+
+        if (!linkExists
+            && await mega.sensitives.passShareCheck(nodeHandle).catch(echo) !== mega.sensitives.SAFE_TO_SHARE) {
+            return; // User did not allow sensitive share, or there was an error
+        }
 
         this.currentPassword = '';
         this.pwdProtectedLink = '';
 
         var tmpFn = async() => {
-            if (!this.node.ph) {
+            if (!linkExists) {
                 loadingDialog.show();
                 await this.manageLink(false);
                 loadingDialog.hide();
@@ -488,7 +494,7 @@ mobile.linkManagement = {
         const selectedNode = document.createElement('div');
         selectedNode.className = 'selected-node';
 
-        const itemComponent = MegaMobileNode.getNodeComponentByHandle(this.handle);
+        const itemComponent = MegaNodeComponent.getNodeComponentByHandle(this.handle);
         let itemNode = itemComponent && itemComponent.domNode;
         if (!itemNode && mega.ui.viewerOverlay.visible) {
             itemNode = mega.ui.viewerOverlay.nodeComponent.domNode;
@@ -570,7 +576,7 @@ mobile.linkManagement = {
     formatLink: function() {
         'use strict';
 
-        var type = '';
+        let type = '';
 
         if (!this.node.ph && !folderlink) {
             if (d) {
@@ -579,34 +585,24 @@ mobile.linkManagement = {
             return false;
         }
 
-        var nodeUrlWithPublicHandle;
-        var nodeDecryptionKey = (!this.decryptionKeyToggle.disabled && this.decryptionKeyToggle.checked) ?
-            '' : this.getDecryptionKey();
-        var fileUrlNodeHandle = '';
+        let nodeUrlWithPublicHandle;
+        const nodeDecryptionKey = (!this.decryptionKeyToggle.disabled && this.decryptionKeyToggle.checked)
+            ? ''
+            : this.getDecryptionKey();
 
         if (folderlink) {
-            if (mega.flags.nlfe) {
-                nodeUrlWithPublicHandle = getBaseUrl() + '/folder/' + pfid + '#';
-            }
-            else {
-                nodeUrlWithPublicHandle = getBaseUrl() + '/#F!' + pfid;
-            }
+            nodeUrlWithPublicHandle = getBaseUrl() + '/folder/' + pfid + '#';
         }
         else {
             if (this.node.t) {
                 type = 'F';
             }
 
-            if (mega.flags.nlfe) {
-                type = (type) ? '/folder/' : '/file/';
-                nodeUrlWithPublicHandle = getBaseUrl() + type + this.node.ph + '#';
-            }
-            else {
-                nodeUrlWithPublicHandle = getBaseUrl() + '/#' + type + '!' + this.node.ph;
-            }
+            type = (type) ? '/folder/' : '/file/';
+            nodeUrlWithPublicHandle = getBaseUrl() + type + this.node.ph + '#';
         }
 
-        return nodeUrlWithPublicHandle + nodeDecryptionKey + fileUrlNodeHandle;
+        return nodeUrlWithPublicHandle + nodeDecryptionKey;
     },
 
     /**
@@ -618,29 +614,16 @@ mobile.linkManagement = {
         'use strict';
 
         if (folderlink) {
-            let fileUrlNodeHandle = '';
-
-            if (mega.flags.nlfe) {
-                fileUrlNodeHandle = (this.node.t ? '/folder/' : '/file/') + this.node.h;
-            }
-            else {
-                fileUrlNodeHandle = (item.t ? '!' : '?') + item.h;
-            }
-
-            return pfkey + fileUrlNodeHandle;
+            return pfkey + (this.node.t ? '/folder/' : '/file/') + this.node.h;
         }
 
-        var key = this.node.t ?
+        const key = this.node.t ?
             u_sharekeys[this.node.h] && u_sharekeys[this.node.h][0] :
             this.node.k;
 
-        if (key) {
-            return (mega.flags.nlfe) ?
-                a32_to_base64(key) :
-                '!' + a32_to_base64(key);
-        }
-
-        return '';
+        return (key)
+            ? a32_to_base64(key)
+            : '';
     },
 
     checkCopyRightAndGetLink(nodeHandle) {

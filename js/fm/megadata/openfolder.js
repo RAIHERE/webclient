@@ -19,7 +19,9 @@
                 }
 
                 const root = M.getNodeRoot(n.h);
-                return root !== M.RubbishID && root !== 'shares';
+                return root !== M.RubbishID
+                    && root !== 'shares'
+                    && mega.sensitives.shouldShowNode(n);
             },
             /**
              * Internal properties, populated as options.
@@ -278,17 +280,19 @@
             dashboard() {
                 dashboardUI();
             },
-            devices() {
-                if (mega.backupCenter) {
-                    return mega.backupCenter.openSection();
-                }
-                M.openFolder('fm');
+            'device-centre'(id) {
+                mega.devices.ui.render(id);
             },
             recents() {
                 openRecents();
             },
-            refer() {
-                affiliateUI();
+            s4() {
+                if ('main' in s4) {
+                    s4.main.render();
+                }
+                else {
+                    M.openFolder('fm');
+                }
             },
             transfers() {
                 console.assert(M.v && M.v.length === 0, 'view list must be empty');
@@ -301,18 +305,7 @@
         },
 
         has(id) {
-            if (this.sink[id]) {
-                return this.sink[id];
-            }
-            const p = Object.keys(this.sink);
-
-            for (let i = p.length; i--;) {
-
-                if (id.startsWith(p[i])) {
-
-                    return this.sink[p[i]];
-                }
-            }
+            return this.sink[String(id || '').split('/')[0]];
         }
     });
 
@@ -337,9 +330,13 @@
         this.currentrootid = this.chat ? "chat" : this.getNodeRoot(id);
         this.currentLabelType = M.labelType();
         this.currentLabelFilter = M.filterLabel[this.currentLabelType];
-        this.fmsorting = id === 'shares' || id === 'out-shares' || id === 'public-links' ?
-            0 : fmconfig.uisorting | 0;
         this.currentCustomView = this.isCustomView(id);
+        this.onDeviceCenter = this.currentCustomView.type === mega.devices.rootId && this.currentCustomView.nodeID;
+        this.fmsorting = id === 'shares' || id === 'out-shares' || id === 'public-links' ||
+            (this.onDeviceCenter && this.onDeviceCenter.length > 8) ? 0 : fmconfig.uisorting | 0;
+
+        const fmViewMode = getFmViewMode(id);
+        const fmViewModeCustomView = getFmViewMode(this.currentCustomView.original);
 
         if (first) {
             fminitialized = true;
@@ -356,10 +353,17 @@
                 maph(this.previousdirid), maph(this.currentdirid), maph(this.currentrootid));
         }
 
+        if (this.onDeviceCenter && is_mobile) {
+            return this.openFolder('fm');
+        }
+
+        if (!window.vw && this.InboxID && this.currentrootid === this.InboxID) {
+            return this.openFolder(mega.devices.rootId);
+        }
         if (this.currentrootid === this.RootID) {
             this.lastSeenCloudFolder = this.currentdirid;
         }
-        else if (this.currentrootid === 's4') {
+        else if (this.currentrootid === 's4' && id !== 's4') {
             let target = id;
 
             if (!('kernel' in s4 && (target = s4.utils.validateS4Url(id)))) {
@@ -380,6 +384,8 @@
             return this.openFolder('fm').catch(dump);
         }
 
+        $('#pmlayout > section').addClass('hidden');
+
         const $fmRightFilesBlock = $('.fm-right-files-block');
         const $fmRightHeader = $('.fm-right-header', $fmRightFilesBlock);
         const $resultsCount = $('.fm-search-count', $fmRightHeader).addClass('hidden');
@@ -388,17 +394,22 @@
         $('.fm-notification-block.duplicated-items-found').removeClass('visible');
         $('.fm-breadcrumbs-wrapper, .column-settings.overlap', $fmRightFilesBlock).removeClass('hidden');
 
-        if (folderlink && !pfcol || id !== M.RootID && M.currentrootid === M.RootID) {
+        if (folderlink && !pfcol || id !== this.RootID && this.currentrootid === this.RootID
+            || this.onDeviceCenter && !mega.devices.ui.isCustomRender()) {
+
             this.gallery = 0;
-            if ((fmconfig.uiviewmode | 0) && fmconfig.viewmode === 2 ||
-                typeof fmconfig.viewmodes !== 'undefined' && typeof fmconfig.viewmodes[id] !== 'undefined'
-                && fmconfig.viewmodes[id] === 2) {
+            if (!is_mobile && (fmconfig.uiviewmode | 0 && fmconfig.viewmode === 2 || fmViewMode === 2)) {
                 this.gallery = 1;
+                this.viewmode = 2;
             }
-            $('.fm-files-view-icon').filter('.media-view').removeClass('hidden');
+            if (mega.ui.secondaryNav) {
+                mega.ui.secondaryNav.updateGalleryLayout(false);
+                mega.ui.secondaryNav.updateLayoutButton();
+            }
         }
-        else {
-            $('.fm-files-view-icon').filter('.media-view').addClass('hidden');
+        else if (mega.ui.secondaryNav) {
+            mega.ui.secondaryNav.updateGalleryLayout(true);
+            mega.ui.secondaryNav.updateLayoutButton(this.onDeviceCenter && mega.devices.ui.isCustomRender());
         }
 
         if (mega.ui.mNodeFilter) {
@@ -409,10 +420,33 @@
                 stash = this.search && String(this.previousdirid).substr(0, 6) === 'search';
             }
             mega.ui.mNodeFilter.resetFilterSelections(stash);
+            if (
+                stash &&
+                window.selectionManager &&
+                window.selectionManager.selected_list.length &&
+                mega.ui.secondaryNav
+            ) {
+                mega.ui.secondaryNav.filterChipsHolder.classList.add('hidden');
+            }
+        }
+        if (mega.ui.mNodeFilter && mega.devices && mega.devices.ui && mega.devices.ui.filterChipUtils) {
+            const stash = this.previousdirid === this.currentdirid;
+            mega.devices.ui.filterChipUtils.resetSelections(stash);
+        }
+        if (
+            mega.ui.secondaryNav &&
+            this.previousdirid !== this.currentdirid &&
+            !(String(this.previousdirid).startsWith('search') && String(this.currentdirid).startsWith('search'))
+        ) {
+            mega.ui.secondaryNav.onPageChange();
         }
 
         if (mega.ui.pm) {
             mega.ui.pm.closeUI();
+        }
+
+        if (!is_mobile) {
+            mega.ui.topmenu.toggleActive();
         }
 
         if (id === undefined && folderlink) {
@@ -422,12 +456,10 @@
         }
         // Skip M.renderMain and clear folder nodes for sections without viewmode switchers
         else if (this.chat || !id ||
-            (this.gallery && (!is_mobile || !pfcol)) ||
+            (this.gallery || window.pfcol && !is_mobile) ||
             id.substr(0, 7) === 'account' ||
-            id.substr(0, 7) === 'devices' ||
             id.substr(0, 9) === 'dashboard' ||
             id.substr(0, 15) === 'user-management' ||
-            id.substr(0, 5) === 'refer' ||
             id.startsWith('pwm')) {
 
             this.v = [];
@@ -437,7 +469,8 @@
                 // Remove shares-specific UI.
                 sharedFolderUI();
             }
-            if (this.gallery) {
+            if (this.gallery || window.pfcol) {
+                $fmRightFilesBlock.removeClass('hidden');
                 queueMicrotask(() => {
                     galleryUI(this.gallery > 1 && this.currentCustomView.nodeID);
                 });
@@ -452,7 +485,9 @@
                 console.time('time for rendering');
             }
 
-            $fmRightFilesBlock.removeClass('hidden');
+            if (id !== 'transfers') {
+                $fmRightFilesBlock.removeClass('hidden');
+            }
 
             if (id === 'transfers') {
                 this.v = [];
@@ -497,11 +532,6 @@
                 this.filterByParent(this.currentdirid);
             }
 
-            if (id.substr(0, 9) !== 'transfers') {
-                this.labelFilterBlockUI();
-            }
-
-
             var viewmode = 0;// 0 is list view, 1 block view
             if (this.overrideViewMode !== undefined) {
                 viewmode = this.overrideViewMode;
@@ -510,12 +540,11 @@
             else if (fmconfig.uiviewmode | 0) {
                 viewmode = fmconfig.viewmode | 0;
             }
-            else if (typeof fmconfig.viewmodes !== 'undefined' && typeof fmconfig.viewmodes[id] !== 'undefined') {
-                viewmode = fmconfig.viewmodes[id];
+            else if (fmViewMode !== undefined) {
+                viewmode = fmViewMode;
             }
-            else if (this.currentCustomView && typeof fmconfig.viewmodes !== 'undefined'
-                && typeof fmconfig.viewmodes[this.currentCustomView.original] !== 'undefined') {
-                viewmode = fmconfig.viewmodes[this.currentCustomView.original];
+            else if (this.currentCustomView && fmViewModeCustomView !== undefined) {
+                viewmode = fmViewModeCustomView;
             }
             else {
                 for (var i = Math.min(this.v.length, 200); i--;) {
@@ -532,13 +561,8 @@
             this.viewmode = viewmode;
 
             // Default to Thumbnail View When Media Discovery View Not Available
-            if (this.viewmode === 2) {
+            if (this.onMediaView) {
                 this.viewmode = 1;
-            }
-
-            if (is_mobile) {
-                // Ignore sort modes set in desktop until that is supported in mobile...
-                // this.overrideSortMode = this.overrideSortMode || ['name', 1];
             }
 
             if (this.overrideSortMode) {
@@ -554,6 +578,7 @@
             else {
                 this.doSort('name', 1);
             }
+
             this.renderMain();
 
             if (fminitialized && !is_mobile) {
@@ -627,13 +652,10 @@
             loadSubPage(path);
         }
 
-        delay('render:search_breadcrumbs', () => M.renderSearchBreadcrumbs());
-        M.initLabelFilter(this.v);
-        // Potentially getting back?
-        // M.treeSearchUI();
-        // M.treeSortUI();
-        // M.treeFilterUI();
-        // M.redrawTreeFilterUI();
+        if (!M.isGalleryPage() && !this.albums) {
+            $('#media-section-controls, #media-tabs, #media-section-right-controls', $fmRightFilesBlock)
+                .addClass('hidden');
+        }
     };
 
     // ------------------------------------------------------------------------
@@ -670,9 +692,21 @@
         }
         let cv = this.isCustomView(id);
 
-        const $viewIcons =
-            $(`.fm-files-view-icon${pfid ? '' : ':not(.media-view)'}`)
-                .removeClass('hidden');
+        if (mega.ui.secondaryNav) {
+            mega.ui.secondaryNav.updateGalleryLayout(pfid);
+            mega.ui.secondaryNav.updateLayoutButton();
+        }
+
+        // In MEGA Lite mode, remove this temporary class
+        if (mega.lite.inLiteMode) {
+            $('.files-grid-view.fm').removeClass('mega-lite-hidden');
+
+            // Redirect disabled sections
+            if (mega.lite.disabledSections[id]) {
+                cv = false;
+                id = this.RootID;
+            }
+        }
         $('.fm-right-account-block, .fm-right-block, .fm-filter-chips-wrapper').addClass('hidden');
 
         this.chat = false;
@@ -684,11 +718,10 @@
             this.gallery
             && (
                 mega.gallery.sections[id]
-                || (pfid && $viewIcons.filter('.media-view').hasClass('active'))
+                || (pfid && mega.ui.secondaryNav && mega.ui.secondaryNav.layoutIcon === 'icon-image-04-thin-outline')
             )
         ) {
             // @todo call completion (?)
-            $('.gallery-tabs-bl', '.fm-right-files-block').removeClass('hidden');
         }
         else {
             this.gallery = false;
@@ -696,9 +729,6 @@
 
         if (id === 'rubbish') {
             id = this.RubbishID;
-        }
-        else if (id === 'backups') {
-            id = this.BackupsId || this.RootID;
         }
         else if (id === 'inbox') {
             id = this.InboxID;
@@ -841,18 +871,16 @@
 
             this.gallery = 2;
         }
-        else if (cv.type === 'gallery' || window.pfcol) {
-            this.albums = 1;
+        else if (cv.type === 'gallery' && !pfcol) {
             this.gallery = 1;
-        }
-        else if (cv.type === 's4') {
-
-            id = cv.nodeID;
-            fetchDBNodes = ['container', 'bucket'].includes(cv.subType) && id.length === 8;
         }
         else if (cv.type === 'pwm') {
             fetchDBNodes = true;
             id = mega.pwmh;
+        }
+        else if (cv.type === 's4') {
+            id = cv.nodeID;
+            fetchDBNodes = ['container', 'bucket'].includes(cv.subType) && id.length === 8;
         }
         else if (
             id &&
@@ -874,7 +902,7 @@
             }
             return EAGAIN;
         }
-        else if (id && id.startsWith('albums')) {
+        else if (id && id.startsWith('albums') || window.pfcol) {
             this.albums = true;
         }
         else {
@@ -888,6 +916,9 @@
                 if (d) {
                     console.info(`Using deferred sink for ${id}...`);
                 }
+            }
+            else if (id === 'devices' || !window.vw && this.InboxID && this.d[id] && this.d[id].p === this.InboxID) {
+                return this.openFolder(mega.devices.rootId);
             }
             else if (!this.d[id] || this.d[id].t && !this.c[id]) {
                 fetchDBNodes = !id || id.length !== 8 ? -1 : !!window.fmdb;
@@ -976,7 +1007,7 @@
             }
 
             if (handles.length) {
-                if (mega.infinity && !$.inSharesRebuild) {
+                if ((mega.infinity || u_attr.s4) && !$.inSharesRebuild) {
                     // @todo validate which nodes are legit to query here
                     loadingDialog.show();
                 }
@@ -987,7 +1018,7 @@
                 $.inSharesRebuild = Date.now();
 
                 queueMicrotask(() => {
-                    mega.keyMgr.decryptInShares()
+                    mega.keyMgr.decryptInShares(-0xFEED)
                         .then(() => {
                             return this.showContactVerificationDialog();
                         })
@@ -995,11 +1026,6 @@
                 });
                 M.buildtree({h: 'shares'}, M.buildtree.FORCE_REBUILD);
             }
-        }
-
-        // In MEGA Lite mode, remove this temporary class
-        if (mega.lite.inLiteMode) {
-            $('.files-grid-view.fm').removeClass('mega-lite-hidden');
         }
 
         _openFolderCompletion.call(this, id = cv.original || id, isFirstOpen);

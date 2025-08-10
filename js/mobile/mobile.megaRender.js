@@ -17,9 +17,6 @@ class MobileMegaRender {
             case M.RubbishID:
                 this.location = 'trashcan';
                 break;
-            case M.InboxID:
-                this.location = 'backups';
-                break;
         }
 
         this.numInsertedDOMNodes = 0;
@@ -29,7 +26,7 @@ class MobileMegaRender {
         if (this.container) {
             // grid view is not available for shared items page
             this.container.classList[M.currentdirid === 'shares' || M.currentdirid === 'out-shares'
-                || M.currentdirid === 'public-links' || !viewmode ? 'remove' : 'add']('grid-view');
+                || M.currentdirid === 'public-links' || viewmode !== 1 ? 'remove' : 'add']('grid-view');
         }
 
         if (d) {
@@ -174,9 +171,17 @@ class MobileMegaRender {
     getDOMNode(h, n) {
 
         if (!this.nodeMap[h] && (n || M.getNodeByHandle(h))) {
-            this.nodeMap[h] = M.currentdirid === 'shares' ?
-                new MegaMobileSharedNode({parentNode: this.container, nodeHandle: h}).domNode :
-                new MegaMobileNode({parentNode: this.container, nodeHandle: h}).domNode;
+            const fragment = document.createDocumentFragment();
+
+            if (M.currentdirid === 'shares') {
+                this.nodeMap[h] = new MegaSharedNode({parentNode: fragment, nodeHandle: h}).domNode;
+            }
+            else if (M.albums) {
+                this.nodeMap[h] = new mega.gallery.MegaAlbumNode({parentNode: fragment, nodeHandle: h}).domNode;
+            }
+            else {
+                this.nodeMap[h] = new MegaNodeComponent({parentNode: fragment, nodeHandle: h}).domNode;
+            }
         }
 
         return this.nodeMap[h];
@@ -195,7 +200,7 @@ class MobileMegaRender {
             delete this.nodeMap[h];
 
             if (aRemove) {
-                if (node.component instanceof MegaMobileNode) {
+                if (node.component instanceof MegaNodeComponent) {
                     node.component.destroy();
                 }
                 else {
@@ -228,7 +233,7 @@ class MobileMegaRender {
             batchPages: 0,
             appendOnly: false,
             onContentUpdated: function() {
-                if (M.viewmode) {
+                if (M.onIconView) {
                     delay('thumbnails', fm_thumbnails, 2);
                 }
             },
@@ -236,16 +241,16 @@ class MobileMegaRender {
         };
 
         if (!(M.currentdirid === 'shares' || M.currentdirid === 'out-shares'
-            || M.currentdirid === 'public-links') && M.viewmode) {
+            || M.currentdirid === 'public-links') && M.onIconView) {
             // Item width and height are dom node base size + margin
             if (this.container.offsetWidth <= 700) {
                 options.itemWidth = 124 + 24;
-                options.itemHeight = 130 + 24;
+                options.itemHeight = 156 + 24;
                 this.container.classList.remove('bigger-node');
             }
             else {
                 options.itemWidth = 155 + 24;
-                options.itemHeight = 150 + 24;
+                options.itemHeight = 187 + 24;
                 this.container.classList.add('bigger-node');
             }
             options.renderAdapter = new MegaList.RENDER_ADAPTERS.Grid({usingNativeScroll: true});

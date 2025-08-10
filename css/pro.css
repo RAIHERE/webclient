@@ -7,6 +7,10 @@
     vertical-align: top;
     width: 20px;
 }
+.provider-icon.mr-4 {
+    margin-right: 0;
+    margin-inline-end: 1rem;
+}
 .provider-icon.svgicon {
     background-image: none;
     position: relative;
@@ -478,39 +482,47 @@ i.pricing-sprite,
     display: flex;
     background: var(--surface-main);
     max-width: 444px;
-    margin: 24px 0 46px
+    margin: 24px 0 0;
 }
 .payment-page .free-trial-card {
-    padding: 24px;
     font: var(--text-body1)
+}
+.payment-page .free-trial-card .main-content {
+    grid-template-columns: 24px auto;
+    column-gap: 16px;
 }
 .payment-page .free-trial-card .title {
     color :var(--text-color-high);
-    font: var(--text-h2-bold);
+    font: var(--text-copy-medium-bold-pricing);
     margin-bottom: 22px;
 }
 .payment-page .free-trial-card .secondary-title {
     color: var(--text-color-high);
     font: var(--text-body1-bold);
 }
-.payment-page .free-trial-card .icons {
-    width: 40px;
-    justify-content: space-between;
-    align-items: center;
-    margin: 0 0 12.5%;
+.payment-page .free-trial-card .secondary-title.price {
+    border-top: 1px solid var(--surface-grey-2);
+    padding-top: 24px;
 }
-.payment-page .free-trial-card .icons i {
+.payment-page .free-trial-card .secondary-title.tax-info {
+    margin-top: 6px;
+    font: var(--text-body2);
+}
+.payment-page:not(.euro) .free-trial-card:last-child {
+    margin-bottom: -8px;
+}
+.payment-page .free-trial-card i {
     --icon-size: 24px;
     color: rgb(255, 51, 51)
 }
-.payment-page .free-trial-card .icons .line {
-    height: 25%;
+.payment-page .free-trial-card .line {
+    height: 60%;
     width: 0;
     border: 1px solid var(--surface-grey-2);
     border-radius: 2px;
-    margin: 4px 0 8px;
+    margin: 4px auto 8px;
 }
-.payment-page .free-trial-card .steps .info-block {
+.payment-page .free-trial-card .info-block {
     min-height: 72px;
 }
 .payment-page .free-trial-card button.start {
@@ -884,7 +896,8 @@ body:not(.mobile) .plan.pro3:not(.current) .pricing-page.plan-button:hover {
     position: relative;
 }
 .plan-tag-description b {
-    font-family: var(--text-font-family-bold);
+    font-family: var(--text-font-family);
+    font-weight: bold;
     font-weight: normal;
 }
 .plan-tag-description.visible {
@@ -942,7 +955,6 @@ body:not(.mobile) .plan.pro3:not(.current) .pricing-page.plan-button:hover {
     font-size: 15px;
     line-height: 20px;
     padding: 7px 16px;
-    -webkit-padding-start: 38px;
     padding-inline-start: 38px;
     position: relative;
     max-width: 370px;
@@ -961,7 +973,6 @@ body:not(.mobile) .plan.pro3:not(.current) .pricing-page.plan-button:hover {
     font: var(--text-body1);
     margin: 20px auto;
     padding: 3px 38px;
-    -webkit-padding-start: 16px;
     padding-inline-start: 16px;
 }
 .pricing-page.plan-feature.text-body1 .text-h2 {
@@ -975,7 +986,8 @@ body:not(.mobile) .plan.pro3:not(.current) .pricing-page.plan-button:hover {
 .pricing-page.plan-feature.strong,
 .pricing-page.plan-feature.strong * {
     color: var(--text-color-high);
-    font-family: var(--text-font-family-bold);
+    font-family: var(--text-font-family);
+    font-weight: bold;
 }
 .pricing-page.plans-row .pricing-page.plan-feature {
     margin: 0;
@@ -1162,7 +1174,6 @@ body:not(.mobile) .plan.pro3:not(.current) .pricing-page.plan-button:hover {
     height: 8px;
 }
 .business-slider .handle-wrap {
-    -webkit-margin-end: 30px;
     margin-inline-end: 30px;
     position: relative;
 }
@@ -1173,7 +1184,6 @@ body:not(.mobile) .plan.pro3:not(.current) .pricing-page.plan-button:hover {
     border-radius: 100%;
     box-shadow: none;
     height: 32px;
-    -webkit-margin-start: -1px;
     margin-inline-start: -1px;
     outline: none;
     position: absolute;
@@ -1216,14 +1226,12 @@ body:not(.mobile) .plan.pro3:not(.current) .pricing-page.plan-button:hover {
     height: 4px;
 }
 .business-calculator .handle-wrap {
-    -webkit-margin-end: 15px;
     margin-inline-end: 15px;
 }
 .business-calculator .ui-slider-handle {
     background-color: var(--text-color-white-high);
     background-position: -312px -742px;
     height: 24px;
-    -webkit-margin-start: -7px;
     margin-inline-start: -7px;
     top: -10px;
     width: 24px;
@@ -1854,12 +1862,10 @@ body:not(.mobile) .pricing-page.slider-dot:hover {
     text-align: left;
     margin: 0 320px;
     margin-inline-start: 0;
-    -webkit-margin-start: 0;
     position: relative;
 }
 .payment-page.info-content {
     margin-inline-start: 50px;
-    -webkit-margin-end: 50px;
     position: relative;
 }
 
@@ -2178,6 +2184,24 @@ body.mobile .redeem-promo-page .mega-input.title-ontop {
 .dialog-input-title-ontop:not(.birth).active input::placeholder{
    opacity: 0;
 }
+.sen-pro-only {
+    border: 1px solid var(--progress-bar-fill2);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    color: var(--progress-bar-fill2);
+    font: var(--text-body2);
+    line-height: 0.5rem;
+    margin: 0;
+}
+.mobile .sen-pro-only {
+    position: absolute;
+    right: 0.25rem;
+}
+.rtl.mobile .sen-pro-only {
+    position: absolute;
+    left: 0.25rem;
+    right: unset;
+}
 .payment-success-cloak {
     position: fixed;
     top: 0;
@@ -2265,7 +2289,6 @@ body.mobile .redeem-promo-page .mega-input.title-ontop {
     }
     .payment-page.info-block {
         margin-inline-end: 240px;
-        -webkit-margin-end: 240px;
     }
 }
 
@@ -2371,7 +2394,6 @@ body.mobile .redeem-promo-page .mega-input.title-ontop {
         height: 5px;
     }
     .business-slider .handle-wrap {
-        -webkit-margin-end: 18px;
         margin-inline-end: 18px;
     }
     .business-slider .ui-slider-handle {
@@ -2404,7 +2426,6 @@ body.mobile .redeem-promo-page .mega-input.title-ontop {
         width: calc(50% + 16px);
     }
     .business-calculator .handle-wrap {
-        -webkit-margin-end: 15px;
         margin-inline-end: 15px;
     }
     .business-calculator .ui-slider-handle {
@@ -2619,11 +2640,10 @@ body.mobile .redeem-promo-page .mega-input.title-ontop {
         padding-right: 50px;
     }
     .payment-page .free-trial-container {
-        margin: 24px auto 46px;
+        margin: 24px auto 0;
     }
     .payment-page.info-block {
         margin-inline-end: 0;
-        -webkit-margin-end: 0;
     }
 }
 
@@ -2831,7 +2851,7 @@ body.mobile .redeem-promo-page .mega-input.title-ontop {
     .pricing-page.medium-txt {
         font-size: 14px;
         line-height: 24px;
-        color: #3737337;
+        color: #373737;
     }
     .pricing-page.top-small-txt {
         font-size: 14px;

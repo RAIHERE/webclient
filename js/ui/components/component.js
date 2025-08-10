@@ -14,6 +14,8 @@ class MegaComponent extends MegaDataEmitter {
             return;
         }
 
+        this.parentNode = options.parentNode;
+
         // If parent node is defined start build
         this.domNode = document.createElement(options.nodeType || 'div');
         this.domNode.className = 'mega-component';
@@ -38,6 +40,20 @@ class MegaComponent extends MegaDataEmitter {
 
         if (options.skLoading) {
             this.skLoading = true;
+        }
+
+        if (options.id) {
+            this.domNode.id = options.id;
+        }
+
+        if (options.name) {
+            this.domNode.name = options.name;
+        }
+
+        if (options.attr) {
+            for (const key in options.attr) {
+                this.attr(key, options.attr[key]);
+            }
         }
     }
 
@@ -118,17 +134,44 @@ class MegaComponent extends MegaDataEmitter {
     // Util methods
 
     addClass(...classes) {
-        this.domNode.classList.add(...classes);
+        this.domNode.classList.add(...classes.filter(Boolean));
         return this;
     }
 
     removeClass(...classes) {
-        this.domNode.classList.remove(...classes);
+        this.domNode.classList.remove(...classes.filter(Boolean));
         return this;
     }
 
     hasClass(sel) {
         return this.domNode.classList.contains(sel);
+    }
+
+    toggleClass(...classes) {
+
+        let state;
+        let res;
+
+        if (typeof classes[classes.length - 1] === 'boolean') {
+            state = classes.pop();
+        }
+
+        classes.forEach(cls => {
+            res = this.domNode.classList.toggle(cls, state);
+        });
+
+        if (classes.length === 1) {
+            return res;
+        }
+
+        return this;
+    }
+
+    attr(attrName, attrValue) {
+        if (attrValue === undefined) {
+            return this.domNode.getAttribute(attrName);
+        }
+        this.domNode.setAttribute(attrName, attrValue);
     }
 
     get visible() {
@@ -158,6 +201,17 @@ class MegaComponent extends MegaDataEmitter {
         else {
             this.domNode.classList.remove('sk-loading');
         }
+    }
+
+    getSubNode(className, type) {
+        let subNode = this.domNode.querySelector(`.${className}`);
+        if (subNode) {
+            return subNode;
+        }
+        subNode = document.createElement(type || 'div');
+        subNode.className = className;
+        this.domNode.appendChild(subNode);
+        return subNode;
     }
 
     destroy() {
@@ -200,6 +254,10 @@ class MegaComponent extends MegaDataEmitter {
         }
 
         return null;
+    }
+
+    static factory(options) {
+        return new this(options);
     }
 }
 

@@ -20,24 +20,36 @@ mega.pm = {
         const node = M.getNodeByHandle(handle);
 
         if (node && typeof newItem === 'object') {
-            const {name, n, pwd, u, url} = newItem;
-            const {n: oldNotes, pwd: oldPwd, u: oldUname, url: oldUrl} = node.pwm;
-            const oldName = node.name;
 
-            if (oldName !== name || oldNotes !== n || oldPwd !== pwd || oldUname !== u || oldUrl !== url) {
-                const prop = {name, pwm: {n, pwd, u, url}};
+            const prop = {name: node.name, pwm: {...node.pwm}};
+            let hasChanges = false;
 
-                return api.setNodeAttributes(node, prop);
+            for (const key of Object.keys(newItem)) {
+                const target = key === 'name' ? prop : prop.pwm;
+
+                if (typeof newItem[key] === 'object' && newItem[key] !== null &&
+                    typeof target[key] === 'object' && target[key] !== null) {
+                    for (const field of Object.keys(newItem[key])) {
+                        if (newItem[key][field] !== target[key][field]) {
+                            target[key][field] = newItem[key][field];
+                            hasChanges = true;
+                        }
+                    }
+                }
+                else if (newItem[key] !== target[key]) {
+                    target[key] = newItem[key];
+                    hasChanges = true;
+                }
             }
 
-            return false;
+            return hasChanges ? api.setNodeAttributes(node, prop) : false;
         }
     },
 
-    deleteItem(handle) {
+    async deleteItem(handles) {
         'use strict';
 
-        return api.screq({a: 'd', n: handle, vw: 1});
+        return Promise.all(handles.map(n => api.screq({a: 'd', n, vw: 1})));
     },
 
     saveLastSelected(handle) {
@@ -56,6 +68,11 @@ mega.pm = {
         'use strict';
 
         const {pwmh} = mega;
+
+        if (!pwmh) {
+            return ['name', 1];
+        }
+
         return {sortdata: fmconfig.sortmodes[pwmh] ?
             Object.values(fmconfig.sortmodes[pwmh]) : ['name', 1]};
     },
@@ -64,6 +81,11 @@ mega.pm = {
         'use strict';
 
         const {pwmh} = mega;
+
+        if (!pwmh) {
+            return;
+        }
+
         fmsortmode(pwmh, sortdata[0], sortdata[1]);
     },
 
@@ -144,33 +166,39 @@ mega.pm = {
      * Check if the user has an active pwm subscription.
      * Subscription cancellation takes effect only after the current subscription period ends.
      *
+     * @param {boolean} retry - Flag to indicate if the function is being called recursively.
+     *
      * @returns {Promise<*|Boolean>} False or undefined if the user has no active subscription.
      */
-    async checkActiveSubscription() {
+    async checkActiveSubscription(retry) {
         'use strict';
 
-        for (let i = 2; i--;) {
-            // if the Business or Pro flexi account has expired,
-            // it will have read-only access to the passwords
-            if (!this.validateUserStatus()) {
-                return false;
-            }
-            this.plan = await this.getPlanDetails();
-
-            if (!this.plan || typeof this.plan === 'object') {
-                return this.plan !== undefined && (this.plan.trial
-                    ? mega.ui.pm.subscription.freeTrial()
-                    : mega.ui.pm.subscription.featurePlan());
-            }
-            const timer = this.pwmFeature[0] - Date.now() / 1e3;
-
-            // set the timer only if the expiry time is less than or equal to 3 days
-            if (timer > 3 * 86400) {
-                break;
-            }
-            await tSleep(timer);
-            await M.getAccountDetails();
+        // if the Business or Pro flexi account has expired,
+        // it will have read-only access to the passwords
+        if (!this.validateUserStatus()) {
+            return false;
         }
+        this.plan = await this.getPlanDetails();
+
+        if (!this.plan || typeof this.plan === 'object') {
+            return this.plan !== undefined && (this.plan.trial
+                ? mega.ui.pm.subscription.freeTrial(this.plan.trial.days)
+                : mega.ui.pm.subscription.featurePlan());
+        }
+
+        const timer = this.pwmFeature[0] - Date.now() / 1e3;
+
+        // set the timer only if the expiry time is less than or equal to 3 days
+        if (!retry && timer < 3 * 86400) {
+            tSleep(timer).then(() => M.getAccountDetails()).then(() => this.checkActiveSubscription(true));
+        }
+    },
+
+    _updatePwmFeature() {
+
+        'use strict';
+
+        this.pwmFeature = u_attr.features && u_attr.features.find(elem => elem[1] === 'pwm') || false;
     },
 
     /**
@@ -182,7 +210,7 @@ mega.pm = {
     async getPlanDetails() {
         'use strict';
 
-        this.pwmFeature = u_attr.features && u_attr.features.find(elem => elem[1] === 'pwm') || false;
+        this._updatePwmFeature();
 
         // check for the active subscription status
         if (this.pwmFeature && this.pwmFeature[0] > Date.now() / 1000) {
@@ -199,14 +227,94 @@ mega.pm = {
         }
     },
 
-    clearPlan() {
+    hideSubsDialog() {
+
         'use strict';
 
-        // check for the latest u_attr features flag value before
-        // closing the free trial or standalone dialogs
-        if (u_attr.features && u_attr.features.some(elem => elem[1] === 'pwm')) {
-            delete this.plan;
+        this._updatePwmFeature();
+
+        // If this has a pwmFeature flag, it means the user purchased a subscription or it already has a subscription,
+        // Lets set plan as true.
+        if (this.pwmFeature) {
+            this.plan = true;
             mega.ui.pm.subscription.hideDialog();
+        }
+    },
+
+    otp: {
+        hashingAlg: {'sha1': 'SHA-1', 'sha256': 'SHA-256', 'sha512': 'SHA-512'},
+
+        async computeHmacKey(key, alg) {
+            'use strict';
+
+            return window.crypto.subtle.importKey(
+                "raw",
+                this.base32ToUint8Array(key),
+                {name: "HMAC", hash: this.hashingAlg[alg]},
+                false,
+                ["sign"]
+            );
+        },
+
+        base32ToUint8Array(base32) {
+            'use strict';
+
+            // Base32 Alphabet (RFC 4648) - uppercase only
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+            // Remove padding if any ("=" chars)
+            const cleaned = base32.replace(/=+$/, '').toUpperCase();
+
+            let bits = '';
+            for (const char of cleaned) {
+                const val = alphabet.indexOf(char);
+                if (val < 0) {
+                    console.error(`Invalid Base32 character: ${char}`);
+                    return;
+                }
+
+                // Convert each 5-bit group into a binary string
+                bits += val.toString(2).padStart(5, '0');
+            }
+
+            // Break the bits into bytes
+            const bytes = [];
+            for (let i = 0; i + 8 <= bits.length; i += 8) {
+                bytes.push(parseInt(bits.slice(i, i + 8), 2));
+            }
+
+            return new Uint8Array(bytes);
+        },
+
+        async generateOtp(data) {
+            'use strict';
+
+            const {shse: secretKey, alg, nd: digits, t: timeStep} = data;
+            const cryptoKey = await this.computeHmacKey(secretKey, alg);
+            const currentTimeInSeconds = Math.floor(Date.now() / 1000);
+            const counter = Math.floor(currentTimeInSeconds / timeStep);
+            const counterBuffer = new ArrayBuffer(8);
+
+            // create 8-byte counter value
+            const view = new DataView(counterBuffer);
+            view.setUint32(0, Math.floor(counter / Math.pow(2, 32)));
+
+            // store it from index 4
+            view.setUint32(4, counter >>> 0);
+
+            const signature = await crypto.subtle.sign("HMAC", cryptoKey, counterBuffer);
+            const hmacBytes = new Uint8Array(signature); // 20 byte Array Buffer
+
+            // from the specification RFC4226: 5.4
+            const offset = hmacBytes[hmacBytes.length - 1] & 0x0f;
+            const truncated =
+                (hmacBytes[offset] & 0x7f) << 24 |
+                (hmacBytes[offset + 1] & 0xff) << 16 |
+                (hmacBytes[offset + 2] & 0xff) << 8 |
+                hmacBytes[offset + 3] & 0xff;
+
+            const hotp = truncated % Math.pow(10, digits);
+
+            return hotp.toString().padStart(digits, '0');
         }
     }
 };

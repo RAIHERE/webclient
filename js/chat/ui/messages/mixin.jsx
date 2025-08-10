@@ -36,9 +36,9 @@ class ConversationMessageMixin extends ContactAwareComponent {
         }
     }
 
-    componentWillMount() {
-        if (super.componentWillMount) {
-            super.componentWillMount();
+    UNSAFE_componentWillMount() {
+        if (super.UNSAFE_componentWillMount) {
+            super.UNSAFE_componentWillMount();
         }
 
         const chatRoom = this.props.chatRoom;
@@ -204,23 +204,10 @@ class ConversationMessageMixin extends ContactAwareComponent {
         return toLocaleTime(this.getTimestamp());
     }
 
-    getTimestamp() {
-        var message = this.props.message;
-        var timestampInt;
-        if (message.getDelay) {
-            timestampInt = message.getDelay();
-        }
-        else if (message.delay) {
-            timestampInt = message.delay;
-        }
-        else {
-            timestampInt = unixtime();
-        }
-
-        if (timestampInt && message.updated && message.updated > 0) {
-            timestampInt += message.updated;
-        }
-        return timestampInt;
+    getTimestamp(forUpdated) {
+        const { message } = this.props;
+        const timestamp = message.getDelay?.() || message.delay || unixtime();
+        return forUpdated && message.updated > 0 ? timestamp + message.updated : timestamp;
     }
 
     componentDidUpdate() {

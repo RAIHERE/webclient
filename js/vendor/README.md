@@ -81,7 +81,7 @@ Unless otherwise noted, they were released under a [MIT License].
 ---
 [jquery-ui.js]: jQuery-UI - jQuery User Interface library.
 
-> This is a custom build created from: [https://jqueryui.com/download/#!...](https://jqueryui.com/download/#!version=1.12.1&themeParams=none&components=111101011101111110100010110110001000001000000000)
+> This is a custom build created from: [https://jqueryui.com/download/#!...](https://jqueryui.com/download/#!version=1.14.1&themeParams=none&components=111101011101111110000010110110000000000000000000)
 
 ---
 [jquery-ui-touch.js]: jQuery UI Touch Punch is a small hack that enables the use of touch events on sites using the jQuery UI user interface library.
@@ -149,8 +149,12 @@ Unless otherwise noted, they were released under a [MIT License].
 ---
 [react-dom.js, react.js]: A declarative, efficient, and flexible JavaScript library for building user interfaces.
 
-> react.js and react-dom.js were patched using `./scripts/patch-react-non-asciis.php fixit` so that non-ascii
-characters were removed from the files
+> **This is a fork**, [Compare the changes](https://github.com/facebook/react/compare/18-3-1...meganz:react:18-3-1)
+
+---
+[scheduler-polyfill.js]: A polyfill for self.scheduler
+
+> **This is a fork**, [Compare the changes](https://github.com/GoogleChromeLabs/scheduler-polyfill/compare/main...meganz:scheduler-polyfill:main)
 
 ---
 [smartcrop.js]: Content aware image cropping.
@@ -232,7 +236,8 @@ characters were removed from the files
 [perfect-scrollbar.js]: <https://github.com/meganz/perfect-scrollbar>
 [pdf.js]: <https://github.com/mega.nz/pdf.js>
 [qrcode.js]: <https://github.com/jeromeetienne/jquery-qrcode/blob/2bad93deab2f0ec66451b0cc962d56fad6fba403/src/qrcode.js>
-[react-dom.js, react.js]: https://github.com/facebook/react/releases/tag/v16.8.6
+[react-dom.js, react.js]: <https://github.com/meganz/react>
+[scheduler-polyfill.js]: <https://github.com/meganz/scheduler-polyfill>
 [smartcrop.js]: <https://github.com/meganz/smartcrop.js>
 [tiff.js]: <https://github.com/seikichi/tiff.js>
 [videostream.js]: <https://github.com/meganz/videostream>

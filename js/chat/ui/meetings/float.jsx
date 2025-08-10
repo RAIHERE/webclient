@@ -16,7 +16,7 @@ import { withPermissionsObserver } from './permissionsObserver.jsx';
 import { withHostsObserver } from './hostsObserver.jsx';
 import { renderLeaveConfirm } from './streamControls';
 
-export default class FloatingVideo extends MegaRenderMixin {
+export default class FloatingVideo extends React.Component {
     collapseListener = null;
 
     static NAMESPACE = 'float-video';
@@ -26,36 +26,15 @@ export default class FloatingVideo extends MegaRenderMixin {
         collapsed: false,
     };
 
-    // Historic adaptive ratio class behaviour
-    // gcd = (width, height) => {
-    //     return height === 0 ? width : this.gcd(height, width % height);
-    // };
-    //
-    // getRatio = (width, height) => {
-    //     return `${width / this.gcd(width, height)}:${height / this.gcd(width, height)}`;
-    // };
-    //
-    // getRatioClass = () => {
-    //     const { ratio } = this.state;
-    //     return ratio ? `ratio-${ratio.replace(':', '-')}` : '';
-    // };
-
     toggleCollapsedMode = () => {
         return this.setState(state => ({ collapsed: !state.collapsed }));
     };
 
-    onLoadedData = ev => {
-        // const { videoWidth, videoHeight } = ev.target;
-        // this.setState({ ratio: this.getRatio(videoWidth, videoHeight) });
-    };
-
     componentWillUnmount() {
-        super.componentWillUnmount();
         mBroadcaster.removeListener(this.collapseListener);
     }
 
     componentDidMount() {
-        super.componentDidMount();
         this.collapseListener = mBroadcaster.addListener('meetings:collapse', () => this.setState({ collapsed: true }));
     }
 
@@ -94,7 +73,7 @@ export default class FloatingVideo extends MegaRenderMixin {
 // --
 
 class Stream extends MegaRenderMixin {
-    containerRef = React.createRef();
+    domRef = React.createRef();
 
     DRAGGABLE = {
         POSITION: {
@@ -205,7 +184,7 @@ class Stream extends MegaRenderMixin {
 
     initDraggable = () => {
         const { minimized, wrapperRef } = this.props;
-        const containerEl = this.containerRef?.current;
+        const containerEl = this.domRef?.current;
 
         if (containerEl) {
             $(containerEl).draggable({
@@ -225,7 +204,7 @@ class Stream extends MegaRenderMixin {
 
     repositionDraggable = () => {
         const wrapperEl = this.props.wrapperRef?.current;
-        const localEl = this.containerRef?.current;
+        const localEl = this.domRef?.current;
 
         if (localEl.offsetLeft + localEl.offsetWidth > wrapperEl.offsetWidth) {
             localEl.style.left = 'unset';
@@ -347,25 +326,26 @@ class Stream extends MegaRenderMixin {
         );
     };
 
-    renderMiniMode = (source) => {
-        const { call, mode, minimized, isPresenterNode, onLoadedData } = this.props;
+    renderMiniMode = source => {
+        const { call, chatRoom, mode, minimized, isPresenterNode, onLoadedData } = this.props;
 
-        if (call.sfuClient.isOnHold()) {
+        if (call.isOnHold) {
             return this.renderOnHoldVideoNode();
         }
-        let VideoClass = PeerVideoHiRes;
-        if (source.isLocal) {
-            VideoClass = isPresenterNode ? LocalVideoHiRes : LocalVideoThumb;
-        }
+
+        const VideoClass = source.isLocal ?
+            isPresenterNode ? LocalVideoHiRes : LocalVideoThumb :
+            PeerVideoHiRes;
+
         return (
             <VideoClass
-                chatRoom={this.props.chatRoom}
+                key={source}
+                source={source} // Ignored for LocalVideoHiRes
+                chatRoom={chatRoom}
                 mode={mode}
                 minimized={minimized}
                 isPresenterNode={isPresenterNode}
                 onLoadedData={onLoadedData}
-                source={source} // ignored for LocalVideoHiRes
-                key={source}
             />
         );
     };
@@ -445,7 +425,7 @@ class Stream extends MegaRenderMixin {
         if (collapsed) {
             return (
                 <div
-                    ref={this.containerRef}
+                    ref={this.domRef}
                     className={`
                         ${NAMESPACE}
                         collapsed
@@ -460,10 +440,11 @@ class Stream extends MegaRenderMixin {
                 </div>
             );
         }
+
         const source = this.getStreamSource() || call.getLocalStream();
         return (
             <div
-                ref={this.containerRef}
+                ref={this.domRef}
                 className={`
                     ${NAMESPACE}
                     ${IS_MINI_MODE ? 'mini' : ''}
@@ -499,6 +480,8 @@ class Stream extends MegaRenderMixin {
 class Minimized extends MegaRenderMixin {
     static NAMESPACE = 'float-video-minimized';
     static UNREAD_EVENT = 'onUnreadCountUpdate.localStreamNotifications';
+
+    domRef = React.createRef();
 
     SIMPLETIP_PROPS = { position: 'top', offset: 5, className: 'theme-dark-forced' };
     waitingPeersListener = undefined;
@@ -545,7 +528,7 @@ class Minimized extends MegaRenderMixin {
         const {
             call,
             chatRoom,
-            recorder,
+            recorderCid,
             hasToRenderPermissionsWarning,
             renderPermissionsWarning,
             resetError,
@@ -582,7 +565,7 @@ class Minimized extends MegaRenderMixin {
                                 });
 
                         return (
-                            recorder && recorder === u_handle ?
+                            recorderCid && recorderCid === call.sfuClient.cid ?
                                 renderLeaveConfirm(doLeave, onRecordingToggle) :
                                 doLeave()
                         );
@@ -750,22 +733,16 @@ class Minimized extends MegaRenderMixin {
         this.waitingPeersListener =
             mBroadcaster.addListener(
                 'meetings:peersWaiting',
-                waitingRoomPeers => this.setState({
-                    waitingRoomPeers,
-                    hideWrList: false,
-                    hideHandsList: false
-                }, () => this.safeForceUpdate())
+                waitingRoomPeers =>
+                    this.setState({ waitingRoomPeers, hideWrList: false, hideHandsList: false }, () => this.safeForceUpdate())
             );
 
         // [...] TODO: higher-order component
         this.raisedHandListener =
             mBroadcaster.addListener(
                 'meetings:raisedHand',
-                raisedHandPeers => this.setState({
-                    raisedHandPeers,
-                    hideWrList: false,
-                    hideHandsList: false
-                }, () => this.safeForceUpdate())
+                raisedHandPeers =>
+                    this.setState({ raisedHandPeers, hideWrList: false, hideHandsList: false }, () => this.safeForceUpdate())
             );
 
         // --
@@ -797,7 +774,9 @@ class Minimized extends MegaRenderMixin {
         const { unread, raisedHandPeers, waitingRoomPeers } = this.state;
 
         return (
-            <>
+            <div
+                ref={this.domRef}
+                className={`${FloatingVideo.NAMESPACE}-wrapper`}>
                 <div className={`${FloatingVideo.NAMESPACE}-overlay`}>
                     <Button
                         simpletip={{ ...this.SIMPLETIP_PROPS, label: l.expand_mini_call /* Expand */ }}
@@ -810,10 +789,9 @@ class Minimized extends MegaRenderMixin {
                     />
                     {this.renderStreamControls()}
                 </div>
-                {
-                    (waitingRoomPeers && waitingRoomPeers.length || raisedHandPeers && raisedHandPeers.length) ?
-                        this.renderPeersList() :
-                        null
+                {waitingRoomPeers && waitingRoomPeers.length || raisedHandPeers && raisedHandPeers.length ?
+                    this.renderPeersList() :
+                    null
                 }
                 {unread ?
                     <div className={`${FloatingVideo.NAMESPACE}-notifications`}>
@@ -826,7 +804,7 @@ class Minimized extends MegaRenderMixin {
                     </div> :
                     null
                 }
-            </>
+            </div>
         );
     }
 }

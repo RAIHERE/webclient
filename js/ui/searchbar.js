@@ -72,8 +72,8 @@ lazy(mega.ui, 'searchbar', () => {
          */
         async deleteTerm(term) {
             this.terms.delete(term);
-            this.update(true);
-            return this.save();
+            await this.save();
+            return this.update(true);
         },
 
         /**
@@ -129,7 +129,7 @@ lazy(mega.ui, 'searchbar', () => {
          */
         update(hasDeletedOrCleared = false) {
             removeVisibilityListeners();
-            renderUpdatedDropdown(hasDeletedOrCleared);
+            renderUpdatedDropdown(null, hasDeletedOrCleared);
             addVisibilityListeners();
         }
     };
@@ -160,7 +160,7 @@ lazy(mega.ui, 'searchbar', () => {
          * @return {undefined}
          */
         init() {
-            return this.refresh();
+            return this.refresh(true);
         },
 
         /**
@@ -206,7 +206,7 @@ lazy(mega.ui, 'searchbar', () => {
          *
          * @return {Promise} Returns a promise if logged in and things were fetched.
          */
-        async refresh() {
+        async refresh(onInit) {
             if (u_type > 0) {
                 await M.getPersistentData(`${u_handle}!ro`)
                     .then((recentlyOpened) => {
@@ -216,7 +216,7 @@ lazy(mega.ui, 'searchbar', () => {
 
                 // If we are in a public folder, we skip the node fetching
                 if (!pfid) {
-                    return this.fetchNodes();
+                    return Promise.resolve(onInit && mega.infinity && tSleep(9)).then(() => this.fetchNodes());
                 }
             }
         },
@@ -270,6 +270,66 @@ lazy(mega.ui, 'searchbar', () => {
         },
     };
 
+    const searchResults = {
+        /**
+         * Last input made when suggesting search results
+         * @type {string}
+         */
+        lastInput: '',
+
+        /**
+         * List of search results corresponding to `this.lastInput`
+         * @type {Array}
+         */
+        lastResults: [],
+    };
+
+    const searchbarFlags = {
+        hideRecents: false,
+        noRecentActivity: false,
+        shouldHideDropdown: false,
+
+        update() {
+            const isPublicFolder = !!folderlink;
+            const hideSearchSuggestions = $fileSearch && $fileSearch.val().length < 3;
+            const noRecentlySearched = isPublicFolder || recentlySearched.terms.size === 0;
+            const noRecentlyOpened = isPublicFolder || recentlyOpened.files.size === 0;
+
+            this.hideRecents = isPublicFolder || mega.config.get('showRecents') !== 1;
+            this.noRecentActivity = noRecentlySearched && noRecentlyOpened;
+            this.shouldHideDropdown = hideSearchSuggestions
+                && (this.hideRecents || this.noRecentActivity && !showEmptyState)
+                || hideSearchSuggestions && this.noRecentActivity && !showEmptyState;
+        }
+    };
+
+    /**
+     * Callback function to handle the rendering of a search item thumbnail.
+     *
+     * @param {Object} d - The mega node.
+     * @param {HTMLElement} resultBodyContainer - The container element where the search results are displayed.
+     * @param {string} fileIconSelector - The CSS selector for the file icon element within the search result item.
+     * @returns {undefined}
+     *
+     * This function:
+     * - Locates the search result item in the DOM using its `data-id` attribute.
+     * - Retrieves the thumbnail URI for the file using thumbnails map node's fa property.
+     * - Updates the file icon element with the thumbnail image if available.
+     * - Adds appropriate classes to style the file icon and container.
+     */
+    function searchItemThumbnailCb(d, resultBodyContainer, fileIconSelector) {
+        const $item = $(`[data-id="${d.h}"]`, resultBodyContainer);
+        const thumbUri = thumbnails.get(d.fa);
+        if (thumbUri) {
+            const $fileIconContainer = $(fileIconSelector, $item);
+            const $fileIcon = $('.item-type-icon', $fileIconContainer);
+            const $imgNode = $('img', $fileIcon);
+            $imgNode.attr('src', thumbUri);
+            $fileIcon.addClass('no-background');
+            $fileIconContainer.addClass('thumb');
+        }
+    }
+
     /**
      * Initialises the top searchbars and events attached to them
      *
@@ -277,7 +337,7 @@ lazy(mega.ui, 'searchbar', () => {
      * @return {undefined}
      */
     function initSearch(currentPage) {
-        $topbar = $('#startholder .js-topbar, #fmholder .js-topbar');
+        $topbar = $('#startholder .js-topbar, #fmholder .mega-header');
         $dropdownSearch = $('.dropdown-search', $topbar);
 
         refreshSearch(currentPage);
@@ -290,7 +350,7 @@ lazy(mega.ui, 'searchbar', () => {
             e.preventDefault();
 
             // Close node Info panel as not applicable after searching
-            mega.ui.mInfoPanel.closeIfOpen();
+            mega.ui.mInfoPanel.hide();
 
             var val = $.trim($('.js-filesearcher', this).val());
 
@@ -304,6 +364,7 @@ lazy(mega.ui, 'searchbar', () => {
                     if (!M.search) {
                         mega.ui.mNodeFilter.resetFilterSelections();
                     }
+                    delay.cancel('searchbar.renderSuggestSearchedItems');
                     if (!pfid) {
                         recentlySearched.justSearched = true;
                         if (mega.config.get('showRecents') === 1) {
@@ -312,11 +373,12 @@ lazy(mega.ui, 'searchbar', () => {
                         loadSubPage(`fm/search/${val}`);
                         hideDropdown();
                         addDropdownEventListeners();
+                        $fileSearch.trigger('blur');
                         showEmptyState = true;
                     }
                     onIdle(() => {
                         // get topbars again for switching between static and fm pages
-                        $topbar = $('#startholder .js-topbar, #fmholder .js-topbar');
+                        $topbar = $('#startholder .js-topbar, #fmholder .mega-header');
                         $dropdownSearch = $('.dropdown-search', $topbar);
                         $fileSearch = $('.js-filesearcher', $topbar);
                         $fileSearch.val(val);
@@ -325,10 +387,6 @@ lazy(mega.ui, 'searchbar', () => {
                         }
                         $('.js-btnclearSearch', $topbar).removeClass('hidden');
                         hideDropdown();
-
-                        if (pfid && mega.gallery) {
-                            mega.gallery.clearMdView();
-                        }
 
                         // fix a redirect from a bottompage with an 'old' class on it
                         $('body').removeClass('old');
@@ -340,7 +398,14 @@ lazy(mega.ui, 'searchbar', () => {
         });
 
         $('.js-filesearcher', $topbar).rebind('keyup.searchbar', (e) => {
-            delay('searchbar.renderSuggestSearchedItems', () => renderSuggestSearchedItems(e), 1500);
+            if (recentlyOpened.files.size + recentlySearched.terms.size) {
+                // We do not need to pass down the event as the param here
+                renderUpdatedDropdown(null, false, true);
+            }
+            if (e.keyCode !== 13) {
+                // We render the suggestions separately with a delay
+                delay('searchbar.renderSuggestSearchedItems', () => renderSuggestSearchedItems(e), 1500);
+            }
         });
 
         $('.js-btnclearSearch', $topbar).rebind('click.searchclear', (e) => {
@@ -407,33 +472,14 @@ lazy(mega.ui, 'searchbar', () => {
 
         // Dropdown trigger when clicking after dropdown has been hidden
         $fileSearch.rebind('click.searchbar', () => {
-            renderUpdatedDropdown().then(()=>{
+            renderUpdatedDropdown(null, false, true).then(()=>{
                 delay('searchbar.click', eventlog.bind(null, 99898));
-                $dropdownResults.addClass('hidden');
             });
         });
 
         // Show only results if there is user provides text in the input
-        $fileSearch.rebind('input.searchbar', ({target}) => {
-            if (target.value.length > 0) {
-
-                $dropdownSearch.removeClass('hidden');
-
-                // Hide recents
-                $('.dropdown-recents.dropdown-section', $dropdownSearch).addClass('hidden');
-                $dropdownEmptyState.addClass('hidden');
-
-                hideDropdown();
-
-                // Show search results
-                // $dropdownResultsSection.removeClass('hidden');
-            }
-            else {
-                // Hide search results if input is blank
-                $dropdownResults.addClass('hidden');
-
-                renderUpdatedDropdown();
-            }
+        $fileSearch.rebind('input.searchbar', (event) => {
+            renderUpdatedDropdown(event);
         });
 
         // Clear all - Recently searched terms
@@ -464,9 +510,8 @@ lazy(mega.ui, 'searchbar', () => {
 
         // Dropdown trigger on focus
         $fileSearch.rebind('focus.searchbar', () => {
-            showEmptyState = recentlySearched.terms.size !== 0
-                && recentlyOpened.files.size !== 0;
-            renderUpdatedDropdown();
+            showEmptyState = !!(recentlySearched.terms.size + recentlyOpened.files.size);
+            renderUpdatedDropdown(null, false, true);
         });
 
 
@@ -553,41 +598,78 @@ lazy(mega.ui, 'searchbar', () => {
 
 
         if ($dropdownSearch) {
+            $dropdownRecents.addClass('hidden');
+            $dropdownResults.addClass('hidden');
             $dropdownSearch.addClass('hidden');
+        }
+    }
+
+    /**
+     * Updates some necessary items in the DOM cache. Updating all references is not necessary.
+     *
+     * @return {undefined}
+     */
+    function updateDOMCache() {
+        $dropdownSearch = $dropdownSearch || $('.dropdown-search', $topbar).addClass('hidden');
+        $dropdownEmptyState = $dropdownEmptyState || $('.dropdown-no-recents', $dropdownSearch);
+        $dropdownRecents = $dropdownRecents || $('.dropdown-recents', $dropdownSearch);
+    }
+
+    /**
+     * Renders the recents section, hides it if necessary
+     *
+     * @return {undefined}
+     */
+    function showRecentSection() {
+        if (!folderlink && recentlyOpened.files.size + recentlySearched.terms.size) {
+            $dropdownEmptyState.addClass('hidden');
+            $dropdownRecents.removeClass('hidden');
+
+            // Show recently searched items
+            renderRecentlySearchedItems();
+
+            // Show recently opened files
+            renderRecentlyOpenedItems();
+        }
+        else {
+            $dropdownRecents.addClass('hidden');
         }
     }
 
     /**
      * Renders the dropdown
      *
+     * @param {KeyboardEvent} event The event that triggers the render, only needed for the suggestions
      * @param {boolean} hasDeletedOrCleared Set to true if after a delete or clear in `recentlySearched`
+     * @param {boolean} skipIfRendered Set to true if we don't want to re-render the dropdown if visbile
      * @return {undefined}
      */
-    async function renderUpdatedDropdown(hasDeletedOrCleared = false) {
+    async function renderUpdatedDropdown(event, hasDeletedOrCleared = false, skipIfRendered = false) {
 
-        if (folderlink) {
+        const shouldSkip = skipIfRendered && !$dropdownSearch.hasClass('hidden');
+
+        if (shouldSkip) {
             return;
         }
-        await Promise.all([recentlySearched.refresh(), recentlyOpened.refresh()]);
 
-        const hideRecents = mega.config.get('showRecents') !== 1;
-        const noRecentlySearched = recentlySearched.terms.size === 0;
-        const noRecentlyOpened = recentlyOpened.files.size === 0;
-        const noRecentActivity = noRecentlySearched && noRecentlyOpened;
+        if (!folderlink) {
+            await Promise.all([recentlySearched.refresh(), recentlyOpened.refresh()]);
+        }
 
-        clearRecentMemoryIfRequired(hideRecents, noRecentActivity).catch(dump);
+        searchbarFlags.update();
+
+        clearRecentMemoryIfRequired().catch(dump);
 
         // If we came from a delete/clear operation and there is no recent activity left to show,
         // Set the show empty state flag
-        if (hasDeletedOrCleared && noRecentActivity) {
+        if (hasDeletedOrCleared && searchbarFlags.noRecentActivity) {
             showEmptyState = true;
         }
 
-        $dropdownEmptyState = $dropdownEmptyState || $('.dropdown-no-recents', $dropdownSearch);
-        $dropdownRecents = $dropdownRecents || $('.dropdown-recents', $dropdownSearch);
+        updateDOMCache();
 
         // Hide dropdown if Hide Recents is on
-        if (hideRecents || noRecentActivity && !showEmptyState) {
+        if (searchbarFlags.shouldHideDropdown) {
             hideDropdown();
             return;
         }
@@ -597,40 +679,43 @@ lazy(mega.ui, 'searchbar', () => {
 
         // If there is no recent activity and the empty state flag is set,
         // show the empty state only
-        if (noRecentActivity && showEmptyState) {
-            $dropdownEmptyState.removeClass('hidden');
+        if (searchbarFlags.noRecentActivity && searchbarFlags.showEmptyState) {
+            if ($dropdownResults.hasClass('hidden')) {
+                $dropdownEmptyState.removeClass('hidden');
+            }
             $dropdownRecents.addClass('hidden');
             return;
         }
 
-        if (noRecentActivity && !showEmptyState) {
+        if (searchbarFlags.shouldHideDropdown) {
             hideDropdown();
             return;
         }
 
         // Show recents section
-        $dropdownEmptyState.addClass('hidden');
-        $dropdownRecents.removeClass('hidden');
+        showRecentSection();
 
-        // Show recently searched items
-        renderRecentlySearchedItems();
+        // Show previously cached search results (if applicable)
+        renderSuggestSearchedItems(event);
 
-        // Show recently opened files
-        renderRecentlyOpenedItems();
+        const sections = $('.dropdown-section:not(.hidden)', $dropdownSearch);
+        sections.removeClass('last-section');
+        sections.last().addClass('last-section');
     }
 
     /**
     * Clears the recent memory if required based on conditions.
     *
-    * If the 'hideRecents' flag is active and there's recent activity, this function clears
+    * If the 'searchbarFlags.hideRecents' flag is active and there's recent activity, this function clears
     * the memory of recent searches and recent opened files.
     *
-    * @param {boolean} hideRecents - Flag indicating if recent items should be hidden. Fetch this before passing.
-    * @param {boolean} noRecentActivity - Flag indicating if there's no recent activity.
      * @return {Promise}
     */
-    async function clearRecentMemoryIfRequired(hideRecents, noRecentActivity) {
-        if (hideRecents && !noRecentActivity) {
+    async function clearRecentMemoryIfRequired() {
+        if (folderlink) {
+            return;
+        }
+        if (searchbarFlags.hideRecents && !searchbarFlags.noRecentActivity) {
             return Promise.all([recentlySearched.clear(), recentlyOpened.clear()]);
         }
     }
@@ -646,12 +731,12 @@ lazy(mega.ui, 'searchbar', () => {
 
         const $dropdownRecentlySearched = $('.dropdown-recently-searched-wrapper', $dropdownRecents);
 
-        const $itemTemplate = $('.dropdown-recently-searched-template', $dropdownRecents);
-
         if (recentlySearched.terms.size === 0) {
             $dropdownRecentlySearched.addClass('hidden');
             return;
         }
+
+        const $itemTemplate = $('.dropdown-recently-searched-template', $dropdownRecents);
 
         $dropdownRecentlySearched.removeClass('hidden');
 
@@ -705,10 +790,21 @@ lazy(mega.ui, 'searchbar', () => {
      * @return {undefined}
      */
     function renderSuggestSearchedItems(event) {
-        const term = $.trim($(event.currentTarget).val());
+        let term;
+        let nodes = [];
 
-        if (term.length < 3 || event.key === 'Enter') {
-            return removeDropdownSearch();
+        if (event && event.currentTarget) {
+            term = $.trim($(event.currentTarget).val());
+
+            if (term.length < 3 || event.key === 'Enter') {
+                $dropdownResults.addClass('hidden');
+                if (!$dropdownSearch.hasClass('hidden')
+                    && !(recentlyOpened.files.size + recentlySearched.terms.size)
+                ) {
+                    removeDropdownSearch();
+                }
+                return;
+            }
         }
 
         if (!$dropdownResults) {
@@ -718,22 +814,51 @@ lazy(mega.ui, 'searchbar', () => {
         const $dropdownResultSearched = $('.dropdown-search-results', $dropdownResults);
         const $ddLoader = $('.search-loader', $dropdownSearch);
 
+        // Restoring old search cache
+        if (!event || !event.target) {
+            term = $('input.js-filesearcher', $topbar).val();
+            if (term.length < 3) {
+                $dropdownResults.addClass('hidden');
+                $('.js-btnclearSearch', $topbar).toggleClass('hidden', !term.length);
+                return;
+            }
+        }
+
+        $dropdownResultSearched.addClass('hidden');
         $ddLoader.removeClass('hidden');
-        const results = M.getFilterBy(M.getFilterBySearchFn(term));
-        const nodes = results.filter(n => n.p !== M.RubbishID)
+
+        if (term === searchResults.lastInput) {
+            nodes = searchResults.lastResults;
+        }
+        else {
+            const filterFn = (fn1, fn2) => {
+                return n => fn1(n) && fn2(n);
+            };
+
+            const results = M.getFilterBy(
+                filterFn(M.getFilterBySearchFn(term), ({ sen }) => !sen || mega.sensitives.showGlobally)
+            );
+
+        const nodes = results.filter(n => n.p !== M.RubbishID && !mega.devices.ui.isDeprecated(n))
             .sort((a, b) => a.name.localeCompare(b.name))
             .sort((a, b) => a.name.length - b.name.length);
 
-        if (nodes) {
+            searchResults.lastInput = term;
+            searchResults.lastResults = nodes;
+        }
+
+        if (nodes && nodes.length) {
             $ddLoader.addClass('hidden');
             $dropdownSearch.removeClass('hidden');
             $dropdownResults.removeClass('hidden');
         }
 
         if (!nodes || nodes.length === 0) {
-            hideDropdown();
-            $dropdownResultSearched.addClass('hidden');
-            $('.js-btnclearSearch', $topbar).addClass('hidden');
+            $ddLoader.addClass('hidden');
+            $dropdownResults.addClass('hidden');
+            if (!(recentlyOpened.files.size + recentlySearched.terms.size)) {
+                removeDropdownSearch();
+            }
             return;
         }
 
@@ -769,18 +894,28 @@ lazy(mega.ui, 'searchbar', () => {
             else if (node.p === M.RubbishID) {
                 dir = l[167];
             }
+            else if (window.vw && node.p === M.InboxID) {
+                dir = l[166];
+            }
 
             $item.removeClass('dropdown-search-results-item-template hidden');
-            $item.attr('id', node.h);
+            $item.attr('data-id', node.h);
             $match.text(match);
             $suffix.text(suffix);
             $dir.text(dir);
-            $fileIcon.addClass(`icon-${fileIcon(node)}-24`);
+
+            if (mega.sensitives.isSensitive(node)) {
+                $item.addClass('is-sensitive');
+            }
 
             if (thumbUri) {
                 const $imgNode = $('img', $fileIcon);
                 $imgNode.attr('src', thumbUri);
+                $fileIcon.addClass('no-background');
                 $fileIconContainer.addClass('thumb');
+            }
+            else {
+                $fileIcon.addClass(`icon-${fileIcon(node)}-24`);
             }
 
             return $item.prop('outerHTML');
@@ -796,8 +931,18 @@ lazy(mega.ui, 'searchbar', () => {
             $resultSearchBody.safeAppend(item);
         }
 
+        fm_thumbnails(
+            'standalone',
+            nodes,
+            d => searchItemThumbnailCb(
+                d,
+                $resultSearchBody,
+                '.dropdown-search-results-item-file-icon'
+            )
+        );
+
         $('.dropdown-search-results-item', $dropdownResults).rebind('click.searchbar', (e) => {
-            const h = $(e.currentTarget).attr('id');
+            let h = $(e.currentTarget).attr('data-id');
             const n = M.getNodeByHandle(h);
 
             hideDropdown();
@@ -810,10 +955,23 @@ lazy(mega.ui, 'searchbar', () => {
                     $.ofShowNoFolders = true;
                 }
                 $('.top-context-menu').addClass('hidden');
-                M.openFolder(h);
+
+                const isInboxRoot = M.getNodeRoot(n) === M.InboxID;
+                if (isInboxRoot) {
+                    h = mega.devices.ui.getNodeURLPathFromOuterView(n);
+                }
+
+                Promise.resolve(h)
+                    .then((h) => {
+                        if (window.vw && isInboxRoot && h === mega.devices.rootId && n.h !== M.BackupsId) {
+                            h = n.h;
+                        }
+                        return M.openFolder(h);
+                    })
+                    .catch(tell);
             }
             else if (M.getNodeRoot(n.h) === M.RubbishID) {
-                propertiesDialog();
+                mega.ui.mInfoPanel.show($.selected);
             }
             else if (is_image2(n) || is_video(n)) {
                 if (is_video(n)) {
@@ -823,7 +981,7 @@ lazy(mega.ui, 'searchbar', () => {
             }
             else if (is_text(n)) {
                 $.selected = [h];
-                $('.dropdown.body.context .dropdown-item.edit-file-item').trigger('click');
+                mega.fileTextEditor.openTextHandle(h);
             }
             else {
                 // Non previewable file should proceed to download
@@ -858,10 +1016,9 @@ lazy(mega.ui, 'searchbar', () => {
 
         $dropdownRecentlyOpened.removeClass('hidden');
 
-        const makeRecentlyOpenedFileItem = ({h: handle, e: editable}) => {
+        const makeRecentlyOpenedFileItem = ({h: handle, e: editable}, node) => {
 
             // TODO: FIX SHARED LOGIC + ASYNC CONVERT
-            const node = M.getNodeByHandle(handle);
             const parentNode = M.getNodeByHandle(node.p);
             const parentName = parentNode.h === M.RootID
                 ? l[1687]
@@ -878,6 +1035,10 @@ lazy(mega.ui, 'searchbar', () => {
             $item.removeClass('dropdown-recently-opened-template hidden');
             $item.attr('data-id', handle);
             $item.attr('data-editable', editable);
+
+            if (mega.sensitives.isSensitive(node)) {
+                $item.addClass('is-sensitive');
+            }
 
             $icon.addClass(`icon-${iconClass}-24`);
             $('.dropdown-recently-opened-item-filename', $item).text(filename);
@@ -898,15 +1059,28 @@ lazy(mega.ui, 'searchbar', () => {
         $recentlyOpenedBody.empty();
 
         const recentlyOpenedArr = [...recentlyOpened.files.values()];
+        // do not change the order of this array
+        const recentlyOpenedNodesArr = recentlyOpenedArr.map(({h}) => M.getNodeByHandle(h));
 
-        for (let i = recentlyOpenedArr.length - 1, nb = 0;
+        for (let i = recentlyOpenedNodesArr.length - 1, nb = 0;
             i >= 0 && nb < recentlyOpened.numFilesInView;
             i--, nb++) {
-            if (M.getNodeByHandle(recentlyOpenedArr[i].h)) {
-                const item = makeRecentlyOpenedFileItem(recentlyOpenedArr[i]);
+            const n = recentlyOpenedNodesArr[i];
+            if (n && (mega.sensitives.showGlobally || !mega.sensitives.isSensitive(n))) {
+                const item = makeRecentlyOpenedFileItem(recentlyOpenedArr[i], n);
                 $recentlyOpenedBody.safeAppend(item);
             }
         }
+
+        fm_thumbnails(
+            'standalone',
+            recentlyOpenedNodesArr,
+            d => searchItemThumbnailCb(
+                d,
+                $recentlyOpenedBody,
+                '.dropdown-recently-opened-item-file-icon'
+            )
+        );
 
         $fileSearch = $fileSearch || $('.js-filesearcher', $topbar);
 

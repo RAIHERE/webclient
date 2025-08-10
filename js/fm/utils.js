@@ -171,7 +171,7 @@ MegaUtils.prototype.resetUploadDownload = function megaUtilsResetUploadDownload(
         ulmanager.isUploading = false;
         ASSERT(ulQueue._running === 0, 'ulQueue._running inconsistency on completion');
         ulQueue._pending = [];
-        ulQueue.setSize((fmconfig.ul_maxSlots | 0) || 4);
+        ulQueue.setSize((fmconfig.ul_maxSlots | 0) || ulmanager.ulDefConcurrency || 4);
 
         if (is_megadrop) {
             mega.fileRequestUpload.onUploadCompletion();
@@ -431,7 +431,6 @@ MegaUtils.prototype.reload = function megaUtilsReload(force) {
             sessionStorage.fmAetherReload = 1;
         }
         location.reload(true);
-        loadingDialog.hide();
     };
 
     if (u_type !== 3 && page !== 'download') {
@@ -463,6 +462,10 @@ MegaUtils.prototype.reload = function megaUtilsReload(force) {
 
         promise.then(() => {
             const waitingPromises = [];
+
+            if (self.fminitialized) {
+                waitingPromises.push(mega.halt('full-reload'));
+            }
 
             loadingDialog.show();
             waitsc.stop();
@@ -616,15 +619,16 @@ MegaUtils.prototype.require = function megaUtilsRequire() {
     toArray.apply(null, arguments).forEach(function(rsc) {
         // check if a group of resources was provided
         if (jsl3[rsc]) {
-            var group = Object.keys(jsl3[rsc]);
+            for (const k in jsl3[rsc]) {
+                const f = jsl3[rsc][k];
 
-            args = args.concat(group);
-
-            // inject them into jsl2
-            for (var i = group.length; i--;) {
-                if (!jsl2[group[i]]) {
-                    (jsl2[group[i]] = jsl3[rsc][group[i]]).n = group[i];
+                if (jsl2[f.n]) {
+                    console.assert(jsl2[f.n].f === f.f, `misnamed jsl3 resource, ${f.n}`);
                 }
+                else {
+                    jsl2[f.n] = f;
+                }
+                args.push(f.n);
             }
         }
         else {
@@ -918,6 +922,7 @@ MegaUtils.prototype.logout = function megaUtilsLogout() {
         if (window.is_eplusplus) {
             promises.push(M.delPersistentData('e++ck'));
         }
+        promises.push(M.delPersistentData('jid'));
 
         Promise.allSettled(promises)
             .then((res) => {
@@ -1124,10 +1129,13 @@ MegaUtils.prototype.fmSearchNodes = function(searchTerm) {
                     }
                 }
                 M.currentdirid = 'search/' + searchTerm;
-                M.gallery = false;
+                if (mega.gallery) {
+                    mega.gallery.clearMdView();
+                }
                 M.renderMain();
                 M.onSectionUIOpen('cloud-drive');
                 $('.fm-right-header .fm-breadcrumbs-wrapper').addClass('hidden');
+                mega.ui.secondaryNav.hideActionButtons();
                 onIdle(resolve);
                 // mBroadcaster.sendMessage('!sitesearch', searchTerm, 'folder-link', M.v.length);
             }
@@ -1272,6 +1280,20 @@ mBroadcaster.addListener('mega:openfolder', SoonFc(300, function(id) {
     }
 }));
 
+/**
+ * Open Transfer.it overlay.
+ * @returns {Promise<*>} any
+ */
+MegaUtils.prototype.openTransferItOverlay = async function(aPreSelectNodes) {
+    'use strict';
+    if (!(self.T && 'core' in T)) {
+        loadingDialog.show();
+        await this.require('transferit')
+            .finally(() => loadingDialog.hide());
+        assert('core' in T);
+    }
+    return T.ui.transferItOverlay.show(aPreSelectNodes);
+};
 
 /**
  * Handle a redirect from the mega.co.nz/#pro page to mega.nz/#pro page
@@ -1310,8 +1332,22 @@ MegaUtils.prototype.transferFromMegaCoNz = function(data) {
                 for (let i = 1; i < pageParts.length; i++) {
                     const queryParts = pageParts[i].split('=');
                     if (queryParts[0] === 'tab') {
-                        window.mProTab = queryParts[1].split('/')[0];
+                        M.setTabAndScroll(queryParts[1].split('/')[0]);
                     }
+                    if (toPage.startsWith('propay_') && (queryParts[0] === 'm')) {
+                        sessionStorage['pro.period'] = queryParts[1].split('/')[0];
+                    }
+                }
+            }
+            else if (toPage.startsWith('pwmredir')) {
+                const [, type, target, value] = toPage.split('!');
+
+                if (target === 'add' || target === 'edit') {
+                    window.pwmredir = [type, target, value];
+                    toPage = 'fm/pwm';
+                }
+                else {
+                    toPage = value || target;
                 }
             }
 
@@ -1409,28 +1445,24 @@ MegaUtils.prototype.transferFromMegaCoNz = function(data) {
     }
 };
 
+MegaUtils.prototype.setTabAndScroll = function(target) {
+    'use strict';
+    if (target === 'flexi') {
+        window.mProTab = 'pro';
+        sessionStorage.mScrollTo = 'flexi';
+    }
+    else {
+        window.mProTab = target;
+    }
+};
+
 /**
  * Sanitise filename so that saving to local disk won't cause any issue...
  * @param {String} name The filename
  * @returns {String}
  */
-MegaUtils.prototype.getSafeName = function(name) {
-    // http://msdn.microsoft.com/en-us/library/aa365247(VS.85)
-    name = ('' + name).replace(/["*/:<>?\\|]+/g, '.');
+factory.lazy(MegaUtils.prototype, 'safe-name', 'getSafeName');
 
-    if (name.length > 250) {
-        name = name.substr(0, 250) + '.' + name.split('.').pop();
-    }
-    name = name.replace(/[\t\n\r\f\v]+/g, ' ');
-    name = name.replace(/\u202E|\u200E|\u200F/g, '');
-
-    var end = name.lastIndexOf('.');
-    end = ~end && end || name.length;
-    if (/^(?:CON|PRN|AUX|NUL|COM\d|LPT\d)$/i.test(name.substr(0, end))) {
-        name = '!' + name;
-    }
-    return name;
-};
 /**
  * checking if name (file|folder)is satisfaying all OSs [Win + linux + Mac + Android + iOs] rules,
  * so syncing to local disks won't cause any issue...
@@ -1463,13 +1495,7 @@ MegaUtils.prototype.isSafeName = function(name, allowPathSep) {
  * @param {String} [file] Optional filename to append
  * @returns {Array} Each sanitised path component as array members
  */
-MegaUtils.prototype.getSafePath = function(path, file) {
-    var res = ('' + (path || '')).split(/[\\\/]+/).map(this.getSafeName).filter(String);
-    if (file) {
-        res.push(this.getSafeName(file));
-    }
-    return res;
-};
+factory.lazy(MegaUtils.prototype, 'safe-path', 'getSafePath');
 
 /**
  * Retrieve transfer quota details, i.e. by firing an uq request.
@@ -1584,200 +1610,6 @@ MegaUtils.prototype.checkGoingOverStorageQuota = function(opSize) {
                     });
             }
         });
-};
-
-/**
- * Fill LHP storage block caption.
- * @param {HTMLElement} container storage block element
- * @param {Number|String} storageQuota available storage quota
- * @returns {Promise} fulfilled on completion.
- */
-MegaUtils.prototype.createLeftStorageBlockCaption = async function(container, storageQuota) {
-    'use strict';
-
-    let checked = false;
-    const $storageBlock = $(container);
-    const $popup = $('.js-lp-storage-information-popup', $storageBlock.parent()).removeClass('hidden');
-    const $storageLimitIcon = $('.storage-limit-icon', $storageBlock);
-    const $storageLimitPopup = $('.lp-storage-limit-popup', $storageBlock);
-
-    $storageBlock.rebind('mouseenter.storage-usage', () => {
-        if (!checked) {
-            checked = true;
-
-            Promise.resolve(!u_attr.p || u_attr.tq || this.getTransferQuota())
-                .then((res) => {
-                    if (typeof res === 'object') {
-                        // base transfer quota from getTransferQuota()
-                        res = res.base;
-                    }
-                    if (typeof res === 'number') {
-                        res = bytesToSize(res, 3, 4);
-                    }
-
-                    if (u_attr.p) {
-                        u_attr.tq = res;
-                        $popup.text(l.storage_usage_caption_pro.replace('%1', storageQuota).replace('%2', u_attr.tq));
-                    }
-                    else {
-                        $popup.text(l.storage_usage_caption_free.replace('%1', storageQuota));
-                    }
-                });
-        }
-
-        delay('storage-information-popup-mouseenter', () => {
-            if (!$storageLimitIcon.is(':hover')) {
-                $popup.addClass('hovered');
-            }
-        }, 1e3);
-    });
-
-    $storageBlock.rebind('mouseleave.storage-usage', () => {
-        delay.cancel('storage-information-popup-mouseenter');
-        delay.cancel('storage-information-popup-mouseleave');
-        $popup.removeClass('hovered');
-        $storageLimitPopup.removeClass('hovered');
-    });
-
-    $storageLimitIcon.rebind('mouseenter.storage-limit', () => {
-        delay('storage-limit-popup-mouseenter', () => {
-            $storageLimitPopup.addClass('hovered');
-            $popup.removeClass('hovered');
-        }, 1e3);
-    });
-
-    $storageLimitIcon.rebind('mouseleave.storage-limit', () => {
-        delay.cancel('storage-limit-popup-mouseenter');
-        $storageLimitPopup.removeClass('hovered');
-        delay('storage-information-popup-mouseleave', () => {
-            if ($storageBlock.is(':hover')) {
-                $popup.addClass('hovered');
-            }
-        }, 1e3);
-    });
-};
-
-/**
- * Fill left-pane element with storage quota footprint.
- * @param {Object} [data] already-retrieved storage-quota
- * @returns {Promise} fulfilled on completion.
- */
-MegaUtils.prototype.checkLeftStorageBlock = async function(data) {
-    'use strict';
-    const storageBlock = document.querySelector('.js-lp-storage-usage-block');
-
-    if (!u_type || !fminitialized || this.storageQuotaCache) {
-
-        if (u_type === 0) {
-            storageBlock.classList.add('hidden');
-        }
-
-        return false;
-    }
-
-    storageBlock.classList.remove('hidden');
-
-    const loaderSpinner = storageBlock.querySelector('.loader');
-
-    // minimize DOM ops when not needed by only triggering the loader if really needed
-    if (loaderSpinner) {
-        loaderSpinner.classList.add('loading');
-    }
-
-    this.storageQuotaCache = data || await this.getStorageQuota();
-
-    let storageHtml;
-    const {percent, max, used, isAlmostFull, isFull} = this.storageQuotaCache;
-    const space = bytesToSize(max, 0);
-    const space_used = bytesToSize(used);
-
-    storageBlock.classList.remove('over');
-    storageBlock.classList.remove('warning');
-
-    if (isFull && !storageBlock.classList.contains("over")) {
-        storageBlock.classList.add('over');
-    }
-    else if (isAlmostFull && !storageBlock.classList.contains("warning")) {
-        storageBlock.classList.add('warning');
-    }
-
-    // If Business or Pro Flexi always show the plan name (even if expired, which is when u_attr.p is undefined)
-    if (u_attr.b || u_attr.pf) {
-        storageBlock.querySelector('.plan').textContent = pro.getProPlanName(
-            u_attr.b ? pro.ACCOUNT_LEVEL_BUSINESS : pro.ACCOUNT_LEVEL_PRO_FLEXI
-        );
-    }
-    else if (u_attr.p) {
-        storageBlock.querySelector('.plan').textContent = pro.getProPlanName(u_attr.p);
-    }
-    else {
-        storageBlock.querySelector('.plan').textContent = l[1150]; // Free
-    }
-
-    // Show only space_used for Business and Pro Flexi accounts
-    if (u_attr && (u_attr.b || u_attr.pf)) {
-        storageHtml = `<span class="lp-sq-used">${space_used}</span>`;
-        storageBlock.querySelector('.js-lpbtn[data-link="upgrade"]').classList.add('hidden');
-    }
-    else {
-        storageHtml = l[1607].replace('%1', `<span class="lp-sq-used">${space_used}</span>`)
-            .replace('%2', `<span class="lp-sq-max">${space}</span>`);
-        storageBlock.querySelector('.js-storagegraph').classList.remove('hidden');
-        $('.js-storagegraph span', storageBlock).outerWidth(`${percent}%`);
-    }
-
-    const storageIsAlmostFullOrFull = isAlmostFull || isFull;
-
-    // Check if user (not a Business or Pro Flexi one) is in the fmpup (FM / Photos upgrade point)
-    // variant group and change the upgrade point UI if so
-    if (!u_attr.b && !u_attr.pf && this.isInExperiment('fmpup')) {
-        const $upgradeBtn = $('.info button.secondary', storageBlock);
-        const $storageLimitIcon = $('.storage-limit-icon', storageBlock);
-
-        const _sendEvent = (eventId) => {
-            // Send eventlog and a message with the tab the user was on
-            // (Drive / Photos) when they clicked the buttons
-            const isDriveTabSelected = M.currentTreeType === 'cloud-drive';
-            const eventMessage = `${isDriveTabSelected ? 'Drive' : 'Photos'} tab selected`;
-
-            eventlog(eventId, eventMessage);
-        };
-
-        $upgradeBtn.removeClass('hidden').rebind('click.sendEvent', () => {
-            _sendEvent(500282);
-            loadSubPage('pro');
-        });
-
-        storageBlock.querySelector('.text-and-tooltip').classList.remove('hidden');
-
-        if (storageIsAlmostFullOrFull) {
-            $storageLimitIcon.removeClass('hidden').rebind('click.sendEvent', () => {
-                _sendEvent(500283);
-
-                const hcArticleURL = 'https://help.mega.io/plans-storage/space-storage/storage-exceeded';
-                window.open(hcArticleURL, '_blank', 'noopener noreferrer');
-            });
-        }
-        storageBlock.querySelector('.info .storage-txt').classList.add('hidden');
-    }
-    else {
-        if (!u_attr.b && !u_attr.pf) {
-            storageBlock.querySelector('.title-block .js-lpbtn[data-link="upgrade"]')
-                .classList.remove('hidden');
-        }
-        storageBlock.querySelector('.title-block .storage-txt').classList.add('hidden');
-    }
-
-    $('.storage-txt', storageBlock).safeHTML(storageHtml);
-
-    if (loaderSpinner) {
-        loaderSpinner.remove();
-    }
-
-    if (!u_attr.pf && !u_attr.b && (!u_attr.tq || !storageBlock.classList.contains('caption-running'))) {
-        storageBlock.classList.add('caption-running');
-        return this.createLeftStorageBlockCaption(storageBlock, space);
-    }
 };
 
 /**
@@ -2753,35 +2585,118 @@ MegaUtils.prototype.noSleep = async function(stop, title) {
     }
 };
 
-MegaUtils.prototype.updatePaymentCardState = () => {
+
+MegaUtils.prototype.fmEventLog = function(eid) {
     'use strict';
-    return api.req({a: 'cci'}).then((res) => {
-        const date = new Date();
-        const cardM = res.result.exp_month;
-        const cardY = res.result.exp_year;
-        const currentM = date.getMonth() + 1;
-        const currentY = date.getFullYear();
-        const currentD = date.getDate();
-        const isCurrentYear = currentY === cardY;
-        let state;
-        // Expired
-        if (currentY > cardY || ((currentM > cardM) && isCurrentYear)) {
-            state = 'exp';
+    if (!self.pfid && !self.buildOlderThan10Days) {
+        const map = {
+            'fav': 500707,
+            'name': 500708,
+            'label': 500709,
+            'size': 500710,
+            'type': 500711,
+            'date': 500712,
+            'mtime': 500713,
+            'versions': 500714,
+            'playtime': 500715,
+            'settings': 500716
+        };
+
+        eid = (map[eid] || eid) | 0;
+        if (eid > 0) {
+            eventlog(eid, true);
         }
-        // Expires this month
-        else if ((currentM === cardM) && isCurrentYear) {
-            state = 'expThisM';
-        }
-        // Expires next month (only show on/after the 15th of the current month)
-        else if ((((currentM + 1) === cardM) && (currentD >= 15)) && isCurrentYear) {
-            state = 'expNextM';
-        }
-        M.showPaymentCardBanner(state);
-        if (M.account && state) {
-            M.account.cce = state;
-        }
-    });
+    }
 };
 
-
 Object.freeze(MegaUtils.prototype);
+
+lazy(MegaUtils, 'classifyPMPassword', () => {
+    'use strict';
+
+    return (password) => {
+
+        if (typeof zxcvbn !== 'function') {
+            onIdle(() => {
+                throw new Error('zxcvbn init fault');
+            });
+            console.error('zxcvbn is not inited');
+            return false;
+        }
+
+        const passwordLength = password && password.length || 0;
+        if (passwordLength === 0) {
+            return false;
+        }
+
+        let passwordScore = 0;
+
+        if (passwordLength < 32) {
+            passwordScore = zxcvbn(password).score;
+        }
+        else {
+            passwordScore = zxcvbn(password.slice(0, 32)).score;
+
+            if (passwordScore < 4) {
+                passwordScore = zxcvbn(password).score;
+            }
+        }
+
+        // Calculate the password score using the ZXCVBN library and its length
+
+        if (passwordScore === 3 || passwordScore === 4) {
+            return {
+                string1: l.password_strength_strong,
+                string2: l[1123],
+                className: 'strong',                     // Strong
+                icon: 'strength-icon sprite-fm-mono icon-check-circle-thin-outline'
+            };
+        }
+        else if (passwordScore === 2) {
+            return {
+                string1: l.password_strength_moderate,
+                string2: l[1122],
+                className: 'moderate',                     // Moderate
+                icon: 'strength-icon sprite-fm-mono icon-alert-circle-thin-outline'
+            };
+        }
+
+        return {
+            string1: l.password_strength_weak,
+            string2: l[1120],
+            className: 'weak',                     // Weak
+            icon: 'strength-icon sprite-fm-mono icon-alert-triangle-thin-outline'
+        };
+
+    };
+});
+
+lazy(MegaUtils, 'isCardExpired', () => {
+    'use strict';
+
+    return (expiry) => {
+        if (typeof expiry !== 'string') {
+            return false;
+        }
+
+        const normalized = expiry.replace(/\s+/g, '');
+        const match = /^(\d{2})\/(\d{2})$/.exec(normalized);
+        if (!match) {
+            return false;
+        }
+
+        const [ , mm, yy ] = match;
+        const month = parseInt(mm, 10);
+        const year = parseInt(yy, 10);
+
+        if (month < 1 || month > 12) {
+            return false;
+        }
+
+        // We pass month as entered by the user (1-12). The Date constructor expects 0-based months (0-11),
+        // but by passing day = 0 and month = X, Date gives us the last day of month X-1.
+        // This way, we get the last second of the expiry month as intended (23:59:59).
+        const expiryDate = new Date(2000 + year, month, 0, 23, 59, 59);
+        return Date.now() > expiryDate.getTime();
+    };
+});

@@ -1,12 +1,13 @@
 import React from 'react';
-import { MegaRenderMixin } from '../../../mixins.js';
+import { compose } from '../../../mixins.js';
 import { PerfectScrollbar } from '../../../../ui/perfectScrollbar.jsx';
 import { stringToTime } from './helpers.jsx';
+import { withDateObserver } from './dateObserver';
 
-export default class Select extends MegaRenderMixin {
+class Select extends React.Component {
     static NAMESPACE = 'meetings-select';
 
-    containerRef = React.createRef();
+    domRef = React.createRef();
     inputRef = React.createRef();
     menuRef = React.createRef();
     optionRefs = {};
@@ -19,30 +20,37 @@ export default class Select extends MegaRenderMixin {
 
     getFormattedDuration(duration) {
         duration = moment.duration(duration);
+        const days = duration.get('days');
         const hours = duration.get('hours');
         const minutes = duration.get('minutes');
 
-        if (!hours && !minutes) {
+        if (!hours && !minutes && !days) {
             return '';
         }
 
+        const totalHours = days ? ~~duration.asHours() : hours;
+
         if (!hours && minutes) {
             // return l.time_offset_om;
-            return '([[MINUTES]]\u00a0m)'.replace('[[MINUTES]]', minutes);
+            return days ?
+                `(${totalHours}\u00a0h ${minutes}\u00a0m)` :
+                `(${minutes}\u00a0m)`;
         }
 
         // return (minutes ? l.time_offset_wm : l.time_offset_wh).replace('%d', hours);
-        return (minutes ? '([[HOURS]]\u00a0h [[MINUTES]]\u00a0m)' : '([[HOURS]]\u00a0h)')
-            .replace('[[HOURS]]', hours)
-            .replace('[[MINUTES]]', minutes);
+        return minutes ?
+            `(${totalHours}\u00a0h ${minutes}\u00a0m)` :
+            `(${totalHours}\u00a0h)`;
     }
 
     handleMousedown = ({ target }) =>
-        this.containerRef?.current.contains(target) ? null : this.setState({ expanded: false });
+        this.domRef?.current.contains(target) ? null : this.setState({ expanded: false });
 
-    handleToggle = ({ target }) => {
-        const menuRef = this.menuRef && this.menuRef.current;
-        if (target !== menuRef.domNode) {
+    handleToggle = ({ target } = {}) => {
+        const menuRef = this.menuRef?.current;
+        const menuElement = menuRef.domRef?.current;
+
+        if (target !== menuElement) {
             const { value } = this.props;
             this.setState(state => ({ expanded: !state.expanded }), () => {
                 if (value && this.optionRefs[value]) {
@@ -53,7 +61,6 @@ export default class Select extends MegaRenderMixin {
     };
 
     componentWillUnmount() {
-        super.componentWillUnmount();
         document.removeEventListener('mousedown', this.handleMousedown);
         if (this.inputRef && this.inputRef.current) {
             $(this.inputRef.current).unbind(`keyup.${Select.NAMESPACE}`);
@@ -61,7 +68,6 @@ export default class Select extends MegaRenderMixin {
     }
 
     componentDidMount() {
-        super.componentDidMount();
         document.addEventListener('mousedown', this.handleMousedown);
         const inputRef = this.inputRef?.current;
         if (inputRef) {
@@ -77,11 +83,23 @@ export default class Select extends MegaRenderMixin {
 
     render() {
         const { NAMESPACE } = Select;
-        const { name, className, icon, typeable, options, value, format, onChange, onBlur, onSelect } = this.props;
+        const {
+            name,
+            className,
+            icon,
+            typeable,
+            options,
+            value,
+            format,
+            isLoading,
+            onChange,
+            onBlur,
+            onSelect
+        } = this.props;
 
         return (
             <div
-                ref={this.containerRef}
+                ref={this.domRef}
                 className={`
                     ${NAMESPACE}
                     ${className || ''}
@@ -92,7 +110,7 @@ export default class Select extends MegaRenderMixin {
                         dropdown-input
                         ${typeable ? 'typeable' : ''}
                     `}
-                    onClick={this.handleToggle}>
+                    onClick={isLoading ? null : this.handleToggle}>
                     {typeable ? null : value && <span>{format ? format(value) : value}</span>}
                     <input
                         ref={this.inputRef}
@@ -164,3 +182,5 @@ export default class Select extends MegaRenderMixin {
         );
     }
 }
+
+export default compose(withDateObserver)(Select);

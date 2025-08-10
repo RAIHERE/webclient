@@ -187,7 +187,7 @@ var security = {
         'use strict';
 
         // If Web Crypto method supported, use that as it's nearly as fast as native
-        if (window.crypto && window.crypto.subtle && !is_microsoft) {
+        if (window.crypto && window.crypto.subtle && !window.is_microsoft) {
             return security.deriveKeyWithWebCrypto(saltBytes, passwordBytes, iterations, derivedKeyLength);
         }
 
@@ -568,6 +568,9 @@ var security = {
      */
     showVerifyEmailDialog: function(aStep) {
         'use strict';
+        if (is_mobile && !document.body.classList.contains('mobile')) {
+            document.body.classList.add('mobile');
+        }
         var name = 'verify-email' + (aStep ? '-' + aStep : '');
 
         if ($.hideTopMenu) {
@@ -809,6 +812,92 @@ var security = {
 
         // Set the Session ID for future API requests
         api.setSID(u_sid);
+    },
+
+    async atomicSignUp(email, first, last, password) {
+        'use strict';
+
+        u_logout(true);
+        api_create_u_k();
+        self.u_storage = init_storage(localStorage);
+
+        const ssc = [...crypto.getRandomValues(new Uint32Array(4))];
+        const cpk = [...crypto.getRandomValues(new Uint32Array(4))];
+
+        const {result} = await api.screq({
+            a: 'up',
+            k: a32_to_base64(encrypt_key(new sjcl.cipher.aes(cpk), u_k)),
+            ts: base64urlencode(a32_to_str(ssc) + a32_to_str(encrypt_key(new sjcl.cipher.aes(u_k), ssc)))
+        });
+        assert(typeof result === 'string' && (u_storage.p = cpk) && (u_storage.handle = result));
+
+        let tmp = await api.req({a: 'us', user: result})
+            .then(({result}) => {
+                return api_getsid2(result, {passwordkey: cpk});
+            })
+            .then((ks) => security.login.setSessionVariables(ks));
+        assert(tmp === 0, `invalid user activation`, tmp);
+
+        if (self.d) {
+            console.info(`Ephemeral account created, ${result}`);
+        }
+        const rv = {email, first, last, name: `${first || ''} ${last || ''}`.trim()};
+
+        const {
+            clientRandomValueBytes,
+            encryptedMasterKeyArray32,
+            hashedAuthenticationKeyBytes
+        } = await security.deriveKeysFromPassword(password, u_k);
+
+        tmp = await api.screq([
+            {
+                v: 2,
+                a: 'uc2',
+                m: base64urlencode(email),
+                n: base64urlencode(to8(rv.name)),
+                crv: ab_to_base64(clientRandomValueBytes),
+                k: a32_to_base64(encryptedMasterKeyArray32),
+                hak: ab_to_base64(hashedAuthenticationKeyBytes)
+            },
+            {
+                a: 'up',
+                terms: 'Mq',
+                name2: base64urlencode(to8(rv.name)),
+                lastname: base64urlencode(to8(last)),
+                firstname: base64urlencode(to8(first))
+            }
+        ]);
+        assert(tmp.result === 0, `invalid activation procedure.`, tmp);
+
+        rv.data = tmp;
+        return freeze(rv);
+    },
+    async atomicSignIn(email, password, pinCode, rememberMe) {
+        'use strict';
+        let res = false;
+        const {version, salt} = await this.fetchAccountVersionAndSalt(email);
+
+        if (version > 1) {
+            // @todo revamp and ditch the callbacks hell...
+            const wrap = async({resolve, promise}) => {
+                const p1 = security.login.startLogin(email, password, pinCode, rememberMe, salt, resolve);
+                return Promise.race([promise, p1]);
+            };
+            res = await wrap(Promise.withResolvers());
+        }
+        else {
+            res = await postLogin(email, password, pinCode, rememberMe);
+        }
+
+        if (!(res !== false && res >= 0)) {
+            console.error('Sign in failed for %s with %s', email, res);
+            throw res;
+        }
+
+        self.u_type = res;
+        self.u_checked = true;
+
+        return res;
     }
 };
 
@@ -1031,10 +1120,6 @@ security.register = {
             name2: base64urlencode(to8(firstName + ' ' + lastName))
         };
 
-        if (mega.affid) {
-            options.aff = mega.affid;
-        }
-
         // Send API request
         api_req(options);
     },
@@ -1123,6 +1208,7 @@ security.login = {
         if ((!pinCode && security.login.email) || !password) {
             return;
         }
+        rememberMe = rememberMe !== false;
 
         // Temporarily cache the email, password and remember me checkbox status
         // in case we need to resend after they have entered their two factor code
@@ -1170,8 +1256,11 @@ security.login = {
         // Set the callback to run after login is complete
         security.login.loginCompleteCallback = loginCompleteCallback;
 
+        // Store the remember-me flag for any direct cals to this function (e.g. atomicSignIn)
+        security.login.rememberMe = rememberMe !== false;
+
         // Run the PPF
-        security.deriveKey(saltBytes, passwordBytes, iterations, derivedKeyLength).then((derivedKeyBytes) => {
+        return security.deriveKey(saltBytes, passwordBytes, iterations, derivedKeyLength).then((derivedKeyBytes) => {
 
             // Get the first 16 bytes as the Encryption Key and the next 16 bytes as the Authentication Key
             var derivedEncryptionKeyBytes = derivedKeyBytes.subarray(0, 16);
@@ -1182,7 +1271,18 @@ security.login = {
             var derivedEncryptionKeyArray32 = base64_to_a32(ab_to_base64(derivedEncryptionKeyBytes));
 
             // Authenticate with the API
-            security.login.sendAuthenticationKey(email, pinCode, authenticationKeyBase64, derivedEncryptionKeyArray32);
+            return security.login.sendAuthenticationKey(
+                email,
+                pinCode,
+                authenticationKeyBase64,
+                derivedEncryptionKeyArray32
+            );
+        }).catch((ex) => {
+            // @todo revamp and ditch the callbacks hell... {ref: atomicSignIn}
+            if (security.login.loginCompleteCallback) {
+                return security.login.loginCompleteCallback(ex);
+            }
+            throw ex;
         });
     },
 
@@ -1213,8 +1313,8 @@ security.login = {
         }
 
         // Send the Email and Authentication Key to the API
-        api_req(requestVars, {
-            callback: function(result) {
+        return api.req(requestVars)
+            .then(({result}) => {
 
                 // If successful
                 if (typeof result === 'object') {
@@ -1237,16 +1337,20 @@ security.login = {
                     }
                     else {
                         // Otherwise continue a regular login
-                        security.login.decryptRsaKeyAndSessionId(decryptedMasterKeyArray32, encryptedSessionIdBase64,
-                                                                 encryptedPrivateRsaKey, userHandle);
+                        return security.login.decryptRsaKeyAndSessionId(
+                            decryptedMasterKeyArray32,
+                            encryptedSessionIdBase64,
+                            encryptedPrivateRsaKey,
+                            userHandle
+                        );
                     }
                 }
                 else {
                     // Return failure
                     security.login.loginCompleteCallback(result);
                 }
-            }
-        });
+                return result;
+            });
     },
 
     /**
@@ -1354,7 +1458,7 @@ security.login = {
         }
 
         // Continue with the flow
-        security.login.setSessionVariables(keyAndSessionData);
+        return security.login.setSessionVariables(keyAndSessionData);
     },
 
     /**
@@ -1371,7 +1475,9 @@ security.login = {
 
         // Check if the Private Key and Session ID were decrypted successfully
         if (keyAndSessionData === false) {
-            security.login.loginCompleteCallback(false);
+            if (security.login.loginCompleteCallback) {
+                security.login.loginCompleteCallback(false);
+            }
             return false;
         }
 
@@ -1387,9 +1493,11 @@ security.login = {
         security.login.rememberMe = false;
 
         // Continue to perform 'ug' request and afterwards run the loginComplete callback
-        u_checklogin4(u_storage.sid)
+        return u_checklogin4(u_storage.sid)
             .then((res) => {
-                security.login.loginCompleteCallback(res);
+                if (security.login.loginCompleteCallback) {
+                    security.login.loginCompleteCallback(res);
+                }
 
                 // Logging to see how many people are signing in
                 eventlog(is_mobile ? 99629 : 99630);
@@ -1398,8 +1506,7 @@ security.login = {
                 mBroadcaster.sendMessage('login', keyAndSessionData);
 
                 return res;
-            })
-            .dump('sec.login');
+            });
     },
 
     /**

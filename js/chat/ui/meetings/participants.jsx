@@ -11,6 +11,8 @@ import { Pin, Privilege } from './videoNodeMenu.jsx';
 import { AudioLevelIndicator } from './videoNode.jsx';
 
 class Participant extends MegaRenderMixin {
+    domRef = React.createRef();
+
     raisedHandListener = undefined;
     baseIconClass = 'sprite-fm-mono';
 
@@ -53,16 +55,19 @@ class Participant extends MegaRenderMixin {
             contact,
             handle,
             name,
-            recorder,
+            recorderCid,
             onCallMinimize,
             onSpeakerChange,
             onModeChange
         } = this.props;
+        const { isOnHold, videoMuted, audioMuted, clientId } = source;
         const hasRelationship = ContactsPanel.hasRelationship(contact);
 
         return (
-            <>
-                {this.state.raisedHandPeers.includes(handle) ?
+            <div
+                ref={this.domRef}
+                className="participant-wrapper">
+                {this.state.raisedHandPeers.includes(handle) && !isOnHold ?
                     <div className="participant-signifier">
                         <i className="sprite-fm-uni icon-raise-hand" />
                     </div> :
@@ -73,14 +78,14 @@ class Participant extends MegaRenderMixin {
                         <Emoji>{`${name} ${l.me}`}</Emoji> :
                         <ContactAwareName contact={M.u[handle]} emoji={true}/>
                     }
-                    {chatRoom.isMeeting && Call.isModerator(chatRoom, handle) &&
+                    {Call.isModerator(chatRoom, handle) &&
                         <span>
                             <i className={`${this.baseIconClass} icon-admin-outline`}/>
                         </span>
                     }
                 </div>
                 <div className="status">
-                    {recorder && recorder === handle ?
+                    {recorderCid === clientId || recorderCid === call.sfuClient.cid && handle === u_handle ?
                         <div className="recording-status">
                             <span />
                         </div> :
@@ -89,7 +94,7 @@ class Participant extends MegaRenderMixin {
                     <i
                         className={`
                             ${this.baseIconClass}
-                            ${source.videoMuted ? 'icon-video-off-thin-outline inactive' : 'icon-video-thin-outline'}
+                            ${videoMuted ? 'icon-video-off-thin-outline inactive' : 'icon-video-thin-outline'}
                         `}
                     />
                     <AudioLevelIndicator source={source} />
@@ -112,12 +117,12 @@ class Participant extends MegaRenderMixin {
                                     </li> :
                                     null
                                 }
-                                {chatRoom.iAmOperator() && u_handle !== handle && !source.audioMuted &&
+                                {chatRoom.iAmOperator() && u_handle !== handle && !audioMuted &&
                                     <li>
                                         <Button
                                             icon="sprite-fm-mono icon-mic-off-thin-outline"
                                             onClick={() => {
-                                                call.sfuClient.mutePeer(source.clientId);
+                                                call.sfuClient.mutePeer(clientId);
                                                 megaChat.plugins.userHelper.getUserNickname(handle)
                                                     .catch(dump)
                                                     .always(name => {
@@ -160,7 +165,7 @@ class Participant extends MegaRenderMixin {
                                         onModeChange={onModeChange}
                                     />
                                 </li>
-                                {chatRoom.iAmOperator() && u_handle !== handle &&
+                                {call.isPublic && chatRoom.iAmOperator() && u_handle !== handle &&
                                     <li>
                                         <Button
                                             icon="sprite-fm-mono icon-disabled-filled"
@@ -173,12 +178,13 @@ class Participant extends MegaRenderMixin {
                         </div>
                     </div>
                 </div>
-            </>
+            </div>
         );
     }
 }
 
 export default class Participants extends MegaRenderMixin {
+    domRef = React.createRef();
     muteRef = React.createRef();
 
     NAMESPACE = 'participants';
@@ -255,7 +261,7 @@ export default class Participants extends MegaRenderMixin {
             call,
             mode,
             chatRoom,
-            recorder,
+            recorderCid,
             raisedHandPeers,
             onCallMinimize,
             onSpeakerChange,
@@ -273,7 +279,7 @@ export default class Participants extends MegaRenderMixin {
                     contact={M.u[peer.userHandle] || undefined}
                     handle={peer.userHandle || u_handle}
                     name={peer.name || M.getNameByHandle(u_handle)}
-                    recorder={recorder}
+                    recorderCid={recorderCid}
                     raisedHandPeers={raisedHandPeers}
                     onCallMinimize={onCallMinimize}
                     onSpeakerChange={onSpeakerChange}
@@ -348,7 +354,7 @@ export default class Participants extends MegaRenderMixin {
                                             ${megaChat.userPresenceToCssClass(contact.presence)}
                                         `}
                                         />
-                                        {chatRoom.isMeeting && Call.isModerator(chatRoom, handle) &&
+                                        {Call.isModerator(chatRoom, handle) &&
                                             <span>
                                                 <i className="sprite-fm-mono icon-admin-outline"/>
                                             </span>
@@ -422,15 +428,22 @@ export default class Participants extends MegaRenderMixin {
                     ${allPeersMuted ? 'disabled' : ''}
                 `}
                 icon="sprite-fm-mono icon-mic-off-thin-outline"
-                onClick={() =>
-                    allPeersMuted ?
-                        null :
-                        this.setState({ allPeersMuted: true }, () => {
-                            this.props.call.sfuClient.mutePeer();
-                            ChatToast.quick(l.you_muted_all_peers /* `You've muted all participants` */);
-                            $(this.muteRef.current?.domNode).trigger('simpletipClose');
-                        })
-                }>
+                onClick={() => {
+                    const muteRef = this.muteRef?.current;
+                    const buttonRef = muteRef.buttonRef?.current;
+
+                    return (
+                        allPeersMuted ?
+                            null :
+                            this.setState({ allPeersMuted: true }, () => {
+                                this.props.call.sfuClient.mutePeer();
+                                ChatToast.quick(l.you_muted_all_peers /* `You've muted all participants` */);
+                                if (buttonRef) {
+                                    $(buttonRef).trigger('simpletipClose');
+                                }
+                            })
+                    );
+                }}>
                 {allPeersMuted ? l.all_muted /* `All muted` */ : l.mute_all /* `Mute all` */}
             </Button>
         );
@@ -466,7 +479,9 @@ export default class Participants extends MegaRenderMixin {
         const { filter } = this.state;
 
         return (
-            <div className={this.NAMESPACE}>
+            <div
+                ref={this.domRef}
+                className={this.NAMESPACE}>
                 {chatRoom.type === 'private' ?
                     null :
                     <div className={`${this.NAMESPACE}-nav`}>

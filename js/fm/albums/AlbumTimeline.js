@@ -5,6 +5,8 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
     const { albums } = scope;
     const defZoomStep = 2;
 
+    let clickedItemId = '';
+
     /**
      * Getting the month label for the node
      * @param {MegaNode} node Node to fetch the label from
@@ -15,207 +17,15 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
     let globalZoomStep = defZoomStep;
 
     const fillAlbumTimelineCell = (el) => {
-        if (el.ref.isVideo) {
+        if (el.ref.isVideo && !el.dataset.videoDuration) {
             el.dataset.videoDuration = secondsToTimeShort(MediaAttribute(el.ref.node).data.playtime);
             el.classList.add('show-video-duration');
+
+            const icon = document.createElement('i');
+            icon.className = 'video-thumb-play sprite-fm-mono icon-play-circle';
+            el.appendChild(icon);
         }
     };
-
-    class AlbumItemContextMenu extends MMenuSelect {
-        constructor() {
-            super();
-
-            const selections = Object.keys(albums.grid.timeline.selections);
-            const albumId = scope.getAlbumIdFromPath();
-            const album = albums.store[albumId];
-            const { filterFn, at, eIds, nodes } = album;
-            const options = [];
-            let selectionsPreviewable = false;
-
-            const isCoverChangeable = !filterFn
-                && selections.length === 1
-                && (!at.c || eIds[at.c] !== selections[0]);
-            const onlyPlayableVideosSelected = selections.every((h) => !!is_video(M.d[h]));
-
-            for (let i = 0; i < selections.length; i++) {
-                if (scope.isPreviewable(M.d[selections[i]])) {
-                    selectionsPreviewable = true;
-                    break;
-                }
-            }
-
-            if (onlyPlayableVideosSelected) {
-                options.push({
-                    label: l.album_play_video,
-                    icon: 'video-call-filled',
-                    click: () => {
-                        scope.playSlideshow(albumId, false, true);
-                    }
-                });
-            }
-            else if (scope.nodesAllowSlideshow(nodes)) {
-                options.push({
-                    label: l.album_play_slideshow,
-                    icon: 'play-square',
-                    click: () => {
-                        scope.playSlideshow(albumId, true);
-                    }
-                });
-            }
-
-            if (selectionsPreviewable) {
-                options.push(
-                    {
-                        label: l.album_item_preview_label,
-                        icon: 'preview-reveal',
-                        click: () => {
-                            scope.playSlideshow(albumId);
-                        }
-                    }
-                );
-            }
-
-            if (options.length) {
-                options.push({});
-            }
-
-            options.push(
-                {
-                    label: l.album_download,
-                    icon: 'download-small',
-                    click: () => {
-                        if (M.currentdirid !== `albums/${albumId}`) {
-                            return;
-                        }
-
-                        const handles = scope.getAlbumsHandles([albumId]);
-
-                        if (!handles.length) {
-                            return;
-                        }
-
-                        scope.reportDownload();
-                        M.addDownload(handles);
-                    }
-                }
-            );
-
-            if (isCoverChangeable) {
-                options.push({
-                    label: l.set_as_album_cover,
-                    icon: 'images',
-                    click: () => {
-                        if (albums.grid.timeline.selCount === 1) {
-                            albums.updateAlbumCover(album, Object.keys(albums.grid.timeline.selections)[0]);
-                        }
-                    }
-                });
-            }
-
-            if (!filterFn) {
-                options.push(
-                    {},
-                    {
-                        label: l.album_item_remove_label,
-                        icon: 'bin',
-                        click: () => {
-                            albums.requestAlbumElementsRemoval();
-                        },
-                        classes: ['red']
-                    }
-                );
-            }
-
-            this.options = options;
-        }
-    }
-
-    class PublicAlbumItemContextMenu extends MMenuSelect {
-        constructor() {
-            super();
-
-            const selections = Object.keys(albums.grid.timeline.selections);
-
-            const albumId = scope.getAlbumIdFromPath();
-            const { nodes } = albums.store[albumId];
-            const options = [];
-
-            const hasImageSelected = selections.some(h => !!scope.isImage(M.d[h]));
-            const onlyPlayableVideosSelected = selections.every((h) => !!is_video(M.d[h]));
-
-            if (hasImageSelected) {
-                options.push({
-                    label: l.album_item_preview_label,
-                    icon: 'preview-reveal',
-                    click: () => {
-                        scope.playSlideshow(albumId);
-                    }
-                });
-
-                if (scope.nodesAllowSlideshow(nodes)) {
-                    options.push({
-                        label: l.album_play_slideshow,
-                        icon: 'play-square',
-                        click: () => {
-                            scope.playSlideshow(albumId, true);
-                        }
-                    });
-                }
-            }
-
-            if (onlyPlayableVideosSelected) {
-                options.push({
-                    label: l.album_play_video,
-                    icon: 'video-call-filled',
-                    click: () => {
-                        scope.playSlideshow(albumId, false, true);
-                    }
-                });
-            }
-
-            options.push(
-                {},
-                {
-                    label: l.album_download,
-                    icon: 'download-small',
-                    click: () => {
-                        if (!M.isAlbumsPage()) {
-                            return;
-                        }
-
-                        eventlog(99954);
-                        M.addDownload(selections);
-                    }
-                },
-                {},
-                {
-                    label: l[6859],
-                    icon: 'info',
-                    click: () => {
-                        $.selected = selections;
-                        mega.ui.mInfoPanel.initInfoPanel();
-                    }
-                },
-                {},
-                {
-                    label: (u_type) ? l.context_menu_import : l.btn_imptomega,
-                    icon: (u_type) ? 'upload-to-cloud-drive' : 'mega-thin-outline',
-                    click: () => {
-                        if (M.isInvalidUserStatus()) {
-                            return;
-                        }
-
-                        assert(albums.isPublic, 'This import needs to happen in public album only...');
-
-                        eventlog(99832);
-                        M.importFolderLinkNodes(selections);
-                    }
-                }
-            );
-
-            this.options = options;
-        }
-    }
 
     class AlbumTimelineCell extends MComponent {
         /**
@@ -230,7 +40,7 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
             this.el.ref = {
                 node,
-                isVideo: !!scope.isVideo(node),
+                isVideo: !!M.isGalleryVideo(node),
                 setThumb: (dataUrl) => {
                     this.setThumb(dataUrl);
                 }
@@ -241,6 +51,7 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
             this._active = true;
             this._selected = false;
+            this.isSensitive = !!mega.sensitives.isSensitive(node);
 
             this.attachEvents(clickFn, dbclickFn, useMenu);
         }
@@ -280,7 +91,7 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
                 this.el.classList.add('ui-selected');
 
                 const check = document.createElement('i');
-                check.className = 'sprite-fm-mono icon-check-circle icon-size-6';
+                check.className = 'sprite-fm-mono icon-check';
                 this.el.appendChild(check);
                 this._selected = true;
 
@@ -290,8 +101,31 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             }
             else {
                 this.el.classList.remove('ui-selected');
-                this.el.removeChild(this.el.querySelector('i.icon-check-circle'));
+                this.el.removeChild(this.el.querySelector('i.icon-check'));
                 this._selected = false;
+            }
+        }
+
+        get isSensitive() {
+            return this._sensitive;
+        }
+
+        /**
+         * @param {Boolean} status Sensitive status
+         * @returns {void}
+         */
+        set isSensitive(status) {
+            if (status === this._sensitive) {
+                return;
+            }
+
+            this._sensitive = status;
+
+            if (status) {
+                this.el.classList.add('is-sensitive');
+            }
+            else {
+                this.el.classList.remove('is-sensitive');
             }
         }
 
@@ -302,17 +136,32 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
         attachEvents(clickFn, dbclickFn, useMenu) {
             if (clickFn) {
-                this.attachEvent('mouseup', (evt) => {
-                    if (evt.which === 3) {
+                let startX = 0;
+                let startY = 0;
+
+                this.attachEvent('pointerdown', ({ clientX, clientY }) => {
+                    startX = clientX;
+                    startY = clientY;
+                });
+
+                this.attachEvent('pointerup', (e) => {
+                    if (e.which !== 1 || Math.abs(e.clientX - startX) > 15 || Math.abs(e.clientY - startY) > 15) {
                         return false;
                     }
 
-                    if (!evt.detail || evt.detail === 1) {
-                        clickFn(this, evt);
+                    const { id } = e.target.closest('.album-timeline-cell');
+
+                    if (clickedItemId === id) {
+                        dbclickFn(this, e);
                     }
-                    else if (evt.detail === 2) {
-                        dbclickFn(this, evt);
+                    else {
+                        clickFn(this, e);
+                        clickedItemId = id;
                     }
+
+                    delay('albums:clear-clicks', () => {
+                        clickedItemId = '';
+                    }, 300);
                 });
             }
 
@@ -321,38 +170,105 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
                     'contextmenu',
                     (evt) => {
                         evt.preventDefault();
-                        const { pageX, pageY, target } = evt;
 
                         if (!this.isSelected) {
                             clickFn(this, evt);
                         }
 
-                        if (albums.isPublic) {
-                            const contextMenu = new PublicAlbumItemContextMenu(target);
-                            contextMenu.show(pageX, pageY);
+                        const selectedItems = [];
+                        const selections = Object.keys(albums.grid.timeline.selections);
+                        const albumId = scope.getAlbumIdFromPath();
+                        const { filterFn, at, eIds, nodes } = albums.store[albumId];
+
+                        $.selected = [...selections];
+
+                        let selectionsPreviewable = false;
+                        let onlyPlayableVideosSelected = true;
+                        for (let i = 0; i < selections.length; i++) {
+                            if (scope.isPreviewable(M.d[selections[i]])) {
+                                if (!is_video(M.d[selections[i]])) {
+                                    onlyPlayableVideosSelected = false;
+                                }
+                                selectionsPreviewable = true;
+                            }
+                        }
+
+                        if (selections.length === 1 && onlyPlayableVideosSelected) {
+                            selectedItems.push('.play-item');
+                        }
+                        if (window.useMegaSync === 2 || window.useMegaSync === 3) {
+                            selectedItems.push('.download-item');
                         }
                         else {
-                            const contextMenu = new AlbumItemContextMenu(target);
-                            contextMenu.show(pageX, pageY);
+                            selectedItems.push('.download-standart-item', '.zipdownload-item');
                         }
+
+                        if (albums.isPublic) {
+                            const hasImageSelected = selections.some(h => !!M.isGalleryImage(M.d[h]));
+
+                            if (hasImageSelected && scope.nodesAllowSlideshow(nodes)) {
+                                selectedItems.push('.play-slideshow');
+                            }
+
+
+                            selectedItems.push('.properties-item', '.import-item');
+                        }
+                        else {
+                            // 0 - Disable, 1 - Hide, 2 - Unhide
+                            const toApplySensitive = mega.sensitives.getSensitivityStatus(selections, evt);
+
+                            const isCoverChangeable = !filterFn
+                                && selections.length === 1
+                                && (!at.c || eIds[at.c] !== selections[0]);
+
+                            if (!onlyPlayableVideosSelected && scope.nodesAllowSlideshow(nodes)) {
+                                selectedItems.push('.play-slideshow');
+                            }
+
+                            if (selections.length === 1 && !onlyPlayableVideosSelected && selectionsPreviewable) {
+                                selectedItems.push('.preview-item');
+                            }
+
+                            if (isCoverChangeable) {
+                                selectedItems.push('.set-thumbnail');
+                            }
+
+                            if (
+                                mega.gallery.canShowAddToAlbum() &&
+                                selections.every(h => M.isGalleryNode(M.getNodeByHandle(h)))
+                            ) {
+                                selectedItems.push('.add-to-album');
+                            }
+
+                            if (toApplySensitive) {
+                                selectedItems.push('.add-sensitive-item');
+                            }
+
+                            if (!filterFn) {
+                                selectedItems.push('.remove-item');
+                            }
+                            selectedItems.push('.add-star-item');
+                        }
+
+                        M.contextMenuUI(evt, 8, selectedItems.join(','));
                     }
                 );
             }
         }
 
-        applyMonthLabel(label) {
-            this.el.classList.add('show-date');
-            this.el.dataset.date = label;
-        }
-
-        removeMonthLabel() {
-            this.el.classList.remove('show-date');
-        }
-
         setThumb(dataUrl) {
-            this.el.style.backgroundImage = `url('${dataUrl}')`;
-            this.el.style.backgroundColor = 'white';
+            let img = this.el.querySelector('img');
+
+            if (!img) {
+                img = document.createElement('img');
+                img.className = 'w-full h-full absolute';
+                this.el.appendChild(img);
+            }
+
+            img.src = dataUrl;
+
             this.naturalSize = this.el.style.width;
+
             if (this.el.classList.contains('shimmer')) {
                 scope.unsetShimmering(this.el);
             }
@@ -394,7 +310,6 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
             this.rowIndexCache = {};
             this.cellCache = {};
-            this.initialRender = true;
 
             this.selections = {};
             this.selectArea = null;
@@ -410,6 +325,7 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             this._zoomStep = skipGlobalZoom ? defZoomStep : globalZoomStep;
             this._limitReached = false;
             this._selCount = 0;
+            this._selSize = 0;
 
             this.el.classList.add(`album-timeline-zoom-${this._zoomStep}`);
             this.attachEvents();
@@ -419,8 +335,8 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             return this._selCount;
         }
 
-        get rowHeight() {
-            return this.cellSize + scope.cellMargin * 2;
+        get selSize() {
+            return bytesToSize(this._selSize || 0);
         }
 
         get zoomStep() {
@@ -500,11 +416,13 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
                 return;
             }
 
+            this._winWidth = window.innerWidth;
+            this._winHeight = window.innerHeight;
             this.setCellSize();
 
             this.dynamicList = new MegaDynamicList(this.el, {
                 itemRenderFunction: this.renderRow.bind(this),
-                itemHeightCallback: () => this.rowHeight,
+                itemHeightCallback: this.getRowHeight.bind(this),
                 onResize: this.onResize.bind(this),
                 perfectScrollOptions: {
                     handlers: ['click-rail', 'drag-thumb', 'wheel', 'touch'],
@@ -575,6 +493,14 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
                     this.dynamicList.options.onResize = this.onResize.bind(this);
                 }
             });
+        }
+
+        getRowHeight(index) {
+            const headerHeight = (this._nodes[index] && this._nodes[index].monthLabel)
+                ? 44
+                : 0;
+
+            return this.cellSize + scope.cellMargin * 2 + headerHeight;
         }
 
         findMiddleImage() {
@@ -702,16 +628,17 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
             if (keys.length) {
                 for (let i = 0; i < keys.length; i++) {
-                    const row = this.dynamicList._currentlyRendered[keys[i]];
+                    const children = this.dynamicList._currentlyRendered[keys[i]]
+                        .querySelector(':scope > div .album-timeline-cell');
 
-                    if (row.children && row.children.length) {
-                        for (let j = 0; j < row.children.length; j++) {
-                            if (scope.isInSelectArea(row.children[j], posArr, this.sidePadding)) {
-                                this.selectNode(row.children[j].ref.node);
-                                this.lastNavNode = row.children[j].ref.node;
+                    if (children && children.length) {
+                        for (let j = 0; j < children.length; j++) {
+                            if (scope.isInSelectArea(children[j], posArr, this.sidePadding)) {
+                                this.selectNode(children[j].ref.node);
+                                this.lastNavNode = children[j].ref.node;
                             }
                             else {
-                                this.deselectNode(row.children[j].ref.node);
+                                this.deselectNode(children[j].ref.node);
                             }
                         }
                     }
@@ -726,7 +653,7 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             this.dragSelect = new mega.ui.dragSelect(
                 this.el,
                 {
-                    allowedClasses: ['MegaDynamicListItem'],
+                    allowedClasses: ['MegaDynamicListItem', 'flex-row'],
                     onDragStart: (xPos, yPos) => {
                         initX = xPos;
                         initY = this.dynamicList.getScrollTop() + yPos;
@@ -1044,7 +971,7 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             }
             else {
                 const bottomOverflow = newOffsetTop
-                    + this.rowHeight
+                    + this.getRowHeight(rowIndex)
                     + scope.cellMargin
                     - (scrollTop + this.el.clientHeight);
 
@@ -1054,11 +981,98 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             }
         }
 
+        getCellMonthCheck(cell) {
+            let titleEl = cell.el.parentNode.parentNode;
+
+            while (titleEl && !titleEl.classList.contains('has-month-label')) {
+                titleEl = titleEl.previousElementSibling;
+            }
+
+            return titleEl && titleEl.querySelector('.checkdiv');
+        }
+
+        updateGroupSelect(cell) {
+            const checkbox = this.getCellMonthCheck(cell);
+
+            if (!checkbox) {
+                return;
+            }
+
+            const rowIndex = checkbox.parentNode.dataset.row;
+
+            delay(`album_timeline.check-select-${rowIndex}`, () => {
+                const nodes = this.getMonthNodes(rowIndex);
+                let all = true;
+                let some = false;
+                const selSet = new Set(Object.keys(this.selections));
+                let i = nodes.length;
+
+                while (--i >= 0) {
+                    if (selSet.has(nodes[i])) {
+                        some = true;
+                    }
+                    else {
+                        all = false;
+                    }
+
+                    // All conditions met
+                    if (some && !all) {
+                        break;
+                    }
+                }
+
+                checkbox.parentNode.mComponent.checked = all || some;
+
+                if (all || !some) {
+                    checkbox.classList.remove('checkboxMinimize');
+                }
+                else {
+                    checkbox.classList.add('checkboxMinimize');
+                }
+            });
+        }
+
+        updateGroupDeselect(cell) {
+            const checkbox = this.getCellMonthCheck(cell);
+
+            if (!checkbox) {
+                return;
+            }
+
+            const rowIndex = checkbox.parentNode.dataset.row;
+
+            delay(`album_timeline.check-deselect-${rowIndex}`, () => {
+                const sel = Object.keys(this.selections);
+                let some = false;
+
+                if (sel.length) {
+                    const selSet = new Set(sel);
+                    const monthNodes = this.getMonthNodes(rowIndex);
+
+                    for (let i = 0; i < monthNodes.length; i++) {
+                        if (selSet.has(monthNodes[i])) {
+                            some = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (some) {
+                    checkbox.classList.add('checkboxMinimize');
+                }
+                else {
+                    checkbox.parentNode.mComponent.checked = false;
+                    checkbox.classList.remove('checkboxMinimize');
+                }
+            });
+        }
+
         /**
          * @param {Meganode} node Node to select
+         * @param {boolean} [ignoreContainerCheck] Skiping the container check
          * @returns {void}
          */
-        selectNode(node) {
+        selectNode(node, ignoreContainerCheck = false) {
             if (this.limitReached) {
                 if (!this.limitTip) {
                     this.addCountLimitTip();
@@ -1078,9 +1092,14 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
                 if (cell) {
                     cell.isSelected = true;
+
+                    if (!ignoreContainerCheck && cell.el.isConnected) {
+                        this.updateGroupSelect(cell);
+                    }
                 }
 
                 this._selCount++;
+                this._selSize += node.s;
 
                 if (
                     this.selectionLimit > 1
@@ -1096,9 +1115,10 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
         /**
          * @param {Meganode} node Node to deselect
+         * @param {boolean} [ignoreContainerCheck] Skiping the container check
          * @returns {void}
          */
-        deselectNode(node) {
+        deselectNode(node, ignoreContainerCheck = false) {
             if (this.selections[node.h]) {
                 delete this.selections[node.h];
 
@@ -1110,11 +1130,16 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
                 if (cell) {
                     cell.isSelected = false;
+
+                    if (!ignoreContainerCheck && cell.el.isConnected) {
+                        this.updateGroupDeselect(cell);
+                    }
                 }
 
                 this.adjustToBottomBar();
 
                 this._selCount--;
+                this._selSize -= node.s;
 
                 if (
                     this.limitReached
@@ -1172,14 +1197,18 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
         }
 
         onResize() {
-            if (this.dynamicList) {
-                this.setCellSize();
+            if (this._winWidth === window.innerWidth && this._winHeight === window.innerHeight || !this.dynamicList) {
+                return;
+            }
 
-                const keys = Object.keys(this.dynamicList._currentlyRendered);
+            this.setCellSize();
+            this._winWidth = window.innerWidth;
+            this._winHeight = window.innerHeight;
 
-                for (let i = 0; i < keys.length; i++) {
-                    this.dynamicList.itemChanged(keys[i]);
-                }
+            const keys = Object.keys(this.dynamicList._currentlyRendered);
+
+            for (let i = 0; i < keys.length; i++) {
+                this.dynamicList.itemChanged(keys[i]);
             }
         }
 
@@ -1198,7 +1227,10 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
          * @returns {AlbumTimelineCell}
          */
         getCachedCell(node) {
-            if (!this.cellCache[node.h]) {
+            if (this.cellCache[node.h]) {
+                this.cellCache[node.h].isSensitive = !!mega.sensitives.isSensitive(node);
+            }
+            else {
                 this.cellCache[node.h] = new AlbumTimelineCell({
                     node,
                     clickFn: this.onNodeClick,
@@ -1210,9 +1242,122 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             return this.cellCache[node.h];
         }
 
+        getMonthNodes(rowIndex) {
+            if (this._nodes.length <= rowIndex) {
+                return [];
+            }
+
+            let { monthLabel } = this._nodes[rowIndex];
+
+            while (!monthLabel) {
+                rowIndex--;
+                monthLabel = this._nodes[rowIndex].monthLabel;
+            }
+
+            const handles = [];
+
+            for (let i = rowIndex; i < this._nodes.length; i++) {
+                if (i !== rowIndex && this._nodes[i].monthLabel) {
+                    break;
+                }
+
+                handles.push(...this._nodes[i].list.map(({ h }) => h));
+            }
+
+            return handles;
+        }
+
+        applyMonthLabel(domNode, label, rowIndex) {
+            const checkbox = new MCheckbox({
+                id: `timeline-check-${rowIndex}`,
+                name: `timeline_check_${rowIndex}`,
+                passive: true
+            });
+
+            const monthNodes = this.getMonthNodes(rowIndex);
+            const sel = Object.keys(this.selections);
+            const selSet = new Set(sel);
+            let all = sel.length >= monthNodes.length; // Presuming, based on length
+            let some = false;
+
+            for (let i = 0; i < monthNodes.length; i++) {
+                if (selSet.has(monthNodes[i])) {
+                    some = true;
+                }
+                else if (all) {
+                    all = false;
+                }
+
+                if (some && !all) {
+                    break;
+                }
+            }
+
+            if (all) {
+                checkbox.checked = true;
+            }
+            else if (some) {
+                checkbox.checked = true;
+                checkbox.el.firstChild.classList.add('checkboxMinimize');
+            }
+
+            checkbox.el.dataset.row = rowIndex;
+            checkbox.onChange = (newVal) => {
+                checkbox.checked = newVal;
+
+                const nodes = this.getMonthNodes(rowIndex);
+
+                if (newVal) {
+                    for (let i = 0; i < nodes.length; i++) {
+                        this.selectNode(M.d[nodes[i]], true);
+                    }
+                }
+                else {
+                    for (let i = 0; i < nodes.length; i++) {
+                        this.deselectNode(M.d[nodes[i]], true);
+                    }
+                }
+
+                checkbox.el.querySelector('.checkdiv').classList.remove('checkboxMinimize');
+            };
+
+            const dateTitle = document.createElement('div');
+            dateTitle.classList.add(
+                'timeline-date-title',
+                'px-2',
+                'py-3',
+                'flex',
+                'flex-row',
+                'gap-2',
+                'items-center'
+            );
+
+            const dateLabel = document.createElement('div');
+            dateLabel.classList.add('font-bold', 'text-color-high');
+            dateLabel.textContent = label;
+
+            const countLabel = document.createElement('div');
+            countLabel.className = 'text-color-medium font-body-2';
+            countLabel.textContent = mega.icu.format(l.items_count, monthNodes.length);
+
+            dateTitle.appendChild(checkbox.el);
+            dateTitle.appendChild(dateLabel);
+            dateTitle.appendChild(countLabel);
+            domNode.appendChild(dateTitle);
+        }
+
+        removeMonthLabel(domNode) {
+            const dateTitle = domNode.querySelector('.timeline-date-title');
+
+            if (dateTitle) {
+                domNode.removeChild(dateTitle);
+            }
+        }
+
         renderRow(rowKey) {
             const div = document.createElement('div');
-            div.className = 'flex flex-row';
+            const row = document.createElement('div');
+            row.className = 'flex flex-row';
 
             const toFetchAttributes = [];
 
@@ -1220,20 +1365,22 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
                 const sizePx = `${this.cellSize}px`;
                 const { list, monthLabel } = this._nodes[rowKey];
 
+                if (this.showMonthLabel && monthLabel) {
+                    this.applyMonthLabel(div, monthLabel, rowKey);
+                    div.classList.add('has-month-label');
+                }
+                else {
+                    this.removeMonthLabel(div);
+                    div.classList.remove('has-month-label');
+                }
+
                 for (let i = 0; i < list.length; i++) {
                     const tCell = this.getCachedCell(list[i]);
-                    const preSize = tCell.naturalSize || 0;
 
                     tCell.el.style.width = sizePx;
                     tCell.el.style.height = sizePx;
-                    scope.setShimmering(tCell.el);
 
-                    if (this.showMonthLabel && !i && monthLabel) {
-                        tCell.applyMonthLabel(monthLabel);
-                    }
-                    else {
-                        tCell.removeMonthLabel();
-                    }
+                    scope.setShimmering(tCell.el);
 
                     if (this.selections[list[i].h]) {
                         tCell.isSelected = true;
@@ -1241,20 +1388,19 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
                     tCell.isActive = !this.limitReached || tCell.isSelected;
 
-                    div.appendChild(tCell.el);
+                    row.appendChild(tCell.el);
                     fillAlbumTimelineCell(tCell.el);
 
                     tCell.el.ref.el = tCell.el;
-
-                    if (parseFloat(preSize) < parseFloat(tCell.el.style.width)) {
-                        toFetchAttributes.push(tCell.el.ref);
-                    }
+                    toFetchAttributes.push(tCell.el.ref);
                 }
             }
 
             if (toFetchAttributes.length) {
                 delay(`album_timeline:render_row${rowKey}`, () => MegaGallery.addThumbnails(toFetchAttributes));
             }
+
+            div.appendChild(row);
 
             return div;
         }
@@ -1313,7 +1459,12 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
 
         adjustHeader() {
             delay('album_timeline:render_header', () => {
-                albums.grid.header.update(scope.getAlbumIdFromPath(), Object.keys(this.selections));
+                if (albums.grid) {
+                    albums.grid.header.update(scope.getAlbumIdFromPath(), Object.keys(this.selections));
+                }
+                if (mega.ui.mInfoPanel) {
+                    mega.ui.mInfoPanel.reRenderIfVisible(Object.keys(this.selections));
+                }
             }, 100);
         }
 
@@ -1322,7 +1473,6 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
                 'album_timeline:adjusting_to_bottom_bar',
                 () => {
                     if (this.interactiveCells) {
-                        this.el.style.height = (this.selCount) ? 'calc(100% - 65px)' : null;
                         this.el.style.minHeight = (this.selCount) ? '280px' : null;
                         this.resizeDynamicList();
                         Ps.update(this.el);
@@ -1415,6 +1565,16 @@ lazy(mega.gallery, 'AlbumTimeline', () => {
             }
 
             this.el.parentNode.prepend(this.zoomControls);
+        }
+
+        updateCell(node) {
+            const cell = this.cellCache[node.h];
+
+            if (!cell) {
+                return;
+            }
+
+            cell.isSensitive = !!mega.sensitives.isSensitive(node);
         }
 
         buildElement() {

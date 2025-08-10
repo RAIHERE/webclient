@@ -43,6 +43,8 @@ var uldl_hold = false;
 var ulmanager = {
     ulFaId: 0,
     ulSize: 0,
+    ulXferPut: null,
+    ulDefConcurrency: 8,
     ulIDToNode: Object.create(null),
     ulEventData: Object.create(null),
     isUploading: false,
@@ -534,7 +536,7 @@ var ulmanager = {
                 else {
                     errorstr = reason.substr(0, 50) + '...';
                 }
-                if (!file.isCreateFile) {
+                if (!file.ulSilent) {
                     $('#ul_' + file.id + ' .transfer-status').text(errorstr);
                 }
                 msgDialog('warninga', l[1309], l[1498] + ': ' + fileName, reason);
@@ -667,6 +669,9 @@ var ulmanager = {
             if (r.fav) {
                 n.fav = r.fav;
             }
+            if (r.sen) {
+                n.sen = r.sen;
+            }
             if (r.lbl) {
                 n.lbl = r.lbl;
             }
@@ -687,6 +692,9 @@ var ulmanager = {
             target = mega.fileRequestUpload.getUploadPageOwnerHandle();
             dir = mega.fileRequestUpload.getUploadPagePuHandle();
         }
+        else if (file.xput) {
+            req_type = 'xp';
+        }
 
         var req = {
             v: 3,
@@ -696,7 +704,7 @@ var ulmanager = {
                 t: 0,
                 h: file.response,
                 a: ab_to_base64(crypto_makeattr(n)),
-                k: target.length === 11
+                k: req_type === 'xp' ? a32_to_base64(file.filekey) : target.length === 11
                     ? base64urlencode(encryptto(target, a32_to_str(file.filekey)))
                     : a32_to_base64(encrypt_key(u_k_aes, file.filekey))
             }],
@@ -831,6 +839,14 @@ var ulmanager = {
         var len = ul_queue.length;
         var max = File.file.pos + Math.max(21, ulQueue.maxActiveTransfers >> 1);
 
+        const ms = fmconfig.ul_maxSpeed | 0;
+        const fire = (reqindex, payload) => {
+            // @todo proper revamp..
+            api.req(payload, {dedup: false})
+                .always((res) => next(res.result || res, {reqindex}))
+                .catch(reportError);
+        };
+
         for (var i = File.file.pos; i < len && i < max && maxpf > 0; i++) {
             var cfile = ul_queue[i];
             if (!isQueueActive(cfile)) {
@@ -847,7 +863,7 @@ var ulmanager = {
                 a: 'u',
                 v: 2,
                 ssl: use_ssl,
-                ms: fmconfig.ul_maxSpeed | 0,
+                ms,
                 s: cfile.size,
                 r: cfile.retries,
                 e: cfile.ul_lastreason,
@@ -855,10 +871,7 @@ var ulmanager = {
             if (File.file.ownerId) {
                 req.t = File.file.ownerId;
             }
-            api_req(req, {
-                reqindex: i,
-                callback: next
-            });
+            fire(i, req);
             maxpf -= cfile.size;
             total++;
         }
@@ -979,7 +992,7 @@ var ulmanager = {
             }
         }
 
-        if (!file.isCreateFile) {
+        if (!file.ulSilent) {
             M.ulstart(file);
         }
         if (file.done_starting) {
@@ -987,15 +1000,17 @@ var ulmanager = {
         }
     },
 
-    ulComplete: function(req, ctx) {
+    ulComplete(payload, ctx) {
         'use strict';
-        api.screq(req)
+        api.screq(payload)
             .catch(echo)
             .then((res) => {
-                ulmanager.ulCompletePending2(
-                    typeof res === 'number' && res < 0 ? { result: res, payload: req } : res,
-                    ctx
-                );
+                const result = Number(res.result || res) | 0;
+                if (result < 0) {
+                    res = freeze({...res, payload, result});
+                }
+
+                ulmanager.ulCompletePending2(res, ctx);
             })
             .catch(reportError);
     },
@@ -1022,6 +1037,18 @@ var ulmanager = {
             for (let i = q.length; i--;) {
                 const [n, req, ctx] = q[i];
 
+                if (req.a === 'xp') {
+                    if (!ulmanager.ulXferPut) {
+                        ulmanager.ulXferPut = Object.create(null);
+                    }
+                    if (!ulmanager.ulXferPut[req.t]) {
+                        ulmanager.ulXferPut[req.t] = [[], []];
+                    }
+                    ulmanager.ulXferPut[req.t][0].push(ctx);
+                    ulmanager.ulXferPut[req.t][1].push(...req.n);
+                    continue;
+                }
+
                 const sn = M.getShareNodesSync(req.t, null, true);
                 if (sn.length) {
                     req.cr = crypto_makecr([n], sn, false);
@@ -1029,6 +1056,43 @@ var ulmanager = {
                 }
 
                 ulmanager.ulComplete(req, ctx);
+            }
+
+            if (ulmanager.ulXferPut) {
+                const options = {channel: 7, apipath: 'https://bt7.api.mega.co.nz/'};
+
+                api.yield(options.channel)
+                    .then(() => {
+                        const payload = [];
+                        const {ulXferPut} = ulmanager;
+
+                        for (const t in ulXferPut) {
+                            payload.push({a: 'xp', v: 3, t, n: [...ulXferPut[t][1]]});
+                        }
+                        ulmanager.ulXferPut = null;
+
+                        return api.req(payload, options)
+                            .then(({responses}) => {
+                                let idx = 0;
+                                console.assert(payload.length === responses.length, `Invalid xp-response(s)`);
+                                for (const t in ulXferPut) {
+                                    const {f} = responses[idx++];
+                                    const ctx = ulXferPut[t][0];
+
+                                    console.assert(f.length === ctx.length, 'xp-ctx mismatch.');
+                                    for (let i = f.length; i--;) {
+                                        const n = f[i];
+                                        if (window.is_transferit) {
+                                            T.core.populate([n], ctx[i].file.xput);
+                                        }
+                                        ulmanager.ulCompletePending2({st: -1, result: 1, handle: n.h}, ctx[i]);
+                                    }
+                                }
+
+                                // @todo improve error handling..
+                            });
+                    })
+                    .catch(tell);
             }
         });
     },
@@ -1290,7 +1354,7 @@ var ulmanager = {
             }
         };
 
-        if (is_megadrop) {
+        if (is_megadrop || self.is_transferit) {
             return startUpload();
         }
 
@@ -1350,18 +1414,24 @@ var ulmanager = {
 };
 
 
-function UploadQueue() {}
-inherits(UploadQueue, Array);
+class UploadQueue extends Array {
+    push(...args) {
+        if (!self.u_k_aes && !self.is_transferit) {
+            if (!self.mkwarn) {
+                self.mkwarn = 1;
+                tell(l[8853]);
+            }
+            return;
+        }
+        const pos = super.push(...args) - 1;
+        const file = this[pos];
 
-UploadQueue.prototype.push = function() {
-    var pos = Array.prototype.push.apply(this, arguments) - 1;
-    var file = this[pos];
+        file.pos = pos;
+        ulQueue.poke(file);
 
-    file.pos = pos;
-    ulQueue.poke(file);
-
-    return pos + 1;
-};
+        return pos + 1;
+    }
+}
 
 
 function ChunkUpload(file, start, end, altport) {
@@ -1407,7 +1477,7 @@ ChunkUpload.prototype.updateprogress = function() {
     this.file.progressevents = (this.file.progressevents || 0) + 1;
     p = GlobalProgress[this.gid].speed = this.file.speedometer ? this.file.speedometer.progress(tp) : 0;
 
-    if (!this.file.isCreateFile) {
+    if (!this.file.ulSilent) {
         M.ulprogress(this.file, Math.floor(tp / this.file.size * 100), tp, this.file.size, p);
     }
 
@@ -1508,7 +1578,7 @@ ChunkUpload.prototype.onXHRready = function(xhrEvent) {
                     mac[2] ^ mac[3]
                 ];
 
-                if (u_k_aes && this.gid && !ulmanager.ulCompletingPhase[this.gid]) {
+                if (this.gid && (window.u_k_aes || this.file.xput) && !ulmanager.ulCompletingPhase[this.gid]) {
                     var u8 = new Uint8Array(response);
 
                     this.file.filekey = filekey;
@@ -1519,7 +1589,17 @@ ChunkUpload.prototype.onXHRready = function(xhrEvent) {
                     u8 = undefined;
                 }
                 else {
-                    console.assert(false, 'check this...');
+                    const cl = this.logger ? this : ulmanager;
+                    const cmpl = ulmanager.ulCompletingPhase[this.gid];
+                    const m = cmpl
+                        ? 'Unexpected upload completion flow on %s!'
+                        : 'Unrecoverable upload error for %s';
+                    cl.logger.warn(m, this.gid, this.xid, cmpl, [this]);
+
+                    if (!cmpl) {
+                        cl.logger.error('starting over...', [this]);
+                        return this.onXHRerror("$FATAL", null, l[16]);
+                    }
                 }
             }
 
@@ -1759,11 +1839,20 @@ FileUpload.prototype.run = function(done) {
     file.xr = dlmanager.mGetXR();
     file.ul_lastreason = file.ul_lastreason || 0;
 
-    var domNode = document.getElementById('ul_' + file.id);
-    if (ulmanager.ulStartingPhase || !(domNode || file.isCreateFile)) {
-        done();
-        ASSERT(0, "This shouldn't happen");
-        return ulQueue.pushFirst(this);
+    if (!(file.ulSilent || file.xput)) {
+        const domNode = document.getElementById(`ul_${file.id}`);
+
+        if (ulmanager.ulStartingPhase || !domNode) {
+            done();
+            ASSERT(0, "This shouldn't happen");
+            return ulQueue.pushFirst(this);
+        }
+        domNode.classList.add('transfer-initiliazing');
+
+        const transferStatus = domNode.querySelector('.transfer-status');
+        if (transferStatus) {
+            transferStatus.textContent = l[1042];
+        }
     }
 
     if (!GlobalProgress[this.gid].started) {
@@ -1772,13 +1861,6 @@ FileUpload.prototype.run = function(done) {
 
     if (d) {
         ulmanager.logger.info(file.name, "starting upload", file.id);
-    }
-    if (!file.isCreateFile) {
-        domNode.classList.add('transfer-initiliazing');
-        const transferStatus = domNode.querySelector('.transfer-status');
-        if (transferStatus) {
-            transferStatus.textContent = l[1042];
-        }
     }
 
     ulmanager.ulSize += file.size;
@@ -1805,7 +1887,7 @@ FileUpload.prototype.run = function(done) {
             }
         }
         else {
-            ulQueue.setSize((fmconfig.ul_maxSlots | 0) || 4);
+            ulQueue.setSize((fmconfig.ul_maxSlots | 0) || ulmanager.ulDefConcurrency || 4);
         }
 
         file = self = false;
@@ -1872,7 +1954,7 @@ var ulQueue = new TransferQueue(function _workerUploader(task, done) {
         ulQueue.logger.info('worker_uploader', task, done);
     }
     task.run(done);
-}, is_ios && isMediaSourceSupported() ? 1 : 4, 'uploader');
+}, self.is_ios && isMediaSourceSupported() ? 1 : ulmanager.ulDefConcurrency, 'uploader');
 
 ulQueue.poke = function(file, meth) {
     'use strict';
@@ -1921,7 +2003,7 @@ ulQueue.poke = function(file, meth) {
     }
 
     if (meth !== 0xdead) {
-        if (!meth && file.isCreateFile && file.size === 0) {
+        if (!meth && file.ulSilent && file.size === 0) {
             meth = 'pushFirst';
         }
 
@@ -1941,7 +2023,7 @@ ulQueue.validateTask = function(pzTask) {
 
     if (pzTask instanceof FileUpload
         && !ulmanager.ulStartingPhase
-        && (document.getElementById('ul_' + pzTask.file.id) || pzTask.file.isCreateFile)) {
+        && (pzTask.file.xput || pzTask.file.ulSilent || document.getElementById(`ul_${pzTask.file.id}`))) {
 
         return true;
     }
@@ -1954,12 +2036,10 @@ ulQueue.canExpand = function(max) {
     return !is_mobile && this._running < max;
 };
 
+// If on mobile, there's only 1 upload at a time and the desktop calculation below fails
 Object.defineProperty(ulQueue, 'maxActiveTransfers', {
-    get: is_mobile
-        ? function() {
-            // If on mobile, there's only 1 upload at a time and the desktop calculation below fails
-            return 1;
-        }
+    // eslint-disable-next-line strict
+    get: self.is_mobile ? () => 1 : self.is_transferit ? () => ulmanager.ulDefConcurrency << 2
         : function() {
             return Math.min(Math.floor(M.getTransferTableLengths().size / 1.6), 36);
         }

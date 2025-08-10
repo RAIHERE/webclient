@@ -6,6 +6,9 @@ import ModalDialogsUI from './../../ui/modalDialogs.jsx';
 
 
 export class StartGroupChatWizard extends MegaRenderMixin {
+    dialogName = 'start-group-chat';
+
+    domRef = React.createRef();
     inputContainerRef = React.createRef();
     inputRef = React.createRef();
 
@@ -18,7 +21,7 @@ export class StartGroupChatWizard extends MegaRenderMixin {
         'pickerClassName': '',
         'showSelectedNum': false,
         'disableFrequents': false,
-        'notSearchInEmails': false,
+        'skipMailSearch': false,
         'autoFocusSearchField': true,
         'selectCleanSearchRes': true,
         'disableDoubleClick': false,
@@ -53,17 +56,20 @@ export class StartGroupChatWizard extends MegaRenderMixin {
         this.onSelectClicked = this.onSelectClicked.bind(this);
         this.onSelected = this.onSelected.bind(this);
     }
+
     onSelected(nodes) {
         this.setState({'selected': nodes});
         if (this.props.onSelected) {
             this.props.onSelected(nodes);
         }
     }
+
     onSelectClicked() {
         if (this.props.onSelectClicked) {
             this.props.onSelectClicked();
         }
     }
+
     onFinalizeClick(e) {
         if (e) {
             e.preventDefault();
@@ -79,6 +85,21 @@ export class StartGroupChatWizard extends MegaRenderMixin {
         this.props.onClose(this);
         eventlog(500236);
     }
+
+    componentDidMount() {
+        super.componentDidMount();
+        if (!this.props.subDialog) {
+            M.safeShowDialog(this.dialogName, nop);
+        }
+    }
+
+    componentWillUnmount() {
+        super.componentWillUnmount();
+        if ($.dialog === this.dialogName) {
+            closeDialog();
+        }
+    }
+
     render() {
         var self = this;
 
@@ -295,7 +316,6 @@ export class StartGroupChatWizard extends MegaRenderMixin {
             );
         }
 
-
         return (
             <ModalDialogsUI.ModalDialog
                 step={self.state.step}
@@ -320,11 +340,12 @@ export class StartGroupChatWizard extends MegaRenderMixin {
                 }}
                 triggerResizeOnUpdate={true}
                 buttons={buttons}>
-
-                <div className="content-block">
+                <div
+                    ref={this.domRef}
+                    className="content-block">
                     {chatInfoElements}
                     <ContactPickerWidget
-                        changedHashProp={self.state.step}
+                        step={self.state.step}
                         exclude={self.props.exclude}
                         contacts={contacts}
                         selectableContacts="true"
@@ -338,7 +359,7 @@ export class StartGroupChatWizard extends MegaRenderMixin {
                         showMeAsSelected={self.state.step === 1}
                         className={self.props.pickerClassName}
                         disableFrequents={self.props.disableFrequents}
-                        notSearchInEmails={self.props.notSearchInEmails}
+                        skipMailSearch={self.props.skipMailSearch}
                         autoFocusSearchField={self.props.autoFocusSearchField}
                         selectCleanSearchRes={self.props.selectCleanSearchRes}
                         disableDoubleClick={self.props.disableDoubleClick}
@@ -354,7 +375,7 @@ export class StartGroupChatWizard extends MegaRenderMixin {
             </ModalDialogsUI.ModalDialog>
         );
     }
-};
+}
 
 window.StartGroupChatDialogUI = {
     StartGroupChatWizard,

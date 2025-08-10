@@ -53,7 +53,6 @@
 .container-details-info .domain-value {
     font: var(--text-body1);
     color: var(--text-color-low);
-    -webkit-margin-start: 24px;
     margin-inline-start: 24px;
 }
 .container-details-info .domain-value .info {
@@ -62,7 +61,6 @@
 .container-details-info .domain-value .learn-more {
     color: var(--secondary-blue);
     cursor: pointer;
-    -webkit-margin-start: 8px;
     margin-inline-start: 8px;
 }
 .bucket-details-info .content {
@@ -86,7 +84,6 @@
 .bucket-details-info .bucket-details-pad {
     position: relative;
     overflow: hidden;
-    -webkit-margin-start: 8px;
     margin-inline-start: 8px;
 }
 .bucket-details-pad div .avatar-wrapper {
@@ -98,7 +95,6 @@
 .bucket-details-pad .bucket-details-user-info {
     display: inline-block;
     vertical-align: middle;
-    -webkit-margin-start: 4px;
     margin-inline-start: 4px;
 }
 .bucket-details-pad .bucket-details-name {
@@ -107,7 +103,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    -webkit-padding-end: 16px;
     padding-inline-end: 16px;
     display: inline-block;
     vertical-align: middle;
@@ -125,24 +120,21 @@
 }
 .bucket-details-buttons {
     margin-inline-start: auto;
-    -webkit-margin-start: auto;
     display: flex;
     flex-wrap: nowrap;
     margin-top: 24px;
 }
 .bucket-access-warning.fm-notification-block {
-    color: var(--banner-text-warning);
-    background-color: var(--banner-background-warning);
-    border: 1px solid var(--banner-border-warning);
-    border-radius: 4px;
+    color: var(--mobile-text-primary);
+    background-color: var(--mobile-notification-info);
+    border-radius: 0;
     display: block;
-    margin: 8px 24px;
-    padding: 1px 8px;
+    padding: 12px 24px;
 }
 .bucket-access-warning.fm-notification-block a,
 .bucket-access-warning.fm-notification-block a:link,
 .bucket-access-warning.fm-notification-block a:visited {
-    color: var(--banner-text-warning);
+    color: var(--mobile-text-primary);
 }
 .dark-direct-tooltip.simpletip-tooltip.bucket-settings {
     max-width: 240px;

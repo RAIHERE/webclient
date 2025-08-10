@@ -139,7 +139,7 @@ MegaData.prototype.accountData = function(cb, blockui, force) {
 
     // Get (f)ull payment history
     // [[payment id, timestamp, price paid, currency, payment gateway id, payment plan id, num of months purchased]]
-    sendAPIRequest({a: 'utp', f: 3, v: 2}, true, (res) => {
+    sendAPIRequest({a: 'utp', f: 4, v: 2}, true, (res) => {
         if (!Array.isArray(res)) {
             res = [];
         }
@@ -154,7 +154,6 @@ MegaData.prototype.accountData = function(cb, blockui, force) {
         }
         account.sessions = res;
     });
-
 
     /**
      * DO NOT place any sendAPIRequest() call AFTER, this 'ug' MUST BE the LAST one!
@@ -479,6 +478,28 @@ MegaData.prototype.refreshSessionList = function(callback) {
     }
 };
 
+/**
+ * Function to get S4 Transfer usage (Egress) Report between two dates.
+ * @param {String} date The start date of the required month
+ * @param {Boolean} used Overall egress usage (Optional)
+ * @returns {Promise<Array>} user get result
+ */
+MegaData.prototype.getS4Egress = function(date, used) {
+    "use strict";
+
+    if (!(window.u_attr && u_attr.s4 && u_attr.p)) {
+        return false;
+    }
+
+    const dates = getReportDates(date);
+    const req = { a: 's4pqu', fd: dates.fromDate, td: dates.toDate };
+
+    if (used) {
+        req.ou = 1;
+    }
+
+    return api.send(req);
+};
 
 /**
  * Retrieve general user information once a session has been established.
@@ -711,6 +732,240 @@ MegaData.prototype.showContactVerificationDialog = function() {
     });
 };
 
+MegaData.prototype.paymentBannerData = async function() {
+    'use strict';
+    const { result: account } = await api.req({ a: 'uq', pro: 1, strg: 1, v: 2 });
+    if (Array.isArray(account.plans)) {
+        account.subs = Array.isArray(account.subs) && account.subs || [];
+        if (account.plans.length) {
+            const activePlan = account.plans.find(({ al }) => al === u_attr.p) || account.plans[0];
+            if (activePlan && activePlan.al !== pro.ACCOUNT_LEVEL_FEATURE) {
+                const sub = account.subs.find(({ id }) => id === activePlan.subid);
+                const hasSub = !!sub;
+
+                account.slevel = activePlan.al;
+                account.stype = hasSub && sub.type || 'O';
+                account.expiry = hasSub && sub.next || activePlan.expires || 0;
+            }
+        }
+    }
+    return account;
+};
+
+MegaData.prototype.showPlanExpiringBanner = async function(data) {
+    'use strict';
+
+    if (!fminitialized || u_attr && (u_attr.b || u_attr.pf || !u_attr.p)) {
+        return;
+    }
+    const account = await M.paymentBannerData();
+    if (
+        account.stype !== 'O' ||
+        account.slevel === pro.ACCOUNT_LEVEL_BUSINESS ||
+        account.slevel === pro.ACCOUNT_LEVEL_PRO_FLEXI
+    ) {
+        return;
+    }
+
+    const curr = await M.getPersistentData('planexp-last').catch(nop) || {
+        expiry: data && data.expiry || account.expiry,
+        slevel: account.slevel,
+        shown: 0,
+        h: u_handle,
+    };
+    const { expiry, slevel, shown, h } = curr;
+    if (u_handle !== h) {
+        await M.delPersistentData('planexp-last').catch(nop);
+        return M.showPlanExpiringBanner(data);
+    }
+    const today = new Date();
+    if (today.getTime() > expiry * 1000) {
+        M.delPersistentData('planexp-last').catch(nop);
+        data.slevel = data.slevel || slevel || account.slevel;
+        return M.showPlanExpiredBanner(data);
+    }
+    if (today.getTime() < (expiry - 4 * 86400) * 1000) {
+        return;
+    }
+    today.setHours(0, 0, 0, 0);
+    if (shown > today.getTime()) {
+        return;
+    }
+
+    curr.shown = today.setDate(today.getDate() + 1);
+    M.setPersistentData('planexp-last', curr).catch(dump);
+
+    const planName = pro.getProPlanName(slevel);
+    const options = {
+        title: l.plan_exp_banner_title.replace('%s', planName),
+        type: 'warning',
+        ctaText: l.resubscribe,
+        ctaHref: `/propay_${slevel}`,
+        ctaEvent: 500863,
+        closeEvent: 500862,
+    };
+
+    if (mega.bstrg < account.cstrg) {
+        options.msgHtml = l.plan_exp_banner_text_oq
+            .replace('%1', bytesToSize(account.cstrg))
+            .replace('%2', bytesToSize(mega.bstrg, 0));
+    }
+    else {
+        options.msgText = l.plan_exp_banner_text.replace('%s', planName);
+    }
+
+    if (is_mobile) {
+        const banner = mobile.banner.show(
+            options.title,
+            options.msgHtml ? parseHTML(options.msgHtml) : options.msgText,
+            options.ctaText,
+            options.type,
+            true
+        );
+        banner.on('cta', () => {
+            loadSubPage(options.ctaHref);
+            eventlog(options.ctaEvent);
+        });
+        banner.on('close', () => eventlog(options.closeEvent));
+        banner.addClass('payment-banner');
+        return;
+    }
+    mega.ui.secondaryNav.showBanner(options);
+};
+
+MegaData.prototype.showPaymentFailedBanner = async function() {
+    'use strict';
+    if (u_attr && (u_attr.b || u_attr.p)) {
+        return;
+    }
+
+    const account = await M.paymentBannerData();
+    const { subs = [], expiry, cstrg } = account;
+    const today = new Date();
+
+    const lastShow = await M.getPersistentData('payfail-last').catch(nop) ||
+        { shown: 0, last: 0, id: false, al: false, h: u_handle };
+    if (u_handle !== lastShow.h) {
+        await M.delPersistentData('payfail-last').catch(nop);
+        return M.showPaymentFailedBanner();
+    }
+    if (
+        lastShow.al === pro.ACCOUNT_LEVEL_BUSINESS ||
+        lastShow.al === pro.ACCOUNT_LEVEL_PRO_FLEXI
+    ) {
+        return;
+    }
+    let renewPassed = false;
+    let isCancelled = true;
+    for (let i = subs.length; i--;) {
+        if (subs[i].next * 1000 < today.getTime()) {
+            renewPassed = subs[i];
+            if (isCancelled && !lastShow.id) {
+                isCancelled = false;
+            }
+        }
+        if (lastShow.id && subs[i].id === lastShow.id) {
+            isCancelled = false;
+        }
+        if (renewPassed && !isCancelled) {
+            break;
+        }
+    }
+    if (!renewPassed && !lastShow.id) {
+        return;
+    }
+    today.setHours(0, 0, 0, 0);
+
+    if (!isCancelled && (lastShow.shown > 4 || lastShow.last > today.getTime())) {
+        return;
+    }
+    lastShow.shown = isCancelled ? 0 : lastShow.shown + 1;
+    lastShow.last = today.setDate(today.getDate() + 1);
+    lastShow.id = lastShow.id || renewPassed.id;
+    lastShow.al = lastShow.al || renewPassed.al;
+    M.setPersistentData('payfail-last', lastShow).catch(dump);
+
+    const options = {
+        type: 'error',
+    };
+    const planName = pro.getProPlanName(lastShow.al);
+    if (isCancelled) {
+        options.title = l.payment_cancel_banner_title;
+        options.msgText = l.payment_cancel_banner_text.replace('%s', planName);
+        options.ctaText = l.upgrade_now;
+        options.ctaHref = `/propay_${lastShow.al}`;
+        options.ctaEvent = 500865;
+        options.closeEvent = 500864;
+    }
+    else if (expiry) {
+        options.title = l[25049];
+        options.ctaText = l.update_card;
+        options.ctaHref = is_mobile ? '/fm/account/paymentcard' : '/fm/account/plan/account-card-info';
+        options.ctaEvent = 500867;
+        options.closeEvent = 500866;
+        options.msgHtml = (
+            mega.bstrg < cstrg ?
+                l.payment_failed_banner_text_oq :
+                escapeHTML(l.payment_failed_banner_text)
+        )
+            .replace('%1', planName)
+            .replace('%2', `<b>${time2date(expiry, 1)}</b>`)
+            .replace('%3', bytesToSize(cstrg));
+    }
+    else {
+        return;
+    }
+
+    if (is_mobile) {
+        const banner = mobile.banner.show(
+            options.title,
+            options.msgHtml ? parseHTML(options.msgHtml) : options.msgText,
+            options.ctaText,
+            options.type,
+            true
+        );
+        banner.on('cta', () => {
+            loadSubPage(options.ctaHref);
+            eventlog(options.ctaEvent);
+        });
+        banner.on('close', () => eventlog(options.closeEvent));
+        banner.addClass('payment-banner');
+    }
+    else {
+        mega.ui.secondaryNav.showBanner(options);
+    }
+};
+
+MegaData.prototype.showPlanExpiredBanner = async function(data) {
+    'use strict';
+
+    const { slevel } = data;
+    if (is_mobile) {
+        const banner = mobile.banner.show(
+            l.plan_ended_banner_title.replace('%s', pro.getProPlanName(slevel)),
+            l.plan_ended_banner_text,
+            l.upgrade_now,
+            'error',
+            true
+        );
+        banner.on('cta', () => {
+            loadSubPage(`propay_${slevel}`);
+            eventlog(500869);
+        });
+        banner.on('close', () => eventlog(500868));
+        banner.addClass('payment-banner');
+        return;
+    }
+    mega.ui.secondaryNav.showBanner({
+        type: 'error',
+        title: l.plan_ended_banner_title.replace('%s', pro.getProPlanName(slevel)),
+        msgText: l.plan_ended_banner_text,
+        ctaHref: `/propay_${slevel}`,
+        ctaText: l.upgrade_now,
+        ctaEvent: 500869,
+        closeEvent: 500868,
+    });
+};
 
 MegaData.prototype.showPaymentCardBanner = function(status) {
     'use strict';
@@ -801,8 +1056,8 @@ MegaData.prototype.showOverStorageQuota = function(quota, options) {
     var $strgdlgBodyFull = $('.fm-dialog-body.storage-dialog.full', $strgdlg).removeClass('odq');
     var $strgdlgBodyAFull = $('.fm-dialog-body.storage-dialog.almost-full', $strgdlg);
 
-    var prevState = $('.fm-main').is('.almost-full, .full');
-    $('.fm-main').removeClass('fm-notification almost-full full');
+    var prevState = $('.pm-main').is('.almost-full, .full');
+    $('.pm-main').removeClass('fm-notification almost-full full');
     var $odqWarn = $('.odq-warning', $strgdlgBodyFull).addClass('hidden');
     var $upgradeBtn = $('.choose-plan span', $strgdlg).text(l[8696]);
     const $headerFull = $('header h2.full', $strgdlg);
@@ -825,7 +1080,7 @@ MegaData.prototype.showOverStorageQuota = function(quota, options) {
                 });
             });
         }
-        $('.fm-main').addClass('fm-notification full');
+        $('.pm-main').addClass('fm-notification full');
 
         $strgdlg.addClass('full');
         $('.body-header', $strgdlgBodyFull).text(l[23519]);
@@ -848,6 +1103,7 @@ MegaData.prototype.showOverStorageQuota = function(quota, options) {
         if (quota === -1) {
             quota = { percent: 100 };
             quota.isFull = quota.isAlmostFull = true;
+            quota.cstrg = M.storageQuotaCache ? M.storageQuotaCache.cstrg : '';
             options = { custom: 1 };
         }
 
@@ -902,14 +1158,14 @@ MegaData.prototype.showOverStorageQuota = function(quota, options) {
         var myOptions = Object(options);
         if (quota.isFull) {
             $strgdlg.addClass('full');
-            $('.fm-main').addClass('fm-notification full');
+            $('.pm-main').addClass('fm-notification full');
             $('header h2', $strgdlgBodyFull).text(myOptions.title || l[16302]);
             $('.body-header', $strgdlgBodyFull).safeHTML(myOptions.body || l[16360]);
             $headerFull.text(l.cloud_strg_100_percent_full);
         }
         else if (quota.isAlmostFull || myOptions.custom) {
             if (quota.isAlmostFull) {
-                $('.fm-main').addClass('fm-notification almost-full');
+                $('.pm-main').addClass('fm-notification almost-full');
                 if (mega.tpw.initialized && mega.tpw.isWidgetVisibile()) {
                     mega.tpw.showAlmostOverquota();
                 }
@@ -952,7 +1208,7 @@ MegaData.prototype.showOverStorageQuota = function(quota, options) {
             if ($strgdlg.is(':visible')) {
                 window.closeDialog();
             }
-            $('.fm-main').removeClass('fm-notification almost-full full');
+            $('.pm-main').removeClass('fm-notification almost-full full');
 
             return Promise.reject();
         }
@@ -1009,8 +1265,14 @@ MegaData.prototype.showOverStorageQuota = function(quota, options) {
     $('button.skip', $strgdlg).toggleClass('hidden', upgradeTo === 'min');
 
     $('.fm-notification-block .fm-notification-close')
-        .rebind('click', function() {
-            $('.fm-main').removeClass('fm-notification almost-full full');
+        .rebind('click', (ev) => {
+            const $dupe = $(ev.currentTarget).parent('.duplicated-items-found');
+            if ($dupe.length) {
+                $dupe.removeClass('visible');
+                $.tresizer();
+                return;
+            }
+            $('.pm-main').removeClass('fm-notification almost-full full');
             $.tresizer();
         });
 
@@ -1087,16 +1349,22 @@ function voucherData(arr) {
     return vouchers;
 }
 
-mBroadcaster.once('fm:initialized', () => {
+mBroadcaster.addListener('fm:initialized', () => {
     'use strict';
 
-    if (u_attr && (u_attr.p || u_attr.b)) {
-
-        if (M.account && M.account.cce) {
-            M.showPaymentCardBanner(M.account.cce);
+    if (u_type === 3 && !pfid) {
+        if (u_attr && u_attr.p) {
+            api.req({a: 'uq', pro: 1}).then(({result}) => {
+                if (result.stype === 'O') {
+                    // Try showing this banner for users with a one off plan/sub and are still pro.
+                    return M.showPlanExpiringBanner();
+                }
+            }).catch(dump);
         }
-        else {
-            M.updatePaymentCardState().catch(dump);
+        else if (u_attr) {
+            // Try showing this banner only for users who are no longer pro.
+            M.showPaymentFailedBanner().catch(dump);
         }
+        return 0xDEAD;
     }
 });

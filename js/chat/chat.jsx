@@ -1,6 +1,6 @@
-import React from "react";
-import ReactDOM from "react-dom";
-import ConversationsUI, { EVENTS, VIEWS } from './ui/conversations.jsx';
+import React from 'react';
+import { createRoot } from 'react-dom';
+import ConversationsUI from './ui/conversations.jsx';
 
 require("./chatGlobalEventManager.jsx");
 // load chatRoom.jsx, so that its included in bundle.js, despite that ChatRoom is legacy ES ""class""
@@ -55,6 +55,7 @@ function Chat() {
     this.archivedChatsCount = 0;
 
     this.FORCE_EMAIL_LOADING = localStorage.fel;
+    this.WITH_SELF_NOTE = mega.flags.ff_n2s || localStorage.withSelfNote;
 
     this._imageLoadCache = Object.create(null);
     this._imagesToBeLoaded = Object.create(null);
@@ -247,50 +248,36 @@ Chat.prototype.init = promisify(function(resolve, reject) {
 
     // UI events
     var $body = $(document.body);
-    $body.rebind('mousedown.megachat', '.top-user-status-popup .dropdown-item', function() {
-        var presence = $(this).data("presence");
-        self._myPresence = presence;
+    if (!is_chatlink) {
+        $(mega.ui.header.setStatus).rebind('mousedown.megachat', '.sub-menu.status button', function() {
+            var presence = $(this).data("presence");
+            self._myPresence = presence;
 
-        // presenced integration
-        var targetPresence = PresencedIntegration.cssClassToPresence(presence);
+            // presenced integration
+            var targetPresence = PresencedIntegration.cssClassToPresence(presence);
 
-        self.plugins.presencedIntegration.setPresence(targetPresence);
+            self.plugins.presencedIntegration.setPresence(targetPresence);
 
 
-        // connection management - chatd shards, presenced
-        if (targetPresence !== UserPresence.PRESENCE.OFFLINE) {
-            // going from OFFLINE -> online/away/busy, e.g. requires a connection
+            // connection management - chatd shards, presenced
+            if (targetPresence !== UserPresence.PRESENCE.OFFLINE) {
+                // going from OFFLINE -> online/away/busy, e.g. requires a connection
 
-            Object.keys(self.plugins.chatdIntegration.chatd.shards).forEach(function(k) {
-                var v = self.plugins.chatdIntegration.chatd.shards[k];
-                v.connectionRetryManager.requiresConnection();
-            });
-        }
-    });
+                Object.keys(self.plugins.chatdIntegration.chatd.shards).forEach(k => {
+                    var v = self.plugins.chatdIntegration.chatd.shards[k];
+                    v.connectionRetryManager.requiresConnection();
+                });
+            }
+        });
+    }
 
     // @todo where is this used?
     self.$container = $('.fm-chat-block');
 
-    if (!is_chatlink) {
+    if (M.chat && !is_chatlink) {
         $('.activity-status-block, .activity-status').removeClass('hidden');
         $('.js-dropdown-account .status-dropdown').removeClass('hidden');
     }
-
-    $body.rebind('mouseover.notsentindicator', '.tooltip-trigger', function() {
-        var $this = $(this);
-        var $notification = $('.tooltip.' + $this.attr('data-tooltip')).removeClass('hidden');
-        var iconTopPos = $this.offset().top;
-        var iconLeftPos = $this.offset().left;
-        var notificatonHeight = $notification.outerHeight() + 10;
-        var notificatonWidth = $notification.outerWidth() / 2 - 10;
-        $notification.offset({top: iconTopPos - notificatonHeight, left: iconLeftPos - notificatonWidth});
-    });
-
-    $body.rebind('mouseout.notsentindicator click.notsentindicator', '.tooltip-trigger', function() {
-        // hide all tooltips
-        var $notification = $('.tooltip');
-        $notification.addClass('hidden').removeAttr('style');
-    });
 
     if (is_chatlink) {
         const {ph, key} = is_chatlink;
@@ -310,38 +297,44 @@ Chat.prototype.init = promisify(function(resolve, reject) {
     }
 
     Promise.allSettled(promises)
-        .then(function(res) {
-            const pub = Object.keys(self.publicChatKeys);
+        .then(res => {
+            const pub = Object.keys(this.publicChatKeys);
             return Promise.allSettled(
                 [res].concat(pub.map(pch => {
-                    return self.plugins.chatdIntegration.openChat(pch, true);
+                    return this.plugins.chatdIntegration.openChat(pch, true);
                 }))
             );
         })
-        .then(function(res) {
+        .then(res => {
             res = res[0].value.concat(res.slice(1));
-            self.logger.info('chats settled...', res);
+            this.logger.info('chats settled...', res);
 
             if (is_mobile) {
                 // No more business here...
                 return;
             }
 
-            // eslint-disable-next-line react/no-render-return-value
-            self.$conversationsAppInstance = ReactDOM.render(
-                self.$conversationsApp = <ConversationsUI.ConversationsApp
-                    megaChat={self}
-                    routingSection={self.routingSection}
-                    routingSubSection={self.routingSubSection}
-                    routingParams={self.routingParams}
-                />,
-                self.domSectionNode = document.querySelector(!is_chatlink ?
-                    '.section.conversations' : '.chat-links-preview > .chat-app-container')
+            if (is_chatlink) {
+                const start = document.getElementById('startholder');
+                this.flyoutStartHolder = document.createElement('div');
+                this.flyoutStartHolder.className = 'flyout-holder';
+                start.appendChild(this.flyoutStartHolder);
+            }
+            const selector = is_chatlink ? '.chat-links-preview > .chat-app-container' : '.section.conversations';
+            const rootDOMNode = this.rootDOMNode = document.querySelector(selector);
+            const $$root = this.$$root = createRoot(rootDOMNode);
+            $$root.render(
+                <ConversationsUI.ConversationsApp
+                    megaChat={this}
+                    routingSection={this.routingSection}
+                    routingSubSection={this.routingSubSection}
+                    routingParams={this.routingParams}
+                />
             );
 
-            self.onChatsHistoryReady()
+            this.onChatsHistoryReady()
                 .then(() => {
-                    const room = self.getCurrentRoom();
+                    const room = this.getCurrentRoom();
                     if (room) {
                         room.scrollToChat();
                     }
@@ -349,22 +342,23 @@ Chat.prototype.init = promisify(function(resolve, reject) {
                 })
                 .dump('on-chat-history-loaded');
 
-            self.is_initialized = true;
-            self.registerUploadListeners();
-            self.trigger("onInit");
+            this.is_initialized = true;
+            this.registerUploadListeners();
+            this.trigger('onInit');
             mBroadcaster.sendMessage('chat_initialized');
-            setInterval(self.removeMessagesByRetentionTime.bind(self, null), 2e4);
+            setInterval(this.removeMessagesByRetentionTime.bind(this, null), 2e4);
 
-            self.autoJoinIfNeeded();
+            this.autoJoinIfNeeded();
 
             const scheduledMeetings = Object.values(Chat.mcsm);
             if (scheduledMeetings && scheduledMeetings.length) {
                 for (let i = scheduledMeetings.length; i--;) {
                     const scheduledMeeting = scheduledMeetings[i];
-                    self.plugins.meetingsManager.attachMeeting(scheduledMeeting);
+                    this.plugins.meetingsManager.attachMeeting(scheduledMeeting);
                     delete Chat.mcsm[scheduledMeeting.id];
                 }
             }
+
             if (notify) {
                 notify.countAndShowNewNotifications();
             }
@@ -447,12 +441,6 @@ Chat.prototype.cleanup = function(clean) {
     const room = this.getCurrentRoom();
     if (room) {
         room.hide();
-    }
-
-    const {$conversationsAppInstance: app} = this;
-    if (app) {
-        // update immediately, otherwise the app may become invisible and no unmounts would be done.
-        tryCatch(() => app.forceUpdate())();
     }
 
     M.chat = false;
@@ -781,33 +769,22 @@ Chat.prototype.getRoomFromUrlHash = function(urlHash) {
 
 
 Chat.prototype.updateSectionUnreadCount = SoonFc(function() {
-    var self = this;
-
-    if (!self.favico) {
-        assert(Favico, 'Favico.js is missing.');
-
-
-        $('link[rel="icon"]').attr('href',
-            (location.hostname === 'mega.nz' ? 'https://mega.nz/' : bootstaticpath) + 'favicon.ico'
-        );
-
-        self.favico = new Favico({
-            type : 'rectangle',
-            animation: 'popFade',
-            bgColor : '#fff',
-            textColor : '#d00'
-        });
+    if (!this.is_initialized) {
+        return;
     }
-    // update the "global" conversation tab unread counter
-    var unreadCount = 0;
+    // update the "global" conversation header unread counter
+    let unreadCount = 0;
     const notificationsCount = {
         unreadChats: 0,
-        unreadMeetings: 0
+        unreadMeetings: 0,
+        unreadUpcoming: 0,
+        chatsCall: false,
+        meetingCall: false,
     };
 
-
-    var havePendingCall = false;
-    self.chats.forEach(chatRoom => {
+    let havePendingCall = false;
+    let haveAdHocMessage = false;
+    this.chats.forEach(chatRoom => {
         if (chatRoom.isArchived() || chatRoom.state === ChatRoom.STATE.LEFT) {
             return;
         }
@@ -817,70 +794,56 @@ Chat.prototype.updateSectionUnreadCount = SoonFc(function() {
 
         if (unreads) {
             notificationsCount[chatRoom.isMeeting ? 'unreadMeetings' : 'unreadChats'] += unreads;
+            if (chatRoom.scheduledMeeting && chatRoom.scheduledMeeting.isUpcoming) {
+                notificationsCount.unreadUpcoming += unreads;
+            }
         }
 
         if (
-            !havePendingCall &&
             chatRoom.havePendingCall() &&
             chatRoom.uniqueCallParts &&
             !chatRoom.uniqueCallParts[u_handle]
         ) {
             havePendingCall = true;
+            if (chatRoom.isMeeting) {
+                notificationsCount.meetingCall = true;
+                if (!chatRoom.scheduledMeeting && unreads) {
+                    haveAdHocMessage = true;
+                }
+            }
+            else {
+                notificationsCount.chatsCall = true;
+            }
         }
     });
 
 
     unreadCount = unreadCount > 9 ? "9+" : unreadCount;
 
-    var haveContents = false;
-    // try NOT to touch the DOM if not needed...
-    if (havePendingCall) {
-        haveContents = true;
-        $('.new-messages-indicator .chat-pending-call')
-            .removeClass('hidden');
-    }
-    else {
-        $('.new-messages-indicator .chat-pending-call')
-            .addClass('hidden')
-            .removeClass("call-exists");
-    }
-
-    if (self._lastUnreadCount !== unreadCount) {
-        if (unreadCount && (unreadCount === "9+" || unreadCount > 0)) {
-            $('.new-messages-indicator .chat-unread-count')
-                .removeClass('hidden')
-                .text(unreadCount);
+    // Update header
+    if (!is_chatlink && mega.ui.header) {
+        if (notificationsCount.unreadChats || notificationsCount.unreadUpcoming || haveAdHocMessage) {
+            mega.ui.header.chatsButton.addClass('decorated');
         }
         else {
-            $('.new-messages-indicator .chat-unread-count')
-                .addClass('hidden');
+            mega.ui.header.chatsButton.removeClass('decorated');
         }
-        self._lastUnreadCount = unreadCount;
-
-        delay('notifFavicoUpd', () => {
-            self.favico.reset();
-            tryCatch(() => self.favico.badge(unreadCount))();
-        });
+        const phoneIcon = mega.ui.header.domNode.querySelector('.top-chats-call');
+        if (phoneIcon) {
+            phoneIcon.classList[havePendingCall ? 'remove' : 'add']('hidden');
+        }
     }
 
-    if (
-        !this._lastNotifications ||
-        this._lastNotifications.unreadChats !== notificationsCount.unreadChats ||
-        this._lastNotifications.unreadMeetings !== notificationsCount.unreadMeetings
-    ) {
+    // Update favico
+    if (this._lastUnreadCount !== unreadCount) {
+        this._lastUnreadCount = unreadCount;
+        notify.updateNotificationIndicator();
+    }
+
+    // Update listeners
+    if (!this._lastNotifications || !shallowEqual(this._lastNotifications, notificationsCount)) {
         this._lastNotifications = notificationsCount;
         megaChat.trigger('onUnreadCountUpdate', notificationsCount);
-    }
-
-    if (unreadCount && (unreadCount === "9+" || unreadCount > 0)) {
-        haveContents = true;
-    }
-
-    if (!haveContents) {
-        $('.new-messages-indicator').addClass('hidden');
-    }
-    else {
-        $('.new-messages-indicator').removeClass('hidden');
     }
 }, 100);
 
@@ -918,59 +881,41 @@ Chat.prototype.dropAllDatabases = promisify(function(resolve, reject) {
  * @returns {*}
  */
 Chat.prototype.destroy = function(isLogout) {
-    var self = this;
-
-    if (self.is_initialized === false) {
+    if (!this.is_initialized) {
         return;
     }
 
-    self.isLoggingOut = isLogout;
+    this.isLoggingOut = isLogout;
 
     for (let i = 0; i < this.mbListeners.length; i++) {
         mBroadcaster.removeListener(this.mbListeners[i]);
     }
 
-    self.unregisterUploadListeners(true);
-    self.trigger('onDestroy', [isLogout]);
+    this.unregisterUploadListeners(true);
+    this.trigger('onDestroy', [isLogout]);
+    tryCatch(() => this.$$root.unmount())();
 
-    // unmount the UI elements, to reduce any unneeded.
-    try {
-        if (
-            self.$conversationsAppInstance &&
-            ReactDOM.findDOMNode(self.$conversationsAppInstance) &&
-            ReactDOM.findDOMNode(self.$conversationsAppInstance).parentNode
-        ) {
-            ReactDOM.unmountComponentAtNode(ReactDOM.findDOMNode(self.$conversationsAppInstance).parentNode);
-        }
-    }
-    catch (e) {
-        console.error("Failed do destroy chat dom:", e);
-    }
-
-
-    self.chats.forEach( function(room, roomJid) {
+    this.chats.forEach((chatRoom, chatId) => {
         if (!isLogout) {
-            room.destroy(false, true);
+            chatRoom.destroy(false, true);
         }
-        self.chats.remove(roomJid);
+        this.chats.remove(chatId);
     });
 
     // must be set before chatd disconnect, because of potential .destroy -> reinit and event queueing.
-    self.is_initialized = false;
+    this.is_initialized = false;
 
     if (
-        self.plugins.chatdIntegration &&
-        self.plugins.chatdIntegration.chatd &&
-        self.plugins.chatdIntegration.chatd.shards
+        this.plugins.chatdIntegration &&
+        this.plugins.chatdIntegration.chatd &&
+        this.plugins.chatdIntegration.chatd.shards
     ) {
-        var shards = self.plugins.chatdIntegration.chatd.shards;
-        Object.keys(shards).forEach(function(k) {
-            shards[k].connectionRetryManager.options.functions.forceDisconnect();
-        });
+        const { shards } = this.plugins.chatdIntegration.chatd;
+        Object.keys(shards).forEach(shard => shards[shard].connectionRetryManager.options.functions.forceDisconnect());
     }
 
-    for (const pluginName in self.plugins) {
-        const plugin = self.plugins[pluginName];
+    for (const pluginName in this.plugins) {
+        const plugin = this.plugins[pluginName];
         if (plugin.destroy) {
             plugin.destroy();
         }
@@ -978,6 +923,11 @@ Chat.prototype.destroy = function(isLogout) {
 
     if (this.minuteClockInterval) {
         clearInterval(this.minuteClockInterval);
+    }
+
+    if (megaChat.flyoutStartHolder && mega.ui.flyout) {
+        mega.ui.flyout.reinit(megaChat.flyoutStartHolder);
+        delete megaChat.flyoutStartHolder;
     }
 };
 
@@ -1150,12 +1100,7 @@ Chat.prototype.openChat = function(userHandles, type, chatId, chatShard, chatdUr
 
     if (type === "private") {
         this.initContacts(userHandles, 2);
-        roomId = array.one(userHandles, u_handle);
-        if (!roomId) {
-            // found a chat where I'm the only user in?
-            $promise.reject();
-            return $promise;
-        }
+        roomId = userHandles.length > 1 ? array.one(userHandles, u_handle) : u_handle;
         if (self.chats[roomId]) {
             $promise.resolve(roomId, self.chats[roomId]);
             return [roomId, self.chats[roomId], $promise];
@@ -1332,8 +1277,9 @@ Chat.prototype.smartOpenChat = function(...args) {
         };
 
         // Check whether we can prevent the actual call to openChat()
-        if (args[0].length === 2 && args[1] === 'private') {
-            var chatRoom = self.chats[array.one(args[0], u_handle)];
+        const [members, type] = args;
+        if (members.length === 2 && type === 'private') {
+            const chatRoom = self.chats[members.every(h => h === members[0]) ? u_handle : array.one(members, u_handle)];
             if (chatRoom) {
                 if (args[5]) {
                     chatRoom.show();
@@ -1601,6 +1547,13 @@ Chat.prototype.renderListing = async function megaChatRenderListing(location, is
     M.hideEmptyGrids();
     this.refreshConversations();
     this.hideAllChats();
+    if (
+        !is_chatlink &&
+        mega.ui.flyout &&
+        (mega.ui.flyout.name.startsWith('contact') || mega.ui.flyout.name === 'chat')
+    ) {
+        mega.ui.flyout.hide();
+    }
 
     $('.files-grid-view').addClass('hidden');
     $('.fm-blocks-view').addClass('hidden');
@@ -1614,45 +1567,14 @@ Chat.prototype.renderListing = async function megaChatRenderListing(location, is
 
     let room;
     if (!location && this.chats.length) {
-        const valid = (room) => room && room._leaving !== true && room.isDisplayable() && room;
+        const valid = (room) => room && room._leaving !== true && !room.isNote && room.isDisplayable() && room;
         room = valid(this.chats[this.lastOpenedChat]);
 
         if (!room) {
             let idx = 0;
-            const chats = [];
-            const meetings = [];
-            // Filter rooms into chat/meetings sections in case the view is empty and another needs to be picked
-            for (const room of Object.values(this.chats)) {
-                if (!room.isArchived()) {
-                    if (room.isMeeting) {
-                        meetings.push(room);
-                    }
-                    else {
-                        chats.push(room);
-                    }
-                }
-            }
-            let rooms = chats;
-            let view;
-            if (this.currentlyOpenedView === VIEWS.MEETINGS) {
-                if (meetings.length) {
-                    rooms = meetings;
-                }
-                else {
-                    view = VIEWS.CHATS;
-                }
-            }
-            else if (!chats.length && meetings.length) {
-                rooms = meetings;
-                view = VIEWS.MEETINGS;
-            }
-            if (view) {
-                onIdle(() => {
-                    this.trigger(EVENTS.NAV_RENDER_VIEW, view);
-                });
-            }
-
-            rooms.sort(M.sortObjFn('lastActivity', -1));
+            const rooms = Object.values(this.chats)
+                .filter(r => this.currentlyOpenedView === null || r.isMeeting === !!this.currentlyOpenedView)
+                .sort(M.sortObjFn('lastActivity', -1));
 
             do {
                 room = valid(rooms[idx]);
@@ -2141,17 +2063,8 @@ Chat.prototype.createAndShowPrivateRoom = promisify(function(resolve, reject, h)
         .catch(reject);
 });
 
-Chat.prototype.createAndShowGroupRoomFor = function(contactHashes, topic, opts = {}) {
-    this.trigger(
-        'onNewGroupChatRequest',
-        [
-            contactHashes,
-            {
-                'topic': topic || "",
-                ...opts
-            }
-        ]
-    );
+Chat.prototype.createAndShowGroupRoomFor = function(contactHashes, topic = '', opts = {}) {
+    this.trigger('onNewGroupChatRequest', [contactHashes, { topic, ...opts }]);
 };
 
 Chat.prototype.createAndStartMeeting = function(topic, audio, video) {
@@ -2395,6 +2308,16 @@ Chat.prototype.getChatById = function(chatdId) {
     return found;
 };
 
+/**
+* getNoteChat
+* @description Returns the message to yourself chat; 1-on-1 chat with the current user as the only participant
+* @returns {ChatRoom}
+*/
+
+Chat.prototype.getNoteChat = function() {
+    return Object.values(this.chats).find(c => c.isNote);
+};
+
 
 /**
  * Retrieves a message of idb if not in memory
@@ -2468,7 +2391,7 @@ Chat.prototype.openChatAndSendFilesDialog = function(user_handle) {
             }
             else {
                 room.one('onComponentDidMount.sendFilesDialog', () => {
-                    room.trigger('openSendFilesDialog');
+                    onIdle(() => room.trigger('openSendFilesDialog'));
                 });
             }
             room.setActive();
@@ -2517,11 +2440,29 @@ Chat.prototype.openChatAndAttachNodes = async function(targets, nodes, silent) {
     }
     const result = (await Promise.allSettled(promises)).map(e => e.value).filter(Boolean);
 
+    let folderCount = 0;
+    let fileCount = 0;
+    for (let i = nodes.length; i--;) {
+        const { t } = M.getNodeByHandle(nodes[i]) || {};
+        if (t === 1) {
+            folderCount++;
+        }
+        else {
+            fileCount++;
+        }
+    }
+    let message = mega.icu.format(l.toast_send_chat_items, nodes.length);
+    if (fileCount === 0 && folderCount) {
+        message = mega.icu.format(l.toast_send_chat_folders, folderCount);
+    }
+    else if (folderCount === 0 && fileCount) {
+        message = mega.icu.format(l.toast_send_chat_files, fileCount);
+    }
     for (let i = result.length; i--;) {
         if (result[i] instanceof ChatRoom) {
             const room = result[i];
 
-            showToast('send-chat', nodes.length > 1 ? l[17767] : l[17766]);
+            mega.ui.toast.show(message);
 
             if (!silent) {
                 await M.openFolder(room.getRoomUrl().replace('fm/', '')).catch(dump);
@@ -2687,6 +2628,91 @@ Chat.prototype.getFrequentContacts = function() {
     return Chat._frequentsCache;
 };
 
+/**
+ * Returns up to the last two contacts to send messages in the chat room
+ *
+ * @param {ChatRoom} chatRoom The room to check
+ * @returns {Promise<[]>} The last contacts in the chat room.
+ */
+Chat.prototype.lastRoomContacts = async function(chatRoom) {
+    let timeout;
+    let loaded = false;
+    let loadMore = false;
+    const { promise } = mega;
+    const proc = () => {
+        if (timeout) {
+            timeout.abort();
+        }
+        const { messages } = chatRoom.messagesBuff;
+        const arr = messages.slice(Math.max(0, messages.length - 32));
+        let first = '';
+        let second = '';
+        for (let i = arr.length; i--;) {
+            const message = arr[i];
+            const h = message.userId === mega.BID && message.meta ? message.meta.userId : message.userId;
+            if (
+                h !== mega.BID &&
+                h !== strongvelope.COMMANDER &&
+                h !== u_handle &&
+                h in M.u && M.u[h].c === 1
+            ) {
+                if (first && first !== h) {
+                    second = h;
+                    break;
+                }
+                first = h;
+            }
+        }
+        if (second) {
+            promise.resolve([first, second]);
+        }
+        else if (first) {
+            promise.resolve([first]);
+        }
+        else {
+            promise.resolve([]);
+        }
+        chatRoom.messagesBuff.detachMessages();
+    };
+    const next = () => {
+        if (!loadMore && chatRoom.messagesBuff.messages.length < 32 && chatRoom.messagesBuff.haveMoreHistory()) {
+            if (timeout) {
+                timeout.restart();
+            }
+            loadMore = true;
+            chatRoom.messagesBuff.retrieveChatHistory(false);
+        }
+        else {
+            chatRoom.off('onHistoryDecrypted.lrc');
+            proc();
+        }
+    };
+    if (chatRoom.isLoading()) {
+        loaded = false;
+        chatRoom.rebind('onHistoryDecrypted.lrc', next);
+        timeout = tSleep(10);
+    }
+    else if (chatRoom.messagesBuff.messages.length < 32 && chatRoom.messagesBuff.haveMoreHistory()) {
+        loaded = false;
+        loadMore = true;
+        chatRoom.rebind('onHistoryDecrypted.lrc', next);
+        chatRoom.messagesBuff.retrieveChatHistory(false);
+        timeout = tSleep(10);
+    }
+    else {
+        proc();
+    }
+    if (timeout) {
+        timeout.then(() => {
+            if (!loaded) {
+                chatRoom.off('onHistoryDecrypted.lrc');
+                promise.resolve([]);
+            }
+        });
+    }
+    return promise;
+};
+
 
 Chat.prototype.eventuallyAddDldTicketToReq = function(req) {
     if (!u_handle) {
@@ -2700,12 +2726,6 @@ Chat.prototype.eventuallyAddDldTicketToReq = function(req) {
         req['cauth'] = currentRoom.publicChatHandle;
     }
 };
-
-Chat.prototype.safeForceUpdate = SoonFc(60, function forceAppUpdate() {
-    if (this.$conversationsAppInstance) {
-        this.$conversationsAppInstance.forceUpdate();
-    }
-});
 
 Chat.prototype.removeMessagesByRetentionTime = function(chatId) {
     if (this.chats.length > 0) {
@@ -3066,11 +3086,11 @@ Chat.prototype.fetchSoundBuffer = async function(sound) {
     if (this.SOUNDS.buffers[sound]) {
         return this.SOUNDS.buffers[sound].slice();
     }
-    let res = await M.xhr({url: `${staticpath}sounds/${sound}.mp3`, type: 'arraybuffer'}).catch(() => {
+    let res = await M.xhr({url: `${staticpath}media/${sound}.mp3`, type: 'arraybuffer'}).catch(() => {
         console.warn('Failed to fetch sound .mp3 file', sound);
     });
     if (!res) {
-        res = await M.xhr({ url: `${staticpath}sounds/${sound}.ogg`, type: 'arraybuffer' }).catch(() => {
+        res = await M.xhr({url: `${staticpath}media/${sound}.ogg`, type: 'arraybuffer'}).catch(() => {
             console.error('Failed to fetch sound .ogg file', sound);
         });
     }

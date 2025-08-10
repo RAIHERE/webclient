@@ -1,9 +1,10 @@
 import React from 'react';
-import { MegaRenderMixin } from "../chat/mixins";
+import { MegaRenderMixin } from '../chat/mixins.js';
 
-let _buttonGroups = {};
+const BLURRABLE_CLASSES = '.conversationsApp, .join-meeting, .main-blur-block';
 
 export class Button extends MegaRenderMixin {
+    domRef = React.createRef();
     buttonClass = `.button`;
 
     state = {
@@ -17,20 +18,13 @@ export class Button extends MegaRenderMixin {
         this.state.iconHovered = this.props.iconHovered || '';
     }
 
-    componentWillUpdate(nextProps, nextState) {
+    UNSAFE_componentWillUpdate(nextProps, nextState) {
         if (nextProps.disabled === true && nextState.focused === true) {
             nextState.focused = false;
         }
 
         if (this.state.focused !== nextState.focused && nextState.focused === true) {
-            $('.conversationsApp, .join-meeting, .main-blur-block')
-                .rebind('mousedown.button' + this.getUniqueId(), this.onBlur);
-
-            $(document).rebind('keyup.button' + this.getUniqueId(), e => {
-                if (this.state.focused === true && e.keyCode === 27 /* `ESC` */) {
-                    this.onBlur();
-                }
-            });
+            this.bindEvents();
 
             if (this._pageChangeListener) {
                 mBroadcaster.removeListener(this._pageChangeListener);
@@ -41,22 +35,6 @@ export class Button extends MegaRenderMixin {
                     this.onBlur();
                 }
             });
-
-            $(document).rebind('closeDropdowns.' + this.getUniqueId(), () => this.onBlur());
-
-            // change the focused state to any other buttons in this group
-            if (this.props.group) {
-                if (_buttonGroups[this.props.group] && _buttonGroups[this.props.group] !== this) {
-                    _buttonGroups[this.props.group].setState({focused: false});
-                    _buttonGroups[this.props.group].unbindEvents();
-                }
-                _buttonGroups[this.props.group] = this;
-            }
-        }
-
-        // deactivate group if focused => false and i'm the currently "focused" in the group
-        if (this.props.group && nextState.focused === false &&  _buttonGroups[this.props.group] === this) {
-            _buttonGroups[this.props.group] = null;
         }
     }
 
@@ -66,49 +44,31 @@ export class Button extends MegaRenderMixin {
     }
 
     renderChildren() {
-        var self = this;
-        if (React.Children.count(self.props.children) < 1) {
-            return null;
-        }
-
-        return React.Children.map(this.props.children, function (child) {
-            if (!child) {
-                return;
-            }
-            if (typeof child.type === 'string' || typeof child.type === 'undefined') {
-                // DOM element or Raw text
-                return child;
-            }
-
-            return React.cloneElement(child, {
-                active: self.state.focused,
-                closeDropdown: function() {
-                    self.setState({'focused': false});
-                    self.unbindEvents();
-                },
-                onActiveChange: function(newVal) {
-                    var $element = $(self.findDOMNode());
-                    var $scrollables = $element.parents('.ps');
-                    if ($scrollables.length > 0) {
-                        if (newVal === true) {
-                            // disable scrolling
-                            $scrollables.each((k, element) => {
-                                Ps.disable(element);
-                            });
-                        }
-                        else {
-                            // enable back scrolling
-                            $scrollables.each((k, element) => {
-                                Ps.enable(element);
-                            });
-                        }
-                    }
-                    if (child.props.onActiveChange) {
-                        child.props.onActiveChange.call(this, newVal);
-                    }
-                }
-            });
-        }.bind(this));
+        return (
+            this.props.children &&
+            React.Children.map(this.props.children, child =>
+                child && (
+                    typeof child.type === 'string' || child.type === undefined ?
+                        child : // DOM element or Raw text
+                        React.cloneElement(child, {
+                            active: this.state.focused,
+                            closeDropdown: () =>
+                                this.setState({ focused: false }, () =>
+                                    this.unbindEvents()
+                                ),
+                            onActiveChange: active => {
+                                const $element = $(this.domRef?.current || this.domNode);
+                                const $scrollables = $element.parents('.ps');
+                                if ($scrollables.length > 0) {
+                                    $scrollables.map((k, element) => Ps[active ? 'disable' : 'enable'](element));
+                                }
+                                child.props.onActiveChange?.(active);
+                                return this[active ? 'bindEvents' : 'unbindEvents']();
+                            }
+                        })
+                )
+            )
+        );
     }
 
     onBlur = e => {
@@ -116,22 +76,30 @@ export class Button extends MegaRenderMixin {
             return;
         }
 
-        if (!e || !$(e.target).closest(this.buttonClass).is(this.findDOMNode())) {
+        if (!e || !$(e.target).closest(this.buttonClass).is(this.domRef?.current)) {
             this.setState({ focused: false }, () => {
                 this.unbindEvents();
                 this.safeForceUpdate();
             });
         }
+    };
+
+    bindEvents() {
+        $(BLURRABLE_CLASSES).rebind(`mousedown.button--${this.getUniqueId()}`, this.onBlur);
+
+        $(document).rebind(`keyup.button--${this.getUniqueId()}`, ev =>
+            this.state.focused === true && ev.keyCode === 27 /* `ESC` */ &&
+            this.onBlur()
+        );
+
+        $(document).rebind(`closeDropdowns.${this.getUniqueId()}`, this.onBlur);
     }
 
     unbindEvents() {
-        $(document).off('keyup.button' + this.getUniqueId());
-        $(document).off('closeDropdowns.' + this.getUniqueId());
-        $('.conversationsApp, .join-meeting, .main-blur-block').unbind('mousedown.button' + this.getUniqueId());
-
-        if (this._pageChangeListener) {
-            mBroadcaster.removeListener(this._pageChangeListener);
-        }
+        $(BLURRABLE_CLASSES).unbind(`mousedown.button--${this.getUniqueId()}`);
+        $(document).off(`keyup.button--${this.getUniqueId()}`);
+        $(document).off(`closeDropdowns.${this.getUniqueId()}`);
+        mBroadcaster.removeListener(this._pageChangeListener);
     }
 
     onClick = e => {
@@ -142,7 +110,7 @@ export class Button extends MegaRenderMixin {
         }
 
         if (
-            $(e.target).closest('.popup').closest(this.buttonClass).is(this.findDOMNode()) &&
+            $(e.target).closest('.popup').closest(this.buttonClass).is(this.domRef?.current) &&
             this.state.focused === true
         ) {
             e.preventDefault();
@@ -159,14 +127,14 @@ export class Button extends MegaRenderMixin {
                 this.props.onClick(this, e);
             }
             else if (React.Children.count(this.props.children) > 0) { // does it contain some kind of a popup/container?
-                this.setState({ focused: true });
+                this.setState({ focused: true }, () => this.safeForceUpdate());
             }
         }
         else if (this.state.focused === true) {
             this.setState({ focused: false });
             this.unbindEvents();
         }
-    }
+    };
 
     render() {
         const {
@@ -186,6 +154,7 @@ export class Button extends MegaRenderMixin {
 
         return (
             <TagName
+                ref={this.domRef}
                 className={`
                     button
                     ${className || ''}

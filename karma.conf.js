@@ -16,7 +16,7 @@ module.exports = function(config) {
     files: [
         // == Basic test setup ==
         'test/test_main.js',
-        'test/test_utils.js',
+        'test/test_s4.js',
 
         // == Basics ==
         'js/vendor/jquery.js',
@@ -34,6 +34,7 @@ module.exports = function(config) {
         'test/config.js',
 
         // Shim for ES6 features some browsers may not have (PhantomJS, MSIE).
+        'js/vendor/scheduler-polyfill.js',
         'js/vendor/web-streams-polyfill.js',
         'js/vendor/dexie.js',
 
@@ -52,8 +53,10 @@ module.exports = function(config) {
         'js/utils/dom.js',
         'js/utils/events.js',
         'js/utils/locale.js',
+        'js/utils/md5.js',
         'js/utils/media.js',
         'js/utils/network.js',
+        'js/utils/s4.js',
         'js/utils/timers.js',
         'js/utils/watchdog.js',
         'js/utils/webgl.js',
@@ -139,6 +142,7 @@ module.exports = function(config) {
 
         // Our chat code.
         'js/chat/strongvelope.js',
+        'js/chat/sfuClient.js',
         'js/fm/linkinfohelper.js',
         'js/chat/plugins/urlFilter.js',
         'js/chat/plugins/emoticonShortcutsFilter.js',
@@ -150,6 +154,8 @@ module.exports = function(config) {
         'js/chat/plugins/geoLocationLinks.js',
         'js/chat/messages.js',
         'js/utils/emoji.js',
+        'worker.sfuClient.bundle.js',
+        'worker.recorder.bundle.js',
 
 
         // == Test utilities ==

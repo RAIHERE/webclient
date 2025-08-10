@@ -86,36 +86,41 @@ const lastActivity = room => {
 class MessageRow extends MegaRenderMixin {
     render() {
         const { data, matches, room, index, onResultOpen } = this.props;
-        const isGroup = room && roomIsGroup(room);
+        const isGroup = roomIsGroup(room);
         const contact = room.getParticipantsExceptMe();
         const summary = room.messagesBuff.getRenderableSummary(data);
+        const date = todayOrYesterday(data.delay * 1000) ? getTimeMarker(data.delay) : time2date(data.delay, 17);
 
         return (
             <div
                 ref={node => {
-                    this.nodeRef = node;
+                    this.domRef = node;
                 }}
                 className={`
                     ${RESULT_ROW_CLASS}
                     message
                 `}
                 onClick={() =>
-                    openResult({ room, messageId: data.messageId, index }, () => onResultOpen(this.nodeRef))
+                    openResult({ room, messageId: data.messageId, index }, () => onResultOpen(this.domRef))
                 }>
                 <div className="message-result-avatar">
-                    {isGroup ?
+                    {isGroup &&
                         <div className="chat-topic-icon">
                             <i className="sprite-fm-uni icon-chat-group"/>
-                        </div> :
-                        <Avatar contact={M.u[contact]}/>}
+                        </div>
+                    }
+                    {room.isNote &&
+                        <div className="note-chat-signifier">
+                            <i className="sprite-fm-mono icon-file-text-thin-outline note-chat-icon"/>
+                        </div>
+                    }
+                    {room.type === 'private' && <Avatar contact={M.u[contact]}/>}
                 </div>
                 <div className="user-card">
                     <span className="title">
-                        {
-                            isGroup
-                                ? <OFlowEmoji>{room.getRoomTitle()}</OFlowEmoji>
-                                : <ContactAwareName contact={M.u[contact]} overflow={true} />
-                        }
+                        {isGroup && <OFlowEmoji>{room.getRoomTitle()}</OFlowEmoji>}
+                        {room.isNote && <span>{l.note_label}</span>}
+                        {room.type === 'private' && <ContactAwareName contact={M.u[contact]} overflow={true}/>}
                     </span>
                     {isGroup ? null : <ContactPresence contact={M.u[contact]}/>}
                     <div className="clear"/>
@@ -126,9 +131,7 @@ class MessageRow extends MegaRenderMixin {
                         <div className="result-separator">
                             <i className="sprite-fm-mono icon-dot"/>
                         </div>
-                        <span className="date">
-                            {getTimeMarker(data.delay, true)}
-                        </span>
+                        <span className="date">{date}</span>
                     </div>
                 </div>
             </div>
@@ -148,10 +151,10 @@ class ChatRow extends MegaRenderMixin {
         return (
             <div
                 ref={node => {
-                    this.nodeRef = node;
+                    this.domRef = node;
                 }}
                 className={RESULT_ROW_CLASS}
-                onClick={() => openResult({ room }, () => onResultOpen(this.nodeRef))}>
+                onClick={() => openResult({ room }, () => onResultOpen(this.domRef))}>
                 <div className="chat-topic-icon">
                     <i className="sprite-fm-uni icon-chat-group"/>
                 </div>
@@ -159,7 +162,7 @@ class ChatRow extends MegaRenderMixin {
                     <div className="graphic">
                         <OFlowParsedHTML>{result}</OFlowParsedHTML>
                     </div>
-                    {lastActivity(room)}
+                    <div className="result-last-activity">{lastActivity(room)}</div>
                 </div>
                 <div className="clear"/>
             </div>
@@ -179,10 +182,10 @@ class MemberRow extends MegaRenderMixin {
         return (
             <div
                 ref={node => {
-                    this.nodeRef = node;
+                    this.domRef = node;
                 }}
                 className={RESULT_ROW_CLASS}
-                onClick={() => openResult({ room: room || contact.h }, () => onResultOpen(this.nodeRef))}>
+                onClick={() => openResult({ room: room || contact.h }, () => onResultOpen(this.domRef))}>
                 {isGroup ?
                     <div className="chat-topic-icon">
                         <i className="sprite-fm-uni icon-chat-group"/>

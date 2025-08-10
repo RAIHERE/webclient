@@ -9,6 +9,7 @@
  */
 lazy(mega, 'lite', () => {
     'use strict';
+    const inf = mega.infinity;
 
     /** Max load time in milliseconds */
     const maxLoadTimeInMs = localStorage.testLargeNodes ? 1000 : 1000 * 60 * 2;
@@ -19,6 +20,13 @@ lazy(mega, 'lite', () => {
     /** Timer to count how long the load is taking */
     let liteModeTimeoutId;
 
+    /** Disabled sections for MEGA Lite*/
+    const disabledSections = freeze({
+        faves: 1,
+        photos: 1,
+        recents: 1
+    });
+
     /**
      * Recommend MEGA Lite mode (if applicable). For the dialog to be shown, they must be a PRO user
      * AND they have over x nodes AND also their load time takes over x minutes
@@ -28,7 +36,7 @@ lazy(mega, 'lite', () => {
 
         // Only Pro users can get Lite mode and skip checking the remaining logic if already in Infinity or Lite mode
         // NB: mega.infinity is the same mode but without any UI changes or options hidden (useful for future dev).
-        if (!u_attr.p || mega.infinity) {
+        if (!u_attr.p || inf) {
             return false;
         }
 
@@ -121,6 +129,13 @@ lazy(mega, 'lite', () => {
      */
     function initBackToMegaButton(topbarSelector) {
 
+        document.body.classList.add('mega-lite-mode');
+
+        if (mega.flags.inf > 1 && !sessionStorage.allowbtom) {
+            $('.js-back-to-mega-button', topbarSelector).addClass('hidden');
+            return;
+        }
+
         $('.js-back-to-mega-button', topbarSelector).rebind('click.backtomega', () => {
 
             // Remove the local storage variable which triggers MEGA Lite mode to load
@@ -146,7 +161,7 @@ lazy(mega, 'lite', () => {
                 const handle = selectedNodes[i];
 
                 // If type is folder, return true
-                if (M.d[handle].t === 1) {
+                if (M.getNodeByHandle(handle).t === 1) {
                     return true;
                 }
             }
@@ -161,6 +176,7 @@ lazy(mega, 'lite', () => {
         recommendLiteMode,
         initBackToMegaButton,
         containsFolderInSelection,
+        disabledSections,
         abort() {
             clearTimeout(liteModeTimeoutId);
         }

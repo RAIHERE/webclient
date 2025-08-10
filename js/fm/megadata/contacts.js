@@ -199,6 +199,9 @@ MegaData.prototype.syncUsersFullname = async function(userId, chatHandle) {
         }
         else if (M.currentrootid === 'shares') {
             $(`.shared-details-info-block .${userId} ~> .fm-chat-user`).text(`${userName} <${user.m}>`);
+            if (mega.ui.secondaryNav) {
+                mega.ui.secondaryNav.updateCard(userId);
+            }
         }
     }
 
@@ -209,6 +212,7 @@ MegaData.prototype.syncUsersFullname = async function(userId, chatHandle) {
     // only clear old avatar if the old one was a text one and was different then the new names
     if (user.avatar && user.avatar.type !== "image" && name !== user.name) {
         user.avatar = false;
+        useravatar.generateContactAvatarMeta(userId);
         useravatar.loaded(userId);
     }
 
@@ -218,9 +222,15 @@ MegaData.prototype.syncUsersFullname = async function(userId, chatHandle) {
         u_attr.name = user.name;
 
         $('.user-name, .top-menu-logged .name, .membership-big-txt.name').text(u_attr.fullname);
-        if (!is_mobile && M.currentdirid === 'account') {
-            accountUI.account.profiles.renderFirstName();
-            accountUI.account.profiles.renderLastName();
+
+        if (!is_mobile) {
+            if (M.currentdirid === 'account') {
+                accountUI.account.profiles.renderFirstName();
+                accountUI.account.profiles.renderLastName();
+            }
+            if (mega.ui.header.avatarButton && mega.ui.header.avatarButton.hasClass('active')) {
+                mega.ui.header.updateUserName(u_attr.fullname);
+            }
         }
     }
 
@@ -240,7 +250,7 @@ MegaData.prototype.syncUsersFullname = async function(userId, chatHandle) {
 
     if ($.dialog === 'share') {
         // Re-render the content of access list in share dialog to update contacts' latest names
-        renderShareDialogAccessList();
+        mega.ui.mShareDialog.renderAccessList();
     }
 
     return user.name;
@@ -706,10 +716,13 @@ MegaData.prototype.ignorePendingContactRequest = function(id) {
 
 // Searches M.opc for the pending contact
 MegaData.prototype.findOutgoingPendingContactIdByEmail = function(email) {
+
+    const emailLowercase = String(email).toLowerCase();
+
     for (var index in this.opc) {
         var opc = this.opc[index];
 
-        if (opc.m === email) {
+        if (String(opc.m).toLowerCase() === emailLowercase) {
             return opc.p;
         }
     }

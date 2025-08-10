@@ -414,20 +414,30 @@
                 });
             }
             else {
-                if (chathandle) {
-                    api_req(
-                        {'a': 'mcuga', "ph": chathandle, 'u': userhandle, 'ua': attribute, 'v': 1},
-                        myCtx,
-                        ATTR_REQ_CHANNEL[attribute]
-                    );
-                }
-                else {
+                if (window.is_karma) {
                     api_req(
                         {'a': 'uga', 'u': userhandle, 'ua': attribute, 'v': 1},
                         myCtx,
                         ATTR_REQ_CHANNEL[attribute]
                     );
+                    return;
                 }
+                const payload = {a: 'uga', u: userhandle, ua: attribute, v: 1};
+
+                if (chathandle) {
+                    payload.a = 'mcuga';
+                    payload.ph = chathandle;
+                }
+                api.req(payload, ATTR_REQ_CHANNEL[attribute])
+                    .then(({result}) => settleFunction(result))
+                    .catch((ex) => {
+                        const ec = Number(ex);
+
+                        if (ec !== ENOENT) {
+                            logger.warn(attribute, ex);
+                        }
+                        settleFunction(ec || ex);
+                    });
             }
         };
 
@@ -1396,15 +1406,6 @@
         uaPacketParserHandler['^!enotif'] = function() {
             mega.enotif.handleAttributeUpdate();
         };
-        uaPacketParserHandler['^!affid'] = function(userHandle) {
-            mega.attr.get(userHandle, 'affid', -2, 1, function(res, ctx) {
-                u_attr[ctx.ua] = res;
-
-                if (fminitialized) {
-                    M.affiliate.id = res;
-                }
-            });
-        };
         uaPacketParserHandler['^!webtheme'] = function(userHandle) {
 
             mega.attr.get(userHandle, 'webtheme', -2, 1, function(res, ctx) {
@@ -1450,6 +1451,25 @@
                         galleryUI();
                     }
                 }
+            });
+        };
+
+        uaPacketParserHandler['*!ccPref'] = (uh) => {
+
+            mega.attr.get(uh, "ccPref", false, true, (res, ctx) => {
+
+                u_attr[ctx.ua] = tlvstore.encrypt(res);
+
+                if (fminitialized && 'ccPrefs' in mega) {
+
+                    mega.ccPrefs.sync();
+                }
+            });
+        };
+
+        uaPacketParserHandler['*!sds'] = (userHandle) => {
+            mega.attr.get(userHandle, "sds", false, true, (res, ctx) => {
+                u_attr[ctx.ua] = tlvstore.encrypt(res);
             });
         };
 

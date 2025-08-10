@@ -49,8 +49,8 @@
             return false;
         }
 
-        // Name
-        const namehtml = is_mobile ? '' : '<div class="properties-name-container">'
+        // Name and path
+        let namePathHtml = (is_mobile && !pfcol) ? '' : '<div class="properties-name-container">'
             + '<div class="properties-small-gray">' + p.t1 + '</div>'
             + '<div class="properties-name-block"><div class="propreties-dark-txt">' + p.t2 + '</div>'
             + '</div></div>';
@@ -87,19 +87,32 @@
             : '<div class="properties-float-bl"><div class="properties-small-gray t10">' + p.t10 + '</div>'
             + '<div class="propreties-dark-txt t11">' + p.t11 + '</div></div></div>';
 
-        return namehtml
-            + `<div class="properties-breadcrumb"><div class="properties-small-gray path">${l.path_lbl}</div>`
-            + '<div class="fm-breadcrumbs-wrapper info">'
-            +                    '<div class="crumb-overflow-link dropdown">'
-            +                       '<a class="breadcrumb-dropdown-link info-dlg">'
-            +                            '<i class="menu-icon sprite-fm-mono icon-options icon24"></i>'
-            +                        '</a>'
-            +                        '<i class="sprite-fm-mono icon-arrow-right icon16"></i>'
-            +                    '</div>'
-            +                    `<div class="fm-breadcrumbs-block info${is_mobile ? ' location' : ''}"></div>`
-            +                    '<div class="breadcrumb-dropdown"></div>'
-            +                '</div>'
-            + '</div>'
+        if (pfcol) {
+            const {name} = M.getNodeByHandle(p.n.p);
+
+            namePathHtml +=
+                `<div class="properties-float-bl">
+                    <div class="properties-small-gray">${l.path_lbl}</div>
+                    <div class="propreties-dark-txt t7">${escapeHTML(name || '')}</div>
+                </div>`;
+        }
+        else {
+            namePathHtml += '<div class="properties-breadcrumb">'
+                +     `<div class="properties-small-gray path">${l.path_lbl}</div>`
+                +     '<div class="fm-breadcrumbs-wrapper info">'
+                +         '<div class="crumb-overflow-link dropdown">'
+                +             '<a class="breadcrumb-dropdown-link info-dlg">'
+                +                 '<i class="menu-icon sprite-fm-mono icon-options icon24"></i>'
+                +             '</a>'
+                +             '<i class="sprite-fm-mono icon-arrow-right icon16"></i>'
+                +         '</div>'
+                +         `<div class="fm-breadcrumbs-block info${is_mobile ? ' location' : ''}"></div>`
+                +         '<div class="breadcrumb-dropdown"></div>'
+                +     '</div>'
+                + '</div>';
+        }
+
+        return namePathHtml
             + '<div class="properties-items"><div class="properties-float-bl properties-total-size">'
             + '<span class="properties-small-gray">' + p.t3 + '</span>'
             + '<span class="propreties-dark-txt">' + p.t4 + '</span></div>'
@@ -251,13 +264,6 @@
 
             if (p.isUndecrypted) {
                 p.t2 = htmlentities(l[8649]);
-            }
-            else if (mega.backupCenter
-                && mega.backupCenter.selectedSync
-                && mega.backupCenter.selectedSync.nodeHandle === n.h
-                && mega.backupCenter.selectedSync.localName) {
-
-                p.t2 = htmlentities(mega.backupCenter.selectedSync.localName);
             }
             else if (n.name) {
                 p.t2 = htmlentities(n.name);
@@ -422,7 +428,9 @@
                 // on idle so we can call renderPathBreadcrumbs only once the info dialog is rendered.
                 onIdle(() => {
                     // we pass the filehandle, so it is available if we search on files on search
-                    M.renderPathBreadcrumbs(n.h, true);
+                    M.renderPathBreadcrumbs(
+                        n.h, document.querySelector('.properties-breadcrumb .fm-breadcrumbs-wrapper')
+                    );
                     mBroadcaster.sendMessage('properties:finish', n.h);
                 });
             }
@@ -533,29 +541,6 @@
             $('.mega-dialog').removeClass('arrange-to-front');
             $.hideContextMenu();
         };
-
-        $dialog.find('.file-settings-icon').rebind('click context', function(e) {
-            if (!$(this).hasClass('active')) {
-                e.preventDefault();
-                e.stopPropagation();
-                $(this).addClass('active');
-                // $('.mega-dialog').addClass('arrange-to-front');
-                // $('.properties-dialog').addClass('arrange-to-back');
-                $('.dropdown.body').addClass('arrange-to-front');
-                e.currentTarget = $('#' + n.h);
-                if (!e.currentTarget.length) {
-                    e.currentTarget = $('#treea_' + n.h);
-                }
-                e.calculatePosition = true;
-                $.selected = [n.h];
-                M.contextMenuUI(e, n.h.length === 11 ? 5 : 1);
-            }
-            else {
-                __fsi_close();
-            }
-
-            return false;
-        });
 
         $(document).rebind('MegaCloseDialog.Properties', __fsi_close);
 

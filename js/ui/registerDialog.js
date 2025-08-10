@@ -105,10 +105,6 @@
                     };
                     u_attr.terms = 1;
 
-                    if (mega.affid) {
-                        ops.aff = mega.affid;
-                    }
-
                     api_req(ops);
                 }
                 registrationDone();
@@ -252,6 +248,11 @@
                 msgDialog('warninga', l[1117], l.accept_privacy_policy_warning);
             }
             else {
+                // Log S4 account registation
+                if (options.s4Flag) {
+                    eventlog(500592);
+                }
+
                 if (u_type === false) {
                     hideOverlay();
                     u_storage = init_storage(localStorage);
@@ -294,6 +295,11 @@
                     aPromise.reject();
                 }
                 closeRegisterDialog($dialog, true);
+
+                if (page.startsWith('propay_')) {
+                    return loadSubPage('pro');
+                }
+
                 return false;
             });
 

@@ -31,7 +31,7 @@ function init_page() {
         throw new Error('Unexpected access...');
     }
 
-    const [ph, key, opt] = isPublicLink(page);
+    const [ph, key, opt] = isPublicLink(page) || [];
     $.playbackOptions = opt;
 
     var init = function(res) {
@@ -67,10 +67,7 @@ function init_embed(ph, key, g) {
     add_layout();
 
     if (node) {
-        var link = '#!' + ph + '!' + key;
-        if (mega.flags.nlfe) {
-            link = '/file/' + ph + '#' + key;
-        }
+        const link = '/file/' + ph + '#' + key;
 
         // XXX: as needed for mega.io given we cannot access the parent domain reliably of course..
         var unfortunateHackpatch = ph === 'RvY01QZB' || ph === '8rI0GIrQ';
@@ -80,11 +77,6 @@ function init_embed(ph, key, g) {
             $('.viewer-top-bl, .logo-container').remove();
             $('.viewer-bottom-bl').addClass('no-grad');
             $('.media-viewer').addClass('no-bg-color');
-        }
-        else if (mega.refsunref) {
-            localStorage.affid = ph;
-            localStorage.affts = Date.now();
-            localStorage.afftype = 2;
         }
 
         $('.play-video-button, .viewonmega-item, .filename').rebind('click', function() {
@@ -119,7 +111,7 @@ function init_embed(ph, key, g) {
                 if (playing && document.getElementById('timecheckbox').checked) {
                     content = content.replace(/[!/][\w-]{8}[!#][^"]+/, '$&!' + timeoffset + 's');
                 }
-                copyToClipboard(content, 1);
+                copyToClipboard(content, l[16763]);
             });
 
             $('.share-link .tab-content', $block).rebind('click', () => {
@@ -134,8 +126,7 @@ function init_embed(ph, key, g) {
 
             (function _() {
                 $('.tab-link', $block).removeClass('active').rebind('click', _);
-                $('.share-link .tab-content', $block)
-                    .text(url.replace('/embed', '/' + (mega.flags.nlfe ? 'file' : '')));
+                $('.share-link .tab-content', $block).text(url.replace('/embed', '/file'));
                 $('.embed-code .tab-content', $block).text(embed.replace('%', url));
             }).call(this);
 
@@ -151,15 +142,6 @@ function init_embed(ph, key, g) {
 
             $block.removeClass('hidden');
             $wrapper.addClass('main-blur-block share-option');
-        });
-
-        $('.audio-wrapper .share').rebind('click', function() {
-            copyToClipboard(getBaseUrl() + link, 1);
-            const $this = $(this).addClass('clicked').attr('data-simpletip', l.copied_link);
-            later(() => {
-                $this.removeClass('clicked').attr('data-simpletip', l.copy_link);
-            });
-            return false;
         });
 
         watchdog.registerOverrider('login', function(ev, strg) {
@@ -213,6 +195,14 @@ function init_embed(ph, key, g) {
             if ($.playbackOptions.includes('1c')) {
                 $('.audio-wrapper .share').addClass('invisible');
             }
+            else {
+                $('.audio-wrapper .share').rebind('click', function() {
+                    copyToClipboard(getBaseUrl() + link, l[16763]);
+                    const $this = $(this).addClass('clicked');
+                    later(() => $this.removeClass('clicked'));
+                    return false;
+                });
+            }
             const $thumb = $('.audio-wrapper .audio-thumbnail img')
                 .attr('src', `${staticpath}/images/mega/audio.png`);
             getImage(node, 1).then((uri) => $thumb.attr('src', uri)).catch(dump);
@@ -260,14 +250,11 @@ function add_layout() {
     $('body').safeHTML(translate(pages.index).replace(/{staticpath}/g, staticpath));
 
     var elm = document.querySelector('video');
-    var style = elm.style;
-    var fill = function() {
-        style.maxWidth = style.minWidth = window.innerWidth + 'px';
-        style.maxHeight = style.minHeight = window.innerHeight + 'px';
-    };
-    fill();
+    const { style } = elm;
+    style.maxWidth = style.minWidth = '100vw';
+    style.maxHeight = style.minHeight = '100vh';
+
     elm.controls = false;
-    window.addEventListener('resize', fill);
 
     topmenuUI();
 }
@@ -470,14 +457,15 @@ function under(page) {
     return false;
 }
 
-function showToast() {
+function showToast(type, content, timeout) {
     'use strict';
 
-    var $toast = $('.toast-notification');
-    $toast.addClass('visible second');
-    setTimeout(function() {
+    const $toast = $('.toast-notification').addClass('visible second');
+    $('.toast-message', $toast).text(content);
+
+    setTimeout(() => {
         $toast.removeClass('visible second');
-    }, 2000);
+    }, parseInt(timeout) || 2000);
 }
 
 function msgDialog(type, title, msg, submsg, callback, checkbox) {
@@ -528,12 +516,8 @@ function pagemetadata() {
     append('robots', 'noindex', 'name');
 
     if (ep_node) {
-        var url = getBaseUrl() + '/embed#!' + ep_node.link;
-        var data = MediaAttribute(ep_node).data;
-
-        if (mega.flags.nlfe) {
-            url = getBaseUrl() + '/embed/' + ep_node.link.replace('!', '#');
-        }
+        const url = getBaseUrl() + '/embed/' + ep_node.link.replace('!', '#');
+        const data = MediaAttribute(ep_node).data;
 
         if (data) {
             append('og:duration', data.playtime);

@@ -8,7 +8,6 @@ import ChatToaster from "../chatToaster.jsx";
 import ParticipantsBlock from './participantsBlock.jsx';
 import VideoNodeMenu from './videoNodeMenu.jsx';
 import Button from './button.jsx';
-import { Emoji } from '../../../ui/utils.jsx';
 import StreamHead from './streamHead.jsx';
 import Admit from './waitingRoom/admit.jsx';
 
@@ -92,7 +91,7 @@ export const filterAndSplitSources = (sources, call) => {
 };
 
 export default class Stream extends MegaRenderMixin {
-    wrapperRef = React.createRef();
+    domRef = React.createRef();
     containerRef = React.createRef();
 
     nodeRefs = [];
@@ -788,14 +787,14 @@ export default class Stream extends MegaRenderMixin {
         const { overlayed, page, streamsPerPage, floatDetached, wrToggled } = this.state;
         const {
             mode, call, chatRoom, minimized, peers, sidebar, hovered, forcedLocal, view, isOnHold, waitingRoomPeers,
-            recorder, raisedHandPeers, isFloatingPresenter, onRecordingToggle, onCallMinimize, onCallExpand,
+            recorderCid, raisedHandPeers, isFloatingPresenter, onRecordingToggle, onCallMinimize, onCallExpand,
             onModeChange, onAudioClick, onVideoClick, onCallEnd, onScreenSharingClick, onHoldClick, onSpeakerChange,
             onParticipantsToggle, setActiveElement
         } = this.props;
 
         return (
             <div
-                ref={this.wrapperRef}
+                ref={this.domRef}
                 className={`
                     ${NAMESPACE}
                     ${sidebar ? '' : 'full'}
@@ -863,9 +862,9 @@ export default class Stream extends MegaRenderMixin {
                     sidebar={sidebar}
                     forcedLocal={forcedLocal}
                     isPresenterNode={isFloatingPresenter}
-                    wrapperRef={this.wrapperRef}
+                    wrapperRef={this.domRef}
                     waitingRoomPeers={waitingRoomPeers}
-                    recorder={recorder}
+                    recorderCid={recorderCid}
                     raisedHandPeers={raisedHandPeers}
                     onRecordingToggle={onRecordingToggle}
                     onAudioClick={onAudioClick}

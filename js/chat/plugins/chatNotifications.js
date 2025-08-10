@@ -70,15 +70,17 @@ var ChatNotifications = function(megaChat, options) {
         const evtId = generateEventSuffixFromArguments('', 'chatNotifStopSound', rand(10000));
         const removeNotification = e => {
             if (e.data.callId === callId || !chatRoom.ringingCalls.exists(callId)) {
-                if (this._incomingDialogContainers[callId]) {
-                    const node = this._incomingDialogContainers[callId];
-                    ReactDOM.unmountComponentAtNode(node);
-                    node.parentNode.removeChild(node);
+                const incomingDialogContainer = this._incomingDialogContainers[callId];
+                if (incomingDialogContainer) {
+                    incomingDialogContainer.$$rootRef.unmount();
                     delete this._incomingDialogContainers[callId];
                 }
                 notification.forceStopSound(notificationSound);
                 callManager.off(`onRingingStopped${evtId}`);
                 callManager.off(`onRoomDisconnected${evtId}`);
+                if ($.msgDialog) {
+                    fm_showoverlay();
+                }
             }
         };
 
@@ -121,9 +123,9 @@ var ChatNotifications = function(megaChat, options) {
             }
         });
 
-        this._incomingDialogContainers[callId] = dialogContainer;
-        document.body.append(dialogContainer);
-        ReactDOM.render(dialog, dialogContainer);
+        const $$rootRef = ReactDOM.createRoot(dialogContainer);
+        this._incomingDialogContainers[callId] = { $$rootRef, dialogContainer };
+        $$rootRef.render(dialog);
 
         callManager.on(`onRingingStopped${evtId}`, removeNotification);
         chatRoom.on(`onRoomDisconnected${evtId}`, triggerRingingStopped);
@@ -182,11 +184,6 @@ var ChatNotifications = function(megaChat, options) {
                     fromContact = message.authorContact;
                 }
 
-                let {avatarUrl, fullName} = fromContact ? generateAvatarMeta(fromContact.u) : {};
-                if (!fullName && fromContact) {
-                    fullName = await megaChat.plugins.userHelper.getUserName(fromContact.u).catch(dump);
-                }
-
                 let n;
 
                 // halt if already seen.
@@ -196,6 +193,11 @@ var ChatNotifications = function(megaChat, options) {
                     message.revoked === true
                 ) {
                     return;
+                }
+
+                let {avatarUrl, fullName} = fromContact ? generateAvatarMeta(fromContact.u) : {};
+                if (!fullName && fromContact) {
+                    fullName = await megaChat.plugins.userHelper.getUserName(fromContact.u).catch(dump);
                 }
 
                 if (message.userId !== u_handle) {
@@ -296,7 +298,7 @@ var ChatNotifications = function(megaChat, options) {
 
             megaRoom
                 .rebind('onMessagesBuffAppend.chatNotifications', (e, message) => {
-                    onMessagesBuffHandler(e, message).catch(dump);
+                    return is_chatlink ? null : onMessagesBuffHandler(e, message).catch(dump);
                 })
                 .rebind('onChatShown.chatNotifications', function() {
                     onIdle(resetChatNotificationCounters);

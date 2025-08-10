@@ -177,7 +177,8 @@ function isPublicLink(page) {
                 value: ptr[0] === 'folder' || ptr[0] === 'collection'
             },
             link: {
-                value: ptr[0] + '/' + ptr[1] + '#' + ptr[2] + (ptr.length > 3 ? '/' + ptr.slice(3).join('/') : '')
+                value: ptr[0] + '/' + ptr[1] + (ptr.length > 2 ?
+                    ('#' + ptr[2] + (ptr.length > 3 ? '/' + ptr.slice(3).join('/') : '')) : '')
             }
         });
     }
@@ -243,6 +244,7 @@ var is_bot = !is_extension && /bot|crawl/i.test(ua);
 var is_webcache = location.host === 'webcache.googleusercontent.com';
 var is_livesite = location.host === 'mega.nz' || location.host === 'mega.io'
     || location.host === 'smoketest.mega.nz' || is_extension;
+var is_transferit = !is_livesite && (/transfer\.it$/.test(location.host) || localStorage.it);
 
 function getMobileStoreLink() {
     'use strict';
@@ -381,23 +383,6 @@ function getCleanSitePath(path) {
             var target = window.mega || window;
             target.uaoref = path.uao;
         }
-        if (path.aff) {
-            tryCatch(function() {
-                if (!path.aff_time) {
-                    sessionStorage.affid = path.aff;
-                    sessionStorage.affts = Date.now();
-                    sessionStorage.afftype = 1;
-                }
-                else if (!(sessionStorage.affts > (path.aff_time *= 1000))) {
-                    sessionStorage.affid = path.aff;
-                    sessionStorage.affts = path.aff_time;
-
-                    // Future proof, currently only public link affiliate data is coming from other agent.
-                    // Later, url from other agents will contains type for it to support other type.
-                    sessionStorage.afftype = path.aff_type || 2;
-                }
-            }, false)();
-        }
 
         tryCatch(function() {
             if (path.csp) {
@@ -412,8 +397,15 @@ function getCleanSitePath(path) {
             if (path.cjevent) {
                 sessionStorage.cjevent = path.cjevent;
             }
-            if (path[0] === 'pro' && path.tab) {
+            if (path.tab && path[0] === 'pro') {
                 window.mProTab = path.tab;
+                if (window.mProTab === 'flexi') {
+                    window.mProTab = 'pro';
+                    sessionStorage.mScrollTo = 'flexi';
+                }
+            }
+            if (path.m && path[0].startsWith('propay_')) {
+                sessionStorage['pro.period'] = path.m;
             }
         }, false)();
 
@@ -422,6 +414,9 @@ function getCleanSitePath(path) {
         }
         if (path.mct) {
             window.uTagMCT = path.mct;
+        }
+        if (path.miojid) {
+            window.uTagMJID = path.miojid;
         }
 
         if (path.next) {
@@ -475,8 +470,7 @@ function geoStaticPath(cms) {
 
             // Set which countries will use which static server
             var northAmericaStaticCountries = 'AG AI AR BB BL BO BR BS BZ CA CL CO CO CR CU DO EC FK GD GF GL GT GY HN HT IS JM KN LC MX NI PA PE PR PY SR SR TT US UY VC VE VE VG VI';
-            var newZealandStaticCountries = 'AU FJ NC NZ';
-            var japanStaticCountries = 'JP TW PH HK MO KR SG KP BN BT MM MY TH VN';
+            var japanStaticCountries = 'JP TW PH HK MO KR SG KP BN BT MM MY TH VN AU FJ NC NZ';
 
             // Match on cookie e.g. "geoip=SG" returns array ['geoip=SG', 'SG']
             var cookieMatch = String(document.cookie).match(/geoip\s*\=\s*([A-Z]{2})/);
@@ -487,9 +481,6 @@ function geoStaticPath(cms) {
             }
             else if (cookieMatch && cookieMatch[1] && northAmericaStaticCountries.indexOf(cookieMatch[1]) > -1) {
                 return 'https://na.static.mega.co.nz/' + finalPath;
-            }
-            else if (cookieMatch && cookieMatch[1] && newZealandStaticCountries.indexOf(cookieMatch[1]) > -1) {
-                return 'https://nz.static.mega.co.nz/' + finalPath;
             }
         }
     }
@@ -503,11 +494,11 @@ var myURL = window.URL;
 // Check whether we should redirect the user to the browser update.html page (triggered for Edge 18 and worse browsers)
 browserUpdate = browserUpdate ||
     (is_embed
-            ? (typeof ReadableStream === 'undefined' || typeof IntersectionObserver === 'undefined')
+        ? typeof ReadableStream === 'undefined' || typeof AbortController === 'undefined'
             : typeof BigInt === 'undefined'
     );
 // ReadableStream: C43 E14 F65 O30 S10.1
-// IntersectionObserver: C51 E15 F55 O38 S12.1
+// AbortController: C66 E16 F57 O53 S12.1
 
 if (!String.prototype.trim) {
     String.prototype.trim = function() {
@@ -592,7 +583,7 @@ if (!browserUpdate) try
         }, 4000);
     }
 
-    if (!is_livesite && !is_karma && !is_webcache) {
+    if (!is_livesite && !is_karma && !is_webcache && !self.is_transferit) {
         d = d > 0 ? d : !localStorage.nfd;
         jj = d > 0 && !sessionStorage.dbgContentCheck;
         dd = 1;
@@ -615,6 +606,15 @@ if (!browserUpdate) try
         d = 1;
         sessionStorage.rad = 1;
     }
+    else if (location.host === 'smoketest.transfer.it') {
+        staticpath = 'https://smkstatic.transfer.it/';
+        defaultStaticPath = staticpath;
+        d = 1;
+    }
+    else if (location.host === 'transfer.it') {
+        staticpath = 'https://st.transfer.it/';
+        defaultStaticPath = staticpath;
+    }
 
     if (d > 0) {
         localStorage.minLogLevel |= 0;
@@ -631,6 +631,10 @@ if (!browserUpdate) try
     // If dark mode flag is enabled, change styling
     if (localStorage.getItem('darkMode') === '1') {
         document.documentElement.classList.add('dark-mode');
+    }
+
+    if (!is_mobile) {
+        document.body.classList.add('web-desktop');
     }
 }
 catch(e) {
@@ -682,6 +686,7 @@ var mega = {
     state: 0,
     utils: {},
     slideshow: {settings: {}},
+    devices: {rootId: 'device-centre', sections: {}, uiElems: {}},
     uaoref: window.uaoref,
     updateURL: defaultStaticPath + 'current_ver.txt',
     chrome: (
@@ -784,7 +789,7 @@ var mega = {
     redirect: function(to, page, kv, urlQs, st) {
         'use strict';
         var storage = localStorage;
-        var toMegaIo = to === 'mega.io';
+        var toMegaIo = ['mega.io', 'blog.mega.io', 'help.mega.io'].includes(to);
         var getCount = 0;
         st = typeof st === 'undefined' || st;
 
@@ -798,13 +803,6 @@ var mega = {
 
         if (page) {
             to += '/' + page;
-        }
-
-        var affid = sessionStorage.affid || storage.affid;
-        var affts = sessionStorage.affts || storage.affts;
-        if (affid && affts && !(Date.now() - affts > 864e5)) {
-            to += '?aff=' + affid;
-            getCount++;
         }
 
         var _getSeperator = function() {
@@ -955,6 +953,10 @@ Object.defineProperty(mega, 'pwmh', {
 
 /** @property mega.infinity */
 lazy(mega, 'infinity', function() {
+    'use strict';
+    if (mega.flags.inf > 1) {
+        localStorage.megaLiteMode = 1;
+    }
     return mega.flags.inf > 0 || !!localStorage.mInfinity || !!localStorage.megaLiteMode;
 });
 
@@ -964,10 +966,21 @@ lazy(mega, 'rewindEnabled', function() {
     return (mega.flags.rw || localStorage.rewindEnable) && !is_mobile;
 });
 
+/** @property mega.xferit */
+lazy(mega, 'xferit', function() {
+    'use strict';
+    return self.d > 0 && !self.is_livesite || self.is_livesite && this.flags.ff_xferit;
+});
+
 /** @property mega.viewID */
 lazy(mega, 'viewID', function() {
     'use strict';
     return (Date.now() / 1e3 >>> 0).toString(16).slice(-8) + makeUUID().slice(-8);
+});
+
+lazy(mega, 'utqav', function() {
+    'use strict';
+    return (mega.flags.utqav || localStorage.utqa_nf || 3);
 });
 
 (function(chrome) {
@@ -1032,7 +1045,7 @@ var bootstaticpath = staticpath;
 var urlrootfile = '';
 
 // Disable hash checking for search engines to speed the site load up
-if (is_bot) {
+if (window.is_bot) {
     nocontentcheck = true;
 }
 else if (is_karma) {
@@ -1144,7 +1157,7 @@ window.redirect = ['about', 'achievements', 'android', 'bird', 'business', 'chro
                    'contact', 'cookie', 'copyright', 'corporate', 'credits', 'desktop', 'dev',
                    'developers', 'dispute', 'doc', 'edge', 'extensions', 'firefox', 'gdpr', 'help', 'ios',
                    'megabackup', 'mobile', 'nas', 'objectstorage',
-                   'plugin', 'privacy', 'refer', 'resellers', 'sdk', 'securechat',
+                   'plugin', 'privacy', 'refer', 'sdk', 'securechat',
                    'security', 'sourcecode', 'start', 'storage', 'sync', 'takedown', 'terms', 'uwp', 'wp'];
 var isStaticPage = function(page) {
     'use strict';
@@ -1173,7 +1186,7 @@ else if ((page = isPublicLink())) {
     // folder or file link: always keep the hash URL to ensure that keys remain client side
     // history.replaceState so that back button works in new URL paradigm
     dl_res = !!page.dl;
-    page = page.link || page;
+    page = String(page.link || page);
     pushHistoryState(true, page);
 }
 else {
@@ -1224,6 +1237,7 @@ var languages = {
     'ro': [['ro', 'ro-'], 'Romanian', 'Română'],
     'ru': [['ru', 'ru-mo'], 'Russian', 'Pусский'],
     'th': [['||', 'th'], 'Thai', 'ไทย'],
+    'tr': [['tr', 'tr-'], 'Turkish', 'Türkçe'],
     'vi': [['vn', 'vi'], 'Vietnamese', 'Tiếng Việt']
 };
 
@@ -1522,10 +1536,7 @@ function siteLoadError(error, filename) {
         logStaticServerFailure(error, filename, staticpath);
     }
 
-    var message = ['MEGA failed to load because '];
-    if (location.host !== 'mega.nz') {
-        message[0] += '..';
-    }
+    var message = [(document.title || 'The site') + ' failed to load,'];
 
     if (error === load_error_types.file_corrupt) {
         message.push('The file "' + filename + '" is corrupt.');
@@ -1543,11 +1554,11 @@ function siteLoadError(error, filename) {
     }
 
     message.push('Please click OK to refresh and try again.');
-    message.push("If the problem persists, please try disabling all third-party browser extensions, " +
-                 "update your browser and MEGA browser extension to the latest version. " +
-                 "If that does not help, contact support@mega.nz");
+    message.push("If the problem persists, please try disabling all third-party browser extensions " +
+        "and ensure your browser is up to date. " +
+        "If that does not help, contact support@" + (self.is_extension ? 'mega.nz' : location.host));
 
-    message.push('BrowserID: ' + (typeof mozBrowserID !== 'undefined' ? mozBrowserID : ua) + '\n' +
+    message.push('BrowserID: ' + self.ua + '\n' +
                  'Static server: ' + staticpath + '\n' +
                  'Flipped to default static: ' + (staticServerLoading.flippedToDefault ? 'yes' : 'no') + '\n' +
                  'Date/time: ' + new Date().toISOString());
@@ -1595,6 +1606,33 @@ if (is_mobile) {
 
     mCreateElement('meta', {name: "apple-mobile-web-app-capable", content: "yes"}, 'head');
     mCreateElement('meta', {name: "apple-mobile-web-app-status-bar-style", content: "black"}, 'head');
+}
+
+if (is_transferit) {
+    mCreateElement('link', {
+        type: 'image/png',
+        href: staticpath + 'js/ui/transfer/images/favicons/favicon-96x96.png',
+        sizes: '96x96'
+    }, 'head');
+    mCreateElement('link', {
+        type: 'image/svg+xml',
+        href: staticpath + 'js/ui/transfer/images/favicons/favicon.svg'
+    }, 'head');
+    mCreateElement('link', {
+        rel: 'shortcut icon',
+        href: staticpath + 'js/ui/transfer/images/favicons/favicon.ico'
+    }, 'head');
+    mCreateElement('link', {
+        rel: 'apple-touch-icon',
+        sizes: '180x180',
+        href: staticpath + 'js/ui/transfer/images/favicons/apple-touch-icon.png'
+    }, 'head');
+    mCreateElement('link', {
+        rel: 'manifest',
+        href: staticpath + 'js/ui/transfer/images/favicons/site.webmanifest'
+    }, 'head');
+
+    mCreateElement('meta', {name: 'apple-mobile-web-app-title', content: 'Transfer it'}, 'head');
 }
 
 if (is_livesite && !is_extension) {
@@ -1769,29 +1807,14 @@ else if (!browserUpdate) {
     jj = window.jj || 0;
 
     // Do not report exceptions if this build is older than 10 days
-    var exTimeLeft = (is_extension || !nocontentcheck) && (buildVersion.timestamp + 10 * 86400) * 1000 > Date.now();
-    window.buildOlderThan10Days = !exTimeLeft;
+    Object.defineProperty(self, 'buildOlderThan10Days', {
+        value: !((is_extension || !nocontentcheck) && (buildVersion.timestamp + 10 * 86400) * 1000 > Date.now())
+    });
 
-    // Override to see logs being sent
-    if (localStorage.getItem('sendStaticFailureLogs') !== null) {
-        window.buildOlderThan10Days = false;
-    }
-
-    if (!d && exTimeLeft && is_livesite)
-    {
+    if (!self.buildOlderThan10Days) {
         var __cdumps = [], __cd_t;
         window.onerror = function __MEGAExceptionHandler(msg, url, ln, cn, errobj)
         {
-            function mTrim(s)
-            {
-                return String(s)
-                    .replace('-extension://', '~')
-                    .replace(/blob:[^:\s]+/, '..')
-                    .replace(/([^'])\w+:\/\/[^\s:]+/, '$1..')
-                    .replace(/\.\.:\/\/[^:\s]+/, '..')
-                    .replace(/(?: line \d+ > eval)+/g,' >.eval')
-                    .trim();
-            }
             if (__cdumps.length > 3) return false;
 
             if (url && ln < 2) {
@@ -1800,268 +1823,15 @@ else if (!browserUpdate) {
             }
 
             var expectedSourceOrigin = url || ln > 999;
-            var dump = {
-                l: ln,
-                f: mTrim(url),
-                m: mTrim(msg)
-                    .replace(/'[a-z]+:\/+[^']+(?:'|$)/gi, function(url) {
-                        url = url.substr(1);
-                        if (url[url.length - 1] === "'") {
-                            url = url.substr(0, url.length - 1);
-                        }
-                        var a = document.createElement('a');
-                        a.href = url;
-                        return "'" + (a.origin !== 'null' && a.origin
-                            || (a.protocol + '//' + a.hostname)) + "...'";
-                    })
-                    .replace(/(Cannot read propert[\w\s]+)\(?([\w\s]*'[\w-]{8}')/, "$1'<h>?'")
-                    .replace(/(Access to '\.\.).*(' from script denied)/, '$1$2')
-                    .replace(/gfs\w+\.userstorage/, 'gfs...userstorage')
-                    .replace(/^Uncaught\W*(?:exception\W*)?/i, ''),
-            }, cc;
-            var sbid = +(''+(document.querySelector('script[src*="secureboot"]')||{}).src).split('=').pop()|0;
-
-            if (~dump.m.indexOf('[[:i]]')) {
-                return false;
-            }
-
-            if (dump.m.indexOf("Failed to construct 'Worker'") !== -1) {
-                errobj = {};
-                dump.l = ln = 1; // enforce deduplication..
-            }
-
-            if (~dump.m.indexOf("\n")) {
-                var lns = dump.m.split(/\r?\n/).map(String.trim).filter(String);
-
-                if (lns.length > 6) {
-                    dump.m = [].concat(lns.slice(0,2), "[..!]", lns.slice(-2)).join(" ");
-                }
-            }
-            dump.m = (
-                is_mobile ? '[mobile] ' :
-                    is_embed ? '[embed] ' :
-                        window.pfid ? '[FL] ' :
-                            mega.infinity ? '[INF] ' :
-                        is_drop ? '[drop] ' : ''
-            ) + dump.m.replace(/\s+/g, ' ');
-
-            var injectedScript =
-                /userscript|user\.js|EvalError/.test(dump.m + url + (errobj && errobj.stack))
-                || dump.m.indexOf('Permission denied to access property') !== -1
-                || dump.m.indexOf('Cannot redefine property') !== -1
-                || dump.m.indexOf("evaluating 'ze(e,t)'") !== -1
-                || dump.m.indexOf("evaluating 'r(a,c)'") !== -1
-                || dump.m.indexOf("evaluating 'a.L") !== -1
-                || dump.m.indexOf('Error: hookFull') !== -1;
-
-            if (injectedScript) {
-                window.onerror = null;
-                window.log99723 = true;
-                expectedSourceOrigin = false;
-            }
-
             if (expectedSourceOrigin && !window.u_checked) {
                 // Alert the user if there was an uncaught exception while
                 // loading the site, this should only happen on some fancy
                 // browsers other than what we use during development, and
                 // hopefully they'll report it back to us for troubleshoot
-                return siteLoadError(dump.m, url + '^~' + ln);
+                return siteLoadError(msg, url + '^~' + ln);
             }
 
-            if (injectedScript) {
-                // Some third party extension is injecting bogus script(s)...
-                console.warn('Your account is only as secure as your computer...');
-                console.warn('Check your installed extensions for the one injecting bogus scripts on this page...');
-                console.error(dump.m, dump, errobj);
-                return false;
-            }
-
-            if (/NS_ERR|out[\s_]+of[\s_]+mem|dead\s+object|allocation\s+failed/i.test(dump.m)
-                && (!window.ua || !ua.details || !ua.details.blink)) {
-
-                window.onerror = null;
-                console.error(dump.m, dump, errobj);
-                return false;
-            }
-
-            if (!expectedSourceOrigin) {
-                window.onerror = null;
-                console.error(dump.m, dump, errobj);
-
-                if (!/SyntaxError|Script\serror/.test(dump.m)) {
-                    onIdle(function() {
-                        var xhr = new XMLHttpRequest();
-                        xhr.open('POST', apipath + 'cs?id=0', true);
-                        xhr.send(
-                            JSON.stringify(
-                                [{a: 'log', e: 99806, m: JSON.stringify([1, dump.m, url + ':' + ln])}]
-                            )
-                        );
-                    });
-                }
-                return;
-            }
-
-            var version = buildVersion.website;
-
-            if (is_extension) {
-                if (is_firefox_web_ext) {
-                    version = buildVersion.firefox;
-                }
-                else if (mega.chrome) {
-                    version = buildVersion.chrome;
-                }
-            }
-
-            if (errobj)
-            {
-                if (errobj.stack)
-                {
-                    var maxStackLines = 15;
-                    var omsg = String(msg).trim();
-                    var re = RegExp(
-                        omsg.substr(0, 70)
-                        .replace(/^\w+:\s/, '')
-                        .replace(/([^\w])/g, '\\$1')
-                        + '[^\r\n]+'
-                    );
-
-                    dump.s = String(errobj.stack)
-                        .replace(omsg, '').replace(re, '')
-                        .split("\n").map(mTrim)
-                        .filter(function(s, idx, a) {
-                            return s.length && a[idx - 1] !== s;
-                        });
-
-                    for (var idx = 1; idx < dump.s.length; idx++) {
-                        var s = dump.s[idx];
-
-                        if (s.indexOf('@resource:') > 0 || s.indexOf('@jar:') > 0) {
-                            maxStackLines = idx;
-                            break;
-                        }
-                    }
-
-                    if (dump.m.indexOf(':skull:') > 0) {
-                        maxStackLines = 50;
-                    }
-
-                    dump.s = dump.s.splice(0, maxStackLines).join("\n");
-
-                    if (dump.s.indexOf('Unknown script code:') !== -1
-                        || dump.s.indexOf('Function code:') !== -1
-                        || dump.s.indexOf('(eval code:') !== -1
-                        || dump.s.indexOf('(unknown source)') !== -1
-                        || /<anonymous>:\d+:/.test(dump.s)) {
-
-                        console.warn('Got uncaught exception from unknown resource,'
-                            + ' your MEGA account might be compromised.');
-                        console.error(msg, errobj, errobj && errobj.stack, url, ln);
-                        return false;
-                    }
-                }
-
-                if (typeof eventlog === 'function' && !errobj.udata && /\w/.test(msg || '')) {
-                    eventlog(99702, JSON.stringify([version, ln, msg]), true);
-                }
-            }
-            if (cn) dump.c = cn;
-
-            if (/Access to (?:the script at )?'.*(?:' from script|'?is) denied|origin 'null'/.test(dump.m)) {
-                console.error(dump.m, dump);
-                return false;
-            }
-
-            if (ln == 0 && !dump.s)
-            {
-                if (dump.m.toLowerCase().indexOf('out of memory') != -1) dump.m = '!Fatal! Out Of Memory.';
-                else dump.m = dump.m.replace(/[^\s\w]/gi,'') || ('[!] ' + msg);
-            }
-
-            try
-            {
-                var crashes = JSON.parse(localStorage.crashes || '{}');
-                var checksum = wchecksum(JSON.stringify(dump), 0x4ef5391a);
-
-                if (crashes.v != sbid) crashes = { v : sbid };
-
-                if (crashes[checksum])
-                {
-                    // Reported less than 10 days ago?
-                    if (Date.now() - crashes[checksum] < 864000000) return false;
-                }
-                dump.x = checksum;
-                crashes[checksum] = Date.now();
-                localStorage.crashes = JSON.stringify(crashes);
-                cc = Object.keys(crashes).length;
-            }
-            catch(e) {
-                delete localStorage.crashes;
-            }
-
-            __cdumps.push(dump);
-            if (__cd_t) clearTimeout(__cd_t);
-            var report = tryCatch(function()
-            {
-                function ctx(id)
-                {
-                    return {
-                        callback : function(res)
-                        {
-                            if (res === EOVERQUOTA)
-                            {
-                                __cdumps = new Array(4);
-                                if (__cd_t) clearTimeout(__cd_t);
-
-                                if (id)
-                                {
-                                    var crashes = JSON.parse(localStorage.crashes || '{}');
-                                    delete crashes[id];
-                                    localStorage.crashes = JSON.stringify(crashes);
-                                }
-                            }
-                        }
-                    };
-                }
-                var ids = [], uds = [], r = 1;
-                for (var i in __cdumps)
-                {
-                    var dump = __cdumps[i];
-
-                    if (dump.x) { ids.push(dump.x); delete dump.x; }
-                    if (dump.d) { uds.push(dump.d); delete dump.d; }
-                    if (dump.l < 0) r = 0;
-                }
-
-                var report = {};
-                report.ua = navigator.userAgent;
-                report.io = window.dlMethod && dlMethod.name;
-                report.sb = sbid;
-                report.tp = typeof $ !== 'undefined' && $.transferprogress;
-                report.id = ids.join(",");
-                report.ud = uds;
-                report.cc = cc;
-
-                report = JSON.stringify(r? report:{});
-
-                for (var i = __cdumps.length; i--;)
-                {
-                    if (!/\w/.test(__cdumps[i].m || '')) continue;
-
-                    api_req({
-                        a: 'cd2',
-                        c: JSON.stringify(__cdumps[i]),
-                        // v: report,
-                        // s: window.location.host,
-                        t: version
-                    }, ctx(ids[i]));
-                }
-                __cd_t = 0;
-                __cdumps = [];
-            });
-            __cd_t = setTimeout(function() {
-                report();
-            }, 3000);
+            __cdumps.push([msg, url, ln, cn, errobj]);
 
             return false;
         };
@@ -2170,7 +1940,7 @@ else if (!browserUpdate) {
     };
 
     tryCatch(function() {
-        if (!is_mobile && !is_iframed && 'serviceWorker' in navigator) {
+        if (!is_mobile && !is_iframed && 'serviceWorker' in navigator && !self.is_transferit) {
             // The service worker isn't listened to until much later so just queue any messages for now.
             var handler = function(ev) {
                 mega.pendingServiceWorkerMsgs.push({data: ev.data});
@@ -2224,12 +1994,13 @@ else if (!browserUpdate) {
     jsl.push({f:'js/utils/dom.js', n: 'js_utils_dom_js', j: 1});
     jsl.push({f:'js/utils/events.js', n: 'js_utils_events_js', j: 1});
     jsl.push({f:'js/utils/icu.js', n: 'js_utils_icu_js', j: 1});
-    jsl.push({f:'js/keymgr.js', n: 'keymgr_js', j:1});
+    jsl.push({f:'js/utils/intl.js', n: 'js_utils_intl_js', j: 1});
     jsl.push({f:'js/utils/locale.js', n: 'js_utils_locale_js', j: 1});
     jsl.push({f:'js/utils/md5.js', n: 'js_utils_md5_js', j: 1});
     jsl.push({f:'js/utils/media.js', n: 'js_utils_pictools_js', j: 1});
     jsl.push({f:'js/utils/megalite.js', n: 'js_utils_megalite_js', j: 1});
     jsl.push({f:'js/utils/network.js', n: 'js_utils_network_js', j: 1});
+    jsl.push({f:'js/utils/sentinel.js', n: 'js_utils_sentinel_js', j: 1});
     jsl.push({f:'js/utils/splitter.js', n: 'js_utils_splitter_js', j: 1});
     jsl.push({f:'js/utils/test.js', n: 'js_utils_test_js', j: 1});
     jsl.push({f:'js/utils/timers.js', n: 'js_utils_timers_js', j: 1});
@@ -2239,8 +2010,22 @@ else if (!browserUpdate) {
     jsl.push({f:'js/utils/webgl.js', n: 'webgl_js', j:1});
     jsl.push({f:'js/utils/subtitles.js', n: 'subtitles_js', j: 1});
 
+    jsl.push({f:'js/utils/factory/file-list.js', n: 'factory:filelist_js', j:1});
+    jsl.push({f:'js/utils/factory/pbkdf2.js', n: 'factory:pbkdf2_js', j: 1});
+    jsl.push({f:'js/utils/factory/mkdir.js', n: 'factory:mkdir_js', j:1});
+    jsl.push({f:'js/utils/factory/safe-name.js', n: 'factory:safename_js', j:1});
+    jsl.push({f:'js/utils/factory/safe-path.js', n: 'factory:safepath_js', j:1});
+    // Key Management.
+    jsl.push({f:'js/keymgr.js', n: 'keymgr_js', j:1});
+
+    // Content consumption settings wrapper
+    jsl.push({f:'js/utils/cc-prefs.js', n: 'cc_prefs_js', j:1});
+
     // Sets and elements
     jsl.push({f:'js/utils/sets.js', n: 'fm_sets_js', j:1});
+
+    // Sensitive (aka. Hidden or Lock) nodes
+    jsl.push({f:'js/utils/sensitives.js', n: 'fm_sensitives_js', j:1});
 
     jsl.push({f:'js/vendor/dexie.js', n: 'dexie_js', j:1,w:5});
     jsl.push({f:'js/functions.js', n: 'functions_js', j:1});
@@ -2271,23 +2056,24 @@ else if (!browserUpdate) {
 
     jsl.push({f:'js/ui/simpletip.js', n: 'simpletip_js', j:1,w:1});
     jsl.push({f:'js/useravatar.js', n: 'contact_avatar_js', j:1,w:3});
-    jsl.push({f:'css/avatars.css', n: 'avatars_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/avatars.css', n: 'avatars_css', j:2,w:5});
 
     // Common desktop and mobile, bottom pages
-    jsl.push({f:'css/mio.css', n: 'mio_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/fonts.css', n: 'fonts_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/bottom-pages.css', n: 'bottom-pages_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/bottom-menu.css', n: 'bottom-menu_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/business.css', n: 'business_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/pro.css', n: 'pro_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/planpricing.css', n: 'planpricing_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/activate-s4.css', n: 'activates4_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/startpage.css', n: 'startpage_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/icons.css', n: 'icons_css', j: 2, w: 5, c: 1, d: 1, cache: 1});
-    jsl.push({f:'css/spinners.css', n: 'spinners_css', j: 2, w: 5, c: 1, d: 1, cache: 1});
-    jsl.push({f:'css/business-register.css', n: 'business-register_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/psa.css', n: 'psa_css', j: 2, w: 5, c: 1, d: 1, cache: 1});
-    jsl.push({f:'css/features.css', n: 'features_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/mio.css', n: 'mio_css', j:2,w:5});
+    jsl.push({f:'css/fonts.css', n: 'fonts_css', j:2,w:5});
+    jsl.push({f:'css/bottom-pages.css', n: 'bottom-pages_css', j:2,w:5});
+    jsl.push({f:'css/bottom-menu.css', n: 'bottom-menu_css', j:2,w:5});
+    jsl.push({f:'css/business.css', n: 'business_css', j:2,w:5});
+    jsl.push({f:'css/pro.css', n: 'pro_css', j:2,w:5});
+    jsl.push({f:'css/propay.css', n: 'propay_css', j:2,w:5});
+    jsl.push({f:'css/planpricing.css', n: 'planpricing_css', j:2,w:5});
+    jsl.push({f:'css/activate-s4.css', n: 'activates4_css', j:2,w:5});
+    jsl.push({f:'css/startpage.css', n: 'startpage_css', j:2,w:5});
+    jsl.push({f:'css/icons.css', n: 'icons_css', j: 2, w: 5});
+    jsl.push({f:'css/spinners.css', n: 'spinners_css', j: 2, w: 5});
+    jsl.push({f:'css/business-register.css', n: 'business-register_css', j:2,w:5});
+    jsl.push({f:'css/psa.css', n: 'psa_css', j: 2, w: 5});
+    jsl.push({f:'css/features.css', n: 'features_css', j:2,w:5});
     jsl.push({f:'html/js/bottompage.js', n: 'bottompage_js', j:1});
     jsl.push({f:'html/pagesmenu.html', n: 'pagesmenu', j:0});
     jsl.push({f:'html/bottom2.html', n: 'bottom2',j:0});
@@ -2303,23 +2089,25 @@ else if (!browserUpdate) {
     jsl.push({f:'js/ui/megaInputs-underlinedText.js', n: 'megainputs_underlinedtext_js', j:1,w:1});
     jsl.push({f:'js/ui/megaInputs-textArea.js', n: 'megainputs_textarea_js', j:1,w:1});
     jsl.push({f:'js/ui/megaInputs-currencyField.js', n: 'megainputs_currencyfield_js', j:1, w:1});
+    jsl.push({f:'js/ui/megaInputs-pmText.js', n: 'megaInputs_pmText_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/component.js', n: 'component_js', j: 1, w: 1});
+    jsl.push({f:'js/ui/components/node.js', n: 'node_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/sharednode.js', n: 'sharednode_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/contactnode.js', n: 'contactnode_js', j: 1, w:1});
     jsl.push({f:'html/registerb.html', n: 'registerb',j:0});
-    jsl.push({f:'html/developersettings.html', n: 'developersettings', j:0});
-    jsl.push({f:'html/js/developersettings.js', n: 'developersettings_js', j:1 });
     jsl.push({f:'html/repay.html', n: 'repay', j:0 });
     jsl.push({f:'html/js/repay.js', n: 'repay_js', j:1 });
     jsl.push({f:'js/ui/passwordReminderDialog.js', n: 'prd_js', j:1,w:1});
     jsl.push({f:'html/dialogs-common.html', n: 'dialogs-common', j:0,w:2});
-    jsl.push({f:'css/dialogs-common.css', n: 'dialogs-common_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/dialogs/cookie-dialog.css', n: 'cookie-dialog_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/dialogs-common.css', n: 'dialogs-common_css', j:2,w:5});
+    jsl.push({f:'css/dialogs/cookie-dialog.css', n: 'cookie-dialog_css', j:2,w:5});
     jsl.push({f:'js/metatags.js', n: 'metatags_js', j:1 });
     jsl.push({f:'js/vendor/verge.js', n: 'verge', j:1, w:5});
     jsl.push({f:'js/vendor/perfect-scrollbar.js', n: 'ps_js', j:1,w:1});
     jsl.push({f:'js/ui/languageDialog.js', n: 'languageDialog_js', j:1,w:7});
-    jsl.push({f:'css/jquery-ui.extra.css', n: 'jquery_ui_extra_css', j:2,w:5,c:1,d:1,cache:1});
-    // jsl.push({f:'js/ui/commercials.js', n: 'commercials', j:1,w:1});
+    jsl.push({f:'css/jquery-ui.extra.css', n: 'jquery_ui_extra_css', j:2,w:5});
     jsl.push({f:'html/cookiepolicy.html', n: 'cookiepolicy', j:0});
-    jsl.push({f:'css/cookiepolicy.css', n: 'cookiepolicy_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/cookiepolicy.css', n: 'cookiepolicy_css', j:2,w:5});
 
     if (!is_mobile) {
         jsl.push({f:'js/jquery.tokeninput.js', n: 'jquerytokeninput_js', j:1});
@@ -2329,27 +2117,40 @@ else if (!browserUpdate) {
         // UI Elements
         jsl.push({f:'js/ui/megaRender.js', n: 'megarender_js', j:1,w:1});
         jsl.push({f:'js/ui/dialog.js', n: 'dialogui_js', j:1,w:1});
-        jsl.push({f:'js/ui/components/MComponent.js', n: 'm_component_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MComponent.js', n: 'm_component_js', j:1});
         jsl.push({f:'js/ui/credentialsWarningDialog.js', n: 'creddialogui_js', j:1,w:1});
         jsl.push({f:'js/ui/loginRequiredDialog.js', n: 'loginrequireddialog_js', j:1,w:1});
         jsl.push({f:'js/ui/registerDialog.js', n: 'registerdialog_js', j:1,w:1});
         jsl.push({f:'js/ui/keySignatureWarningDialog.js', n: 'mega_js', j:1,w:7});
         jsl.push({f:'js/ui/feedbackDialog.js', n: 'feedbackdialogui_js', j:1,w:1});
         jsl.push({f:'js/ui/forcedUpgradeProDialog.js', n: 'forcedupgradeprodialog_js', j:1,w:1});
+        jsl.push({f:'js/ui/dcAppPromoDialog.js', n: 'dcAppPromoDialog_js', j:1,w:1});
         jsl.push({f:'js/ui/alarm.js', n: 'alarm_js', j:1,w:1});
         jsl.push({f:'js/ui/toast.js', n: 'toast_js', j:1,w:1});
         jsl.push({f:'js/ui/top-tooltip-login.js', n: 'top-tooltip-login', j:1});
         jsl.push({f:'js/fm/transfer-progress-widget.js', n: 'tpw_js', j:1});
 
+        // S4 activation page in FM
+        jsl.push({f:'js/fm/s4/main.js', n: 'fm_s4_main_js', j: 1, w: 1});
+        jsl.push({f:'css/s4-fm-activate.css', n: 's4_fm_activate_css', j:2, w:30, c:1, d:1, cache:1});
+
+        // minimal device centre resources
+        jsl.push({f:'js/fm/devices/models.js', n: 'devices_models_js', j: 1, w: 1});
+        jsl.push({f:'js/fm/devices/data.js', n: 'devices_data_js', j: 1, w: 1});
+        jsl.push({f:'js/fm/devices/ui-elems/shimmer.js', n: 'devices_ui_elems_shimmer_js', j: 1, w: 1});
+        jsl.push({f:'js/fm/devices/ui-elems/notification.js', n: 'devices_ui_elems_notification_js', j: 1, w: 1});
+        jsl.push({f:'js/fm/devices/ui.js', n: 'devices_ui_js', j: 1, w: 1});
+        jsl.push({f:'css/device-centre.css', n: 'devices_css', j:2, w:30, c:1, d:1, cache:1});
+
         // Bottom pages for desktop
-        jsl.push({f:'css/bottom-pages-animations.css', n: 'bottom-pages-animations_css', j:2,w:5,c:1,d:1,cache:1});
+        jsl.push({f:'css/bottom-pages-animations.css', n: 'bottom-pages-animations_css', j:2,w:5});
     } // !is_mobile
 
     // TextEditor
     jsl.push({f:'js/fm/fileTextEditor.js', n: 'filetexteditor_js', j:1});
     jsl.push({f:'js/fm/textEditorUI.js', n: 'texteditorui_js', j:1});
-    jsl.push({f:'css/codemirror.css', n: 'codemirror_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/txteditor.css', n: 'txteditor_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/codemirror.css', n: 'codemirror_css', j:2,w:5});
+    jsl.push({f:'css/txteditor.css', n: 'txteditor_css', j:2,w:5});
 
     // Transfers
     jsl.push({f:'js/transfers/xhr2.js', n: 'xhr_js', j:1});
@@ -2378,7 +2179,6 @@ else if (!browserUpdate) {
     jsl.push({f:'js/fm/ufssizecache.js', n: 'ufssizecache_js', j:1});
 
     // Pro pages Step 1 (Pro plan) and Step 2 (Pro payment)
-    jsl.push({f:'html/proplan.html', n: 'proplan', j:0});
     jsl.push({f:'html/planpricing.html', n: 'planpricing', j:0});
     jsl.push({f:'html/propay.html', n: 'propay', j:0});
     jsl.push({f:'html/js/pro.js', n: 'pro_js', j:1});
@@ -2415,40 +2215,42 @@ else if (!browserUpdate) {
     jsl.push({f:'js/ui/slideshow/settings/sub.js', n: 'slideshowSubSetting_js', j:1});
     jsl.push({f:'js/ui/slideshow/settings/settingsManager.js', n: 'slideshowSettingsManager_js', j:1});
     jsl.push({f:'js/ui/imagesViewer.js', n: 'imagesViewer_js', j:1});
+    jsl.push({f:'js/ui/megaZoomPan.js', n: 'mega_zoompan_js', j: 1, w:1});
     jsl.push({f:'js/filerequest_common.js', n: 'filerequest_common_js', j:1});
     jsl.push({f:'js/filerequest_components.js', n: 'filerequest_components_js', j:1});
     jsl.push({f:'js/filerequest.js', n: 'filerequest_js', j:1});
     jsl.push({f:'js/ui/sprites.js', n: 'sprites_js', j: 1, w: 1});
     jsl.push({f:'js/ui/theme.js', n: 'theme_js', j: 1, w: 1});
+    jsl.push({f:'js/ui/megaGesture.js', n: 'mega_gesture_js', j: 1, w:1});
 
     // Variables which can be used across all stylesheets
-    jsl.push({f:'css/vars/theme.css', n: 'vars_theme_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/switches.css', n: 'switches_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/vars/theme.css', n: 'vars_theme_css', j:2, w:30});
+    jsl.push({f:'css/switches.css', n: 'switches_css', j:2,w:5});
 
     // Sprites
-    jsl.push({f:'css/sprites/fm-uni@uni.css', n: 'fm_uni_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/sprites/fm-mime@uni.css', n: 'fm_mime_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/sprites/fm-mime-90@uni.css', n: 'fm_mime_90_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/sprites/fm-mono@mono.css', n: 'fm_mono_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/sprites/fm-theme@dark.css', n: 'fm_dark_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/sprites/fm-theme@light.css', n: 'fm_light_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/sprites/fm-illustrations.css', n: 'fm_illustration_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/sprites/fm-uni@uni.css', n: 'fm_uni_css', j:2, w:30});
+    jsl.push({f:'css/sprites/fm-mime@uni.css', n: 'fm_mime_css', j:2, w:30});
+    jsl.push({f:'css/sprites/fm-mime-90@uni.css', n: 'fm_mime_90_css', j:2, w:30});
+    jsl.push({f:'css/sprites/fm-mono@mono.css', n: 'fm_mono_css', j:2, w:30});
+    jsl.push({f:'css/sprites/fm-theme@dark.css', n: 'fm_dark_css', j:2, w:30});
+    jsl.push({f:'css/sprites/fm-theme@light.css', n: 'fm_light_css', j:2, w:30});
+    jsl.push({f:'css/sprites/fm-illustrations.css', n: 'fm_illustration_css', j:2, w:30});
 
     // Dialog templates
-    jsl.push({f:'css/mega-dialog.css', n: 'mega_dialog_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/vars/dialog.css', n: 'vars_dialog_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/mega-dialog.css', n: 'mega_dialog_css', j:2,w:5});
+    jsl.push({f:'css/vars/dialog.css', n: 'vars_dialog_css', j:2, w:30});
 
     // Inputs
-    jsl.push({f:'css/vars/button.css', n: 'vars_button_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/radios.css', n: 'radios_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/mega-button.css', n: 'mega_button_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/checkboxes.css', n: 'checkboxes_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/vars/button.css', n: 'vars_button_css', j:2, w:30});
+    jsl.push({f:'css/radios.css', n: 'radios_css', j:2,w:5});
+    jsl.push({f:'css/mega-button.css', n: 'mega_button_css', j:2,w:5});
+    jsl.push({f:'css/checkboxes.css', n: 'checkboxes_css', j:2,w:5});
 
-    jsl.push({f:'css/media-viewer.css', n: 'media_viewer_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/video-player.css', n: 'video_player_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/perfect-scrollbar.css', n: 'vendor_ps_css', j:2,w:5,c:1,d:1,cache:1});
-    jsl.push({f:'css/animations.css', n: 'animations_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/ui/mcomponents.css', n: 'm_components_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/media-viewer.css', n: 'media_viewer_css', j:2,w:5});
+    jsl.push({f:'css/video-player.css', n: 'video_player_css', j:2,w:5});
+    jsl.push({f:'css/perfect-scrollbar.css', n: 'vendor_ps_css', j:2,w:5});
+    jsl.push({f:'css/animations.css', n: 'animations_css', j:2, w:30});
+    jsl.push({f:'css/ui/mcomponents.css', n: 'm_components_css', j:2,w:5});
 
     // Megalist
     jsl.push({f:'js/vendor/megalist.js', n: 'megalist_js', j:1, w:5});
@@ -2461,37 +2263,79 @@ else if (!browserUpdate) {
     jsl.push({f:'js/ui/exttemplates.js', n: 'exttemplates_js', j: 1});
     jsl.push({f:'js/ui/elementSwitcher.js', n: 'elementSwitcher_js', j: 1});
 
+    // Shared components
+    jsl.push({f:'js/ui/components/group.js', n: 'group_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/lazyrender.js', n: 'lazyrender_js', j: 1, w: 1});
+    jsl.push({f:'js/ui/components/interactable.js', n: 'interactable_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/link.js', n: 'link_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/button.js', n: 'button_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/toggle-button.js', n: 'toggle_button_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/checkbox.js', n: 'checkbox_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/rack-slot.js', n: 'rack_slot_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/rack.js', n: 'rack_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/toast.js', n: 'components_toast_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/overlay.js', n: 'overlay_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/sheet.js', n: 'sheet_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/avatar.js', n: 'avatarcomp_js', j: 1, w: 1});
+    jsl.push({f:'js/ui/components/megaInput.js', n: 'megainput_js', j: 1, w: 1});
+    jsl.push({f:'js/ui/components/textarea.js', n: 'textarea_js', j: 1, w: 1});
+    jsl.push({f:'js/ui/components/menu.js', n: 'menu_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/stepper.js', n: 'stepper_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/onboarding-journey.js', n: 'onboarding_journey_js', j:1,w:1});
+    jsl.push({f:'js/ui/components/card.js', n: 'card_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/card-group.js', n: 'card_select_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/checkbox-group.js', n: 'checkbox_select_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/radial.js', n: 'radial_js', j: 1, w:1});
+    jsl.push({f:'js/ui/components/tooltip.js', n: 'tooltip_js', j: 1, w:1});
+
+    jsl.push({f:'js/vendor/megaDynamicList.js', n: 'mega_dynamic_list_js', j:1, w:5});
+
+    // Mobile component for inheriting
+    jsl.push({f:'js/mobile/mobile.header.js', n: 'mobile_header_js', j: 1, w: 1});
+    jsl.push({f:'js/mobile/mobile.top.menu.js', n: 'mobile_top_menu_js', j: 1, w: 1});
+
+    jsl.push({f:'css/mobile/mobile.header.css', n: 'mobile_header_css', j: 2, w: 5});
+    jsl.push({f:'css/mobile/mobile.top.menu.css', n: 'mobile_top_menu_css', j: 2, w: 5});
+
     if (!is_mobile) {
 
-        jsl.push({f:'css/buttons.css', n: 'buttons_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/components.css', n: 'components_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/buttons.css', n: 'buttons_css', j:2,w:5});
+        jsl.push({f:'css/components.css', n: 'components_css', j:2, w:30});
 
         // MComponents
-        jsl.push({f:'js/ui/components/MButton.js', n: 'm_button_js', j:1});
-        jsl.push({f:'js/ui/components/MCheckbox.js', n: 'm_checkbox_js', j:1});
-        jsl.push({f:'js/ui/components/MContextMenu.js', n: 'm_context_menu_js', j:1});
-        jsl.push({f:'js/ui/components/MDialog.js', n: 'm_dialog_js', j:1});
-        jsl.push({f:'js/ui/components/MEmptyPad.js', n: 'm_empty_pad_js', j:1});
-        jsl.push({f:'js/ui/components/MHint.js', n: 'm_hint_js', j:1});
-        jsl.push({f:'js/ui/components/MMenuSelect.js', n: 'm_menu_select_js', j:1});
-        jsl.push({f:'js/ui/components/MMenuSelectItem.js', n: 'm_menu_select_item_js', j:1});
-        jsl.push({f:'js/ui/components/MSidebarButton.js', n: 'm_sidebar_button_js', j:1});
-        jsl.push({f:'js/ui/components/MTab.js', n: 'm_tab_js', j:1});
-        jsl.push({f:'js/ui/components/MTabs.js', n: 'm_tabs_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MButton.js', n: 'm_button_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MCheckbox.js', n: 'm_checkbox_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MContextMenu.js', n: 'm_context_menu_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MDialog.js', n: 'm_dialog_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MEmptyPad.js', n: 'm_empty_pad_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MHint.js', n: 'm_hint_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MMenuSelect.js', n: 'm_menu_select_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MMenuSelectItem.js', n: 'm_menu_select_item_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MSidebarButton.js', n: 'm_sidebar_button_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MTab.js', n: 'm_tab_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MTabs.js', n: 'm_tabs_js', j:1});
 
         jsl.push({f:'html/top.html', n: 'top', j:0});
-        jsl.push({f:'css/style.css', n: 'style_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/fm-header.css', n: 'fm_header_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/fm-breadcrumb.css', n: 'fm_breadcrumb_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/fm-lists.css', n: 'fm_lists_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/grid-table.css', n: 'grid_table_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/tabs.css', n: 'tabs_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/empty-pages.css', n: 'empty_page_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'js/vendor/megaDynamicList.js', n: 'mega_dynamic_list_js', j:1, w:5});
+        jsl.push({f:'css/style.css', n: 'style_css', j:2, w:30});
+        jsl.push({f:'css/tree.css', n: 'tree_css', j:2, w:30});
+        jsl.push({f:'css/transfer.css', n: 'style_css', j:2, w:30});
+        jsl.push({f:'css/fm-header.css', n: 'fm_header_css', j:2,w:5});
+        jsl.push({f:'css/fm-breadcrumb.css', n: 'fm_breadcrumb_css', j:2,w:5});
+        jsl.push({f:'css/fm-lists.css', n: 'fm_lists_css', j:2,w:5});
+        jsl.push({f:'css/grid-table.css', n: 'grid_table_css', j:2,w:5});
+        jsl.push({f:'css/tabs.css', n: 'tabs_css', j:2,w:5});
+        jsl.push({f:'css/empty-pages.css', n: 'empty_page_css', j:2,w:5});
+        jsl.push({f:'css/pwm/onboarding.css', n: 'pwm_onboarding_css', j:2,w:5});
+        jsl.push({f:'css/pwm/avatars.css', n:'pwm_avatars_css', j:2,w:5});
+        jsl.push({f:'css/bento.css', n:'bento_css', j:2,w:5});
+        jsl.push({f:'css/notification.css', n: 'notification_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/search.css', n: 'search_css', j:2, w:30, c:1, d:1, cache:1});
+
         jsl.push({f:'js/fm/quickfinder.js', n: 'fm_quickfinder_js', j:1, w:1});
         jsl.push({f:'js/fm/selectionManager2.js', n: 'fm_selectionmanager2_js', j:1, w:1});
         jsl.push({f:'js/fm.js', n: 'fm_js', j:1, w:12});
-        jsl.push({f:'js/fm/backupsUI.js', n: 'fm_backups_ui_js', j:1, w:5});
+        jsl.push({f:'js/ui/components/meganz/fm-secondary-nav.js', n: 'fm_secondary_nav_js', j: 1, w: 1});
+        jsl.push({f:'js/ui/components/meganz/fm-context-menu.js', n: 'fm_context_menu_js', j: 1, w: 1});
         jsl.push({f:'js/fm/dashboard.js', n: 'fmdashboard_js', j:1, w:5});
         jsl.push({f:'js/fm/recents.js', n: 'fmrecents_js', j:1, w:5});
         jsl.push({f:'js/time_checker.js', n: 'time_checker_js', j:1});
@@ -2509,73 +2353,89 @@ else if (!browserUpdate) {
         jsl.push({f:'js/ui/node-filter.js', n: 'nodefilter_js', j:1});
         jsl.push({f:'js/ui/info-panel.js', n: 'infopanel_js', j:1});
         jsl.push({f:'js/notify.js', n: 'notify_js', j:1});
+        jsl.push({f:'js/vendor/favico.js', n: 'favico_js', j:1});
         jsl.push({f:'js/vendor/avatar.js', n: 'avatar_js', j:1, w:3});
-        jsl.push({f:'js/fm/affiliate.js', n: 'fm_affiliate_js', j: 1});
         jsl.push({f:'js/fm/vpn.js', n: 'fmvpn_js', j: 1});
+        jsl.push({f:'js/ui/empty.js', n: 'js_ui_empty_js', j: 1});
+
+        jsl.push({f:'css/gallery.css', n: 'gallery_css', j:2,w:5});
+        jsl.push({f:'js/fm/gallery/gallery.js', n: 'fm_gallery_js', j:1});
 
         // Gallery helpers
         jsl.push({f:'js/fm/gallery/helpers/GalleryTitleControl.js', n: 'fm_gallery_title_control_js', j:1});
+        jsl.push({f:'js/fm/gallery/helpers/GalleryTypeControl.js', n: 'fm_gallery_type_control_js', j:1});
         jsl.push({f:'js/fm/gallery/helpers/GalleryEmptyBlock.js', n: 'fm_gallery_empty_block_js', j:1});
+        jsl.push({f:'js/fm/gallery/helpers/GalleryEmpty.js', n: 'fm_gallery_empty_js', j:1});
         jsl.push({f:'js/fm/gallery/helpers/GalleryEmptyPhotos.js', n: 'fm_gallery_empty_photos_js', j:1});
         jsl.push({f:'js/fm/gallery/helpers/GalleryEmptyImages.js', n: 'fm_gallery_empty_images_js', j:1});
         jsl.push({f:'js/fm/gallery/helpers/GalleryEmptyVideos.js', n: 'fm_gallery_empty_videos_js', j:1});
-        jsl.push({f:'js/fm/gallery/helpers/GalleryEmptyFavourites.js', n: 'fm_gallery_empty_favourites_js', j:1});
         jsl.push({f:'js/fm/gallery/helpers/GalleryEmptyDiscovery.js', n: 'fm_gallery_empty_discovery_js', j:1});
-
-        jsl.push({f:'css/gallery.css', n: 'gallery_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'js/fm/gallery/gallery.js', n: 'fm_gallery_js', j:1});
 
         jsl.push({f:'js/fm/albums/Albums.js', n: 'fm_albums_js', j:1});
         jsl.push({f:'js/fm/albums/AlbumTimeline.js', n: 'fm_albums_timeline_js', j:1});
 
         jsl.push({f:'html/onboarding.html', n: 'onboarding', j:0,w:2});
-        jsl.push({f:'css/onboarding.css', n: 'onboarding_css', j:2,w:5,c:1,d:1,cache:1});
+        jsl.push({f:'css/onboarding.css', n: 'onboarding_css', j:2,w:5});
 
-        jsl.push({f:'css/download.css', n: 'download_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/user-card.css', n: 'user_card_css', j:2, w:5, c:1, d:1, cache:1});
+        jsl.push({f:'css/download.css', n: 'download_css', j:2,w:5});
+        jsl.push({f:'css/user-card.css', n: 'user_card_css', j:2, w:5});
 
-        jsl.push({f:'css/account.css', n: 'account_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/banners.css', n: 'banners_css', j:2,w:5,c:1,d:1,cache:1});
+        jsl.push({f:'css/account.css', n: 'account_css', j:2,w:5});
+        jsl.push({f:'css/banners.css', n: 'banners_css', j:2,w:5});
 
-        jsl.push({f:'css/dropdowns.css', n: 'dropdowns_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/jq-ui-custom.css', n: 'jq_ui_custom_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/labels-and-filters.css', n: 'labels-and-filters_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/dialogs.css', n: 'dialogs_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/share-dialog.css', n: 'share_dialog_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/popups.css', n: 'popups_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/data-blocks-view.css', n: 'data_blocks_view_css', j:2,w:5,c:1,d:1,cache:1});
+        jsl.push({f:'css/dropdowns.css', n: 'dropdowns_css', j:2,w:5});
+        jsl.push({f:'css/jq-ui-custom.css', n: 'jq_ui_custom_css', j:2,w:5});
+        jsl.push({f:'css/labels-and-filters.css', n: 'labels-and-filters_css', j:2,w:5});
+        jsl.push({f:'css/dialogs.css', n: 'dialogs_css', j:2,w:5});
+        jsl.push({f:'css/share-dialog.css', n: 'share_dialog_css', j:2,w:5});
+        jsl.push({f:'css/popups.css', n: 'popups_css', j:2,w:5});
+        jsl.push({f:'css/data-blocks-view.css', n: 'data_blocks_view_css', j:2,w:5});
 
-        jsl.push({f:'css/recovery.css', n: 'recovery_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/settings.css', n: 'settings_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/media-print.css', n: 'media_print_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/affiliate-program.css', n: 'affiliate_program_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/backup-center.css', n: 'backup_center_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/top-menu.css', n: 'top_menu_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/context-menu.css', n: 'context_menu_css', j:2, w:5, c:1, d:1, cache:1});
-        jsl.push({f:'css/tables.css', n: 'tables_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/recents.css', n: 'recents_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/vpn.css', n: 'vpn_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/transfer-widget.css', n: 'transfer_widget_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/recovery.css', n: 'recovery_css', j:2,w:5});
+        jsl.push({f:'css/settings.css', n: 'settings_css', j:2,w:5});
+        jsl.push({f:'css/media-print.css', n: 'media_print_css', j:2,w:5});
+        jsl.push({f:'css/top-menu.css', n: 'top_menu_css', j:2, w:30});
+        jsl.push({f:'css/context-menu.css', n: 'context_menu_css', j:2, w:5});
+        jsl.push({f:'css/tables.css', n: 'tables_css', j:2, w:30});
+        jsl.push({f:'css/recents.css', n: 'recents_css', j:2, w:30});
+        jsl.push({f:'css/vpn.css', n: 'vpn_css', j:2, w:30});
+        jsl.push({f:'css/transfer-widget.css', n: 'transfer_widget_css', j:2, w:30});
 
         // CSS Revamp changes
-        jsl.push({f:'css/components/fm-left-pane.css', n: 'components_fm_left_pane_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/components/info-panel.css', n: 'components_info_panel_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/components/meganz/fm-left-pane.css', n: 'fm_left_pane_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/components/meganz/info-panel.css', n: 'info_panel_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/components/meganz/storage-block.css', n: 'storage_block_css', j:2, w:30, c:1, d:1, cache:1});
 
         // `Meetings` UI styles
-        jsl.push({f:'css/chat-bundle.css', n: 'meetings_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/chat-bundle.css', n: 'meetings_css', j:2, w:30});
 
         jsl.push({f:'html/key.html', n: 'key', j:0});
         jsl.push({f:'html/login.html', n: 'login', j:0});
         jsl.push({f:'html/fm.html', n: 'fm', j:0, w:3});
         jsl.push({f:'html/top-login.html', n: 'top-login', j:0});
         jsl.push({f:'html/dialogs.html', n: 'dialogs', j:0,w:2});
-        jsl.push({f:'images/mega/contact-avatar.svg', n: 'contact_avatar', j:0});
-        jsl.push({f:'html/rewind.html', n: 'rewind_html', j:0});
-        jsl.push({f:'css/topbar.css', n: 'topbar_css', j:2,w:5,c:1,d:1,cache:1});
+        jsl.push({f:'html/contact-avatar.svg', n: 'contact_avatar', j:0});
+        jsl.push({f:'html/rewind.html', n: 'rewind', j:0});
+        jsl.push({f:'html/device-centre-shimmer.html', n: 'device_centre_shimmer_html', j:0});
+        jsl.push({f:'css/topbar.css', n: 'topbar_css', j:2,w:5});
 
         // Notification banner
         jsl.push({f:'css/notification-banner.css', n: 'notification-banner_css', j: 2, w: 5});
         jsl.push({f:'js/ui/notificationBanner.js', n: 'notificationBanner_js', j:1,w:1});
+
+        jsl.push({f:'js/ui/components/meganz/header.js', n:'header_js', j:1, w:1});
+        jsl.push({f:'js/ui/components/meganz/top-menu.js', n:'top_menu_js', j:1, w:1});
+        jsl.push({f:'js/ui/components/meganz/storage-block.js', n:'storage_block_js', j:1, w:1});
+        jsl.push({f:'css/layout.css', n:'layout_css', j:2, w:1});
+        jsl.push({f:'css/components/meganz/header.css', n:'header_css', j:2, w:1});
+        jsl.push({f:'css/components/meganz/top-menu.css', n:'top_menu_css', j:2, w:1});
+        jsl.push({f:'js/ui/components/flyoutMenu.js', n: 'flyoutmenu_js', j: 1, w:1});
+        jsl.push({f:'css/components/flyoutMenu.css', n: 'flyoutmenu_css', j:2,w:5});
+        jsl.push({f:'js/ui/components/tabgroup.js', n: 'tabgroup_js', j: 1, w:1});
+        jsl.push({f:'css/components/tabgroup.css', n: 'tabgroup_css', j:2,w:5});
+        jsl.push({f:'js/ui/components/chatitem.js', n: 'chatitem_js', j: 1, w:1});
+        jsl.push({f:'css/components/chatitem.css', n: 'chatitem_css', j:2,w:5});
+        jsl.push({f:'css/components/meganz/fm-context-menu.css', n: 'fm_context_menu_css', j:2,w:5});
     } // !is_mobile
 
     // do not change the order...
@@ -2597,10 +2457,11 @@ else if (!browserUpdate) {
     jsl.push({f:'js/fm/megadata/reset.js', n: 'fm_megadata_reset_js', j: 1});
     jsl.push({f:'html/js/megasync.js', n: 'megasync_js', j: 1});
     jsl.push({f:'js/fm/linkinfohelper.js', n: 'fm_linkinfohelper_js', j: 1});
-    jsl.push({f:'js/fm/affiliatedata.js', n: 'fm_affiliatedata_js', j: 1});
     jsl.push({f:'js/eaffiliate.js', n: 'eaffiliate_js', j: 1});
-    jsl.push({f:'js/fm/affiliateRedemption.js', n: 'fm_affiliateredemption_js', j: 1});
-    jsl.push({f:'js/ui/megaGesture.js', n: 'mega_gesture_js', j: 1, w:1});
+    jsl.push({f:'js/ui/share-dialog.js', n: 'fm_share_js', j: 1});
+    jsl.push({f:'js/ui/share-unverified-contacts-dialog.js', n: 'fm_share_unverified_contacts_js', j: 1});
+    jsl.push({f:'js/ui/share-collaborators-dialog.js', n: 'fm_share_collaborators_js', j: 1});
+
 
     if (localStorage.makeCache) {
         jsl.push({f:'makecache.js', n: 'makecache', j:1});
@@ -2616,72 +2477,76 @@ else if (!browserUpdate) {
         jsl.push({f:'css/lang_vi.css', n: 'lang_viet_css', j: 2, w: 30, c: 1, d: 1, m: 1});
     }
 
+    // Shared component styles
+    jsl.push({f:'css/vars/mobile-theme.css', n: 'vars_mobile_theme_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/vars/mobile-theme-auto.css', n: 'vars_mobile_theme_auto_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/components/rack.css', n: 'rack_css', j:2,w:5});
+    jsl.push({f:'css/components/toast.css', n: 'components_toast_css', j:2,w:5});
+    jsl.push({f:'css/components/interactable.css', n: 'interactable_css', j: 2, w: 30, c: 1, d: 1, m: 1});
+    jsl.push({f:'css/components/checkbox.css', n: 'checkbox_css', j:2,w:5});
+    jsl.push({f:'css/components/overlay.css', n: 'overlay_css', j:2, w:1});
+    jsl.push({f:'css/components/sheet.css', n: 'sheet_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/components/node.css', n: 'node_css', j: 2, w: 30, c: 1, d: 1, m: 1});
+    jsl.push({f:'css/components/sharednode.css', n: 'sharednode_css', j: 2, w: 1});
+    jsl.push({f:'css/components/context-menu.css', n: 'comp_context_menu_css', j:2, w:1});
+    jsl.push({f:'css/components/menu.css', n: 'comp_menu_css', j:2, w:1});
+    jsl.push({f:'css/components/toggle-button.css', n: 'toggle_button_css', j:2,w:5});
+    jsl.push({f:'css/components/stepper.css', n: 'stepper_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/components/onboarding-journey.css', n: 'onboarding_journey_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/components/card.css', n: 'card_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/components/radial.css', n: 'radial_css', j:2, w:30, c:1, d:1, cache:1});
+    jsl.push({f:'css/components/textarea.css', n: 'comp_textarea_css', j:2, w:1});
+    jsl.push({f:'css/components/tooltip.css', n: 'tooltip_css', j:2, w:30, c:1, d:1, cache:1});
+
     // Load files common to all mobile pages
     if (is_mobile) {
 
         // Variables which can be used across all mobile stylesheets
-        jsl.push({f:'css/vars/mobile-theme.css', n: 'vars_mobile_theme_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/vars/mobile-theme-auto.css', n: 'vars_mobile_theme_auto_css', j:2, w:30, c:1, d:1, cache:1});
         jsl.push({f:'css/mobile/mobile.dropdown.css', n: 'mobile_dropdown_css', j: 2, w: 1});
-        jsl.push({f:'css/mobile/mobile.overlay.css', n: 'mobile_overlay_css', j:2, w:1});
-        jsl.push({f:'css/mobile/mobile.sheet.css', n: 'mobile_sheet_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/mobile/mobile.context.menu.css', n: 'mobile_context_menu_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/components/checkbox.css', n: 'checkbox_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.radio.button.css', n: 'mobile_radio_button_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/components/toggle-button.css', n: 'toggle_button_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.footer.css', n: 'mobile_footer_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.header.css', n: 'mobile_header_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.top.menu.css', n: 'mobile_top_menu_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.msgdialog.css', n: 'mobile_msgdialog_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/components/rack.css', n: 'rack_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/components/toast.css', n: 'toast_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.rubbish-bin.css', n: 'mobile_rubbish_bin_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.banner.css', n: 'mobile_banner_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.node-selector.css', n: 'mobile_node_selector_css', j:2, w:5, c:1, d:1, cache:1});
+        jsl.push({f:'css/mobile/mobile.context.menu.css', n: 'mobile_context_menu_css', j:2, w:30});
+        jsl.push({f:'css/mobile/mobile.radio.button.css', n: 'mobile_radio_button_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.footer.css', n: 'mobile_footer_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.msgdialog.css', n: 'mobile_msgdialog_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.rubbish-bin.css', n: 'mobile_rubbish_bin_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.banner.css', n: 'mobile_banner_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.node-selector.css', n: 'mobile_node_selector_css', j:2, w:5});
         jsl.push({f:'css/mobile/mobile.empty.state.css', n: 'mobile_empty_state_css', j:2, w:1});
-        jsl.push({f:'css/mobile/mobile.transfer.block.css', n: 'mobile_transfer_block_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.bottom.bar.css', n: 'mobile_bottom_bar_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.account.css', n: 'mobile_account_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.download.css', n: 'mobile_download_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.promo.banner.css', n: 'mobile_promo_banner_css', j:2,w:5,c:1,d:1,cache:1});
+        jsl.push({f:'css/mobile/mobile.transfer.block.css', n: 'mobile_transfer_block_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.bottom.bar.css', n: 'mobile_bottom_bar_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.account.css', n: 'mobile_account_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.download.css', n: 'mobile_download_css', j:2,w:5});
+        jsl.push({f:'css/mobile/mobile.promo.banner.css', n: 'mobile_promo_banner_css', j:2,w:5});
 
         // Sprites
-        jsl.push({f:'css/sprites/mobile-fm-uni@uni.css', n: 'mobile_fm_uni_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/sprites/mobile-fm-mono@mono.css', n: 'mobile_fm_mono_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/sprites/mobile-fm-theme@dark.css', n: 'mobile_fm_dark_css', j:2, w:30, c:1, d:1, cache:1});
-        jsl.push({f:'css/sprites/mobile-fm-theme@light.css', n: 'mobile_fm_light_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/sprites/mobile-fm-uni@uni.css', n: 'mobile_fm_uni_css', j:2, w:30});
+        jsl.push({f:'css/sprites/mobile-fm-mono@mono.css', n: 'mobile_fm_mono_css', j:2, w:30});
+        jsl.push({f:'css/sprites/mobile-fm-theme@dark.css', n: 'mobile_fm_dark_css', j:2, w:30});
+        jsl.push({f:'css/sprites/mobile-fm-theme@light.css', n: 'mobile_fm_light_css', j:2, w:30});
 
         jsl.push({f:'html/top-mobile.html', n: 'top-mobile', j:0});
         jsl.push({f:'html/mobile-add-contact-card.html', n: 'mobile-add-contact-card', j:0});
         jsl.push({f:'css/mobile.css', n: 'mobile_css', j: 2, w: 30, c: 1, d: 1, m: 1});
-        jsl.push({f:'css/components/interactable.css', n: 'interactable_css', j: 2, w: 30, c: 1, d: 1, m: 1});
         jsl.push({f:'css/mobile/mobile.settings.css', n: 'mobile_settings_css', j: 2, w: 30, c: 1, d: 1, m: 1});
         jsl.push({f:'css/mobile/mobile.settings.history.css', n: 'mobile_settings_history_css', j: 2, w: 30, c: 1, d: 1, m: 1});
         jsl.push({f:'css/mobile/mobile.link-management.css', n: 'mobile_link_management_css', j: 2, w: 30, c: 1, d: 1, m: 1});
-        jsl.push({f:'css/mobile/mobile.referral.css', n: 'mobile_referral_css', j: 2, w: 30, c: 1, d: 1, m: 1});
         jsl.push({f:'css/mobile-help.css', n: 'mobile_help_css', j: 2, w: 30, c: 1, d: 1, m: 1});
         jsl.push({f:'css/mobile-top-menu.css', n: 'mobile_top_menu_css',  j: 2, w: 30, c: 1, d: 1, m: 1});
-        jsl.push({f:'css/mobile-media-viewer.css', n: 'mobile_media_viewer_css', j:2,w:5,c:1,d:1,cache:1});
-        jsl.push({f:'css/mobile/mobile.node.css', n: 'mobile_node_css', j: 2, w: 30, c: 1, d: 1, m: 1});
-        jsl.push({f:'css/mobile/mobile.sharednode.css', n: 'mobile_sharednode_css', j: 2, w: 1});
+        jsl.push({f:'css/mobile-media-viewer.css', n: 'mobile_media_viewer_css', j:2,w:5});
         jsl.push({f:'css/mobile/mobile.tab.css', n: 'mobile_tab_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.public.link.css', n: 'mobile_public_linkcss', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.datepicker.css', n: 'mobile_datepicker_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.account.cancel-subscription.css', n: 'mobile_account_cancel_sub_css', j: 2, w: 1});
-        jsl.push({f:'css/mobile/mobile.backup.recovery.css', n: 'mobile_backup_recovery_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.achieve.css', n: 'mobile_achieve_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.achieve.invites.css', n: 'mobile_achieve_invites_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.achievements-block.css', n: 'mobile_achievements_block_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.achieve.invite-bonuses.css', n: 'mobile_achieve_inv_bonuses_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.file-request-management.css', n: 'mobile_fr_mgmt_css', j: 2, w: 1});
         jsl.push({f:'css/mobile/mobile.conflict-resolution.css', n: 'mobile_conflict_resolution_css', j: 2, w: 1});
-        jsl.push({f:'css/mobile/mobile.recovery.logout.css', n: 'mobile_recovery_logout_css', j: 2, w: 1});
 
         jsl.push({f:'html/mobile.html', n: 'mobile', j: 0, w: 1});
         jsl.push({f:'js/vendor/jquery.mobile.js', n: 'jquery_mobile_js', j: 1, w: 5});
         jsl.push({f:'js/mobile/mobile.js', n: 'mobile_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.megaRender.js', n: 'mobile_mega_render_js', j: 1, w: 1});
-        jsl.push({f:'js/mobile/mobile.affiliate.js', n: 'mobile_affiliate_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.cloud.js', n: 'mobile_cloud_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.cloud.action-bar.js', n: 'mobile_cloud_action_bar_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.node-name-control.js', n: 'mobile_node_name_control_js', j: 1, w: 1});
@@ -2713,28 +2578,16 @@ else if (!browserUpdate) {
         jsl.push({f:'js/mobile/mobile.sms.achievement.js', n: 'mobile_sms_achievement', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.rubbishbin.js', n: 'mobile_rubbishbin_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.conflict-resolution.js', n: 'mobile_conflict_resolution_js', j: 1 });
-        jsl.push({f:'js/mobile/mobile.recovery-logout.js', n: 'mobile_recovery_logout_js', j: 1 });
         jsl.push({f:'js/mobile/mobile.over-bandwidth-quota.js', n: 'mobile_over_bandwidth_quota_js', j: 1 });
         jsl.push({f:'js/mobile/mobile.over-storage-quota.js', n: 'mobile_over_storage_quota_js', j: 1 });
         jsl.push({f:'html/mvoucherinfo.html', n: 'mvoucherinfo', j: 0, w: 1});
-        jsl.push({f:'js/ui/components/component.js', n: 'component_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/group.js', n: 'group_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.dropdown.js', n: 'mobile_component_dropdown_js', j:1, w:1});
         jsl.push({f:'js/mobile/mobile.dropdown-items.js', n: 'mobile_dropdownitem_js', j:1, w:1});
         jsl.push({f:'js/mobile/mobile.context.menu.js', n: 'mobile_context_menu_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/interactable.js', n: 'interactable_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.info-menu-item.js', n: 'mobile_info_menu_item_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/link.js', n: 'link_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/button.js', n: 'button_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/checkbox.js', n: 'checkbox_js', j: 1, w:1});
-        jsl.push({f:'js/mobile/mobile.node.js', n: 'mobile_node_js', j: 1, w:1});
-        jsl.push({f:'js/mobile/mobile.sharednode.js', n: 'mobile_sharednode_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.radio.button.js', n: 'mobile_radio_button_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.radio.group.js', n: 'mobile_radio_group_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/toggle-button.js', n: 'toggle_button_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.footer.js', n: 'mobile_footer_js', j: 1, w:1});
-        jsl.push({f:'js/mobile/mobile.header.js', n: 'mobile_header_js', j: 1, w:1});
-        jsl.push({f:'js/mobile/mobile.top.menu.js', n: 'mobile_top_menu_js', j: 1, w:1});
         jsl.push({f:'js/mobile/settings/appearance.js', n: 'mobile_settings_appearance_js', j: 1, w:1});
         jsl.push({f:'js/mobile/settings/settingsHelper.js', n: 'mobile_settings_js', j: 1, w:1});
         jsl.push({f:'js/mobile/settings/settings.js', n: 'mobile_settings_js', j: 1, w:1});
@@ -2760,19 +2613,12 @@ else if (!browserUpdate) {
         jsl.push({f:'js/mobile/settings/backupRecovery.js', n: 'mobile_backup_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/settings/fileManagement.js', n: 'mobile_file_management_js', j: 1, w:1});
         jsl.push({f:'js/mobile/settings/notifications.js', n: 'mobile_account_notifications_js', j: 1, w: 1});
-        jsl.push({f:'js/mobile/settings/referral.js', n: 'mobile_referral_js', j: 1, w: 1});
-        jsl.push({f:'js/mobile/settings/referralDistribution.js', n: 'mobile_referral_distribution_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/settings/termsPolicies.js', n: 'mobile_terms_policies_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/settings/twofactorSettings.js', n: 'mobile_twofactor_settings_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.msgdialog.js', n: 'mobile_msgdialog_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/rack-slot.js', n: 'rack_slot_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/rack.js', n: 'rack_js', j: 1, w:1});
-        jsl.push({f:'js/ui/components/toast.js', n: 'toast_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.banner.js', n: 'mobile_banner_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.datepicker.js', n: 'mobile_datepicker_js', j: 1, w: 1});
         jsl.push({f:'js/mobile/mobile.tab.js', n: 'mobile_tab_js', j: 1, w:1});
-        jsl.push({f:'js/mobile/mobile.overlay.js', n: 'mobile_overlay_js', j: 1, w:1});
-        jsl.push({f:'js/mobile/mobile.sheet.js', n: 'mobile_sheet_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.node-selector.js', n: 'mobile_node_selector_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.empty.state.js', n: 'mobile_empty_state_js', j: 1, w:1});
         jsl.push({f:'js/mobile/mobile.transfer.block.js', n: 'mobile_transfer_block_js', j: 1, w:1});
@@ -2781,15 +2627,22 @@ else if (!browserUpdate) {
         jsl.push({f:'js/mobile/mobile.appbanner.js', n: 'mobile_app_banner_js', j: 1, w: 1});
         jsl.push({f:'js/chat/strongvelope.js', n: 'strongvelope_js', j: 1, w: 3});
         jsl.push({f:'js/mobile/mobile.promo.banner.js', n: 'mobile_promo_banner_js', j: 1, w:1});
+        jsl.push({f:'js/mobile/mobile.albums.js', n: 'mobile_albums_js', j: 1, w:1});
 
-        jsl.push({f:'js/ui/components/MDialogMobile.js', n: 'mobile_m_dialog_mobile_js', j:1});
+        jsl.push({f:'js/ui/components/meganz/MDialogMobile.js', n: 'mobile_m_dialog_mobile_js', j:1});
     }
+    jsl.push({f:'html/chatlink.html', n: 'chatlink', j: 0});
 
-    jsl.push({f:'css/toast.css', n: 'toast_css', j:2,w:5,c:1,d:1,cache:1});
+    jsl.push({f:'css/toast.css', n: 'toast_css', j:2,w:5});
     jsl.push({f:'css/general.css', n: 'general_css', j:2, w:5, c:1, d:1, cache: 1});
     jsl.push({f:'css/megainput.css', n: 'megainput_css', j:2, w:5, c:1, d:1, cache: 1});
-    jsl.push({f:'css/vars/text-input.css', n: 'vars_text_input_css', j:2, w:30, c:1, d:1, cache:1});
-    jsl.push({f:'css/retina-images.css', n: 'retina_images_css', j: 2, w: 5, c: 1, d: 1, cache: 1});
+    jsl.push({f:'css/vars/text-input.css', n: 'vars_text_input_css', j:2, w:30});
+    jsl.push({f:'css/retina-images.css', n: 'retina_images_css', j: 2, w: 5});
+
+    // Shared dialog/sheet styles
+    jsl.push({f:'css/dialogs/recovery-logout-dialog.css', n: 'recovery_logout_css', j: 2, w: 1});
+    jsl.push({f:'css/dialogs/backup-recovery-dialog.css', n: 'backup_recovery_css', j: 2, w: 1});
+    jsl.push({f:'css/key.css', n: 'key_css', j:2, w:1});
 
     if (is_megadrop) {
         // @todo FIXME: we *should* load required resources only!
@@ -2829,6 +2682,7 @@ else if (!browserUpdate) {
         jsl.push({f:'js/utils/conv.js', n: 'js_utils_conv_js', j: 1});
         jsl.push({f:'js/utils/dom.js', n: 'js_utils_dom_js', j: 1});
         jsl.push({f:'js/utils/events.js', n: 'js_utils_events_js', j: 1});
+        jsl.push({f:'js/utils/intl.js', n: 'js_utils_intl_js', j: 1});
         jsl.push({f:'js/utils/locale.js', n: 'js_utils_locale_js', j: 1});
         jsl.push({f:'js/utils/media.js', n: 'js_utils_pictools_js', j: 1});
         jsl.push({f:'js/utils/network.js', n: 'js_utils_network_js', j: 1});
@@ -2847,8 +2701,132 @@ else if (!browserUpdate) {
         jsl.push({f:'html/embedplayer.html', n: 'index', j: 0});
         jsl.push({f:'css/embedplayer.css', n: 'embedplayer_css', j: 2, w: 5});
         jsl.push({f:'css/video-player.css', n: 'video_player_css', j: 2});
-        jsl.push({f:'css/vars/theme.css', n: 'vars_theme_css', j:2, w:30, c:1, d:1, cache:1});
+        jsl.push({f:'css/vars/theme.css', n: 'vars_theme_css', j:2, w:30});
         jsl.push({f:'css/sprites/embed-mono@mono.css', n: 'embed_mono_css', j:2});
+    }
+
+    if (is_transferit) {
+        jsl = [{f: langFilepath, n: 'lang', j: 3}];
+        jsl.push({f:'sjcl.js', n: 'sjcl_js', j: 1});
+        jsl.push({f:'nodedec.js', n: 'nodedec_js', j: 1});
+        jsl.push({f:'js/vendor/jquery.js', n: 'jquery', j: 1, w: 10});
+        jsl.push({f:'js/jquery.protect.js', n: 'jqueryprotect_js', j: 1});
+        jsl.push({f:'js/jquery.misc.js', n: 'jquerymisc_js', j:1});
+        jsl.push({f:'js/utils/polyfills.js', n: 'js_utils_polyfills_js', j: 1});
+        jsl.push({f:'js/utils/timers.js', n: 'js_utils_timers_js', j: 1});
+        jsl.push({f:'js/mouse.js', n: 'mouse_js', j:1});
+        jsl.push({f:'js/security.js', n: 'security_js', j: 1, w: 5});
+        jsl.push({f:'js/fm/ufssizecache.js', n: 'ufssizecache_js', j: 1});
+        jsl.push({f:'js/ui/transfer/boot.js', n: 'js_ui_transfer_boot_js', j: 1});
+
+        jsl.push({f:'js/vendor/jquery-ui.js', n: 'jquery_ui', j: 1, w: 10});
+        jsl.push({f:'js/vendor/jquery.fullscreen.js', n: 'jquery_fullscreen', j:1, w:10});
+        jsl.push({f:'js/vendor/jquery.mousewheel.js', n: 'jquerymouse_js', j:1});
+
+        jsl.push({f:'js/utils/broadcast.js', n: 'js_utils_broadcast_js', j: 1});
+        jsl.push({f:'js/utils/clipboard.js', n: 'js_utils_clipboard_js', j: 1});
+        jsl.push({f:'js/utils/api.js', n: 'js_utils_api_js', j: 1});
+        jsl.push({f:'js/utils/browser.js', n: 'js_utils_browser_js', j: 1});
+        jsl.push({f:'js/utils/conv.js', n: 'js_utils_conv_js', j: 1});
+        jsl.push({f:'js/utils/dom.js', n: 'js_utils_dom_js', j: 1});
+        jsl.push({f:'js/utils/icu.js', n: 'js_utils_icu_js', j: 1});
+        jsl.push({f:'js/utils/intl.js', n: 'js_utils_intl_js', j: 1});
+        jsl.push({f:'js/utils/media.js', n: 'js_utils_pictools_js', j: 1});
+        jsl.push({f:'js/utils/network.js', n: 'js_utils_network_js', j: 1});
+        jsl.push({f:'js/utils/sentinel.js', n: 'js_utils_sentinel_js', j: 1});
+        jsl.push({f:'js/utils/watchdog.js', n: 'js_utils_watchdog_js', j: 1});
+        jsl.push({f:'js/utils/webgl.js', n: 'webgl_js', j:1});
+        jsl.push({f:'js/utils/workers.js', n: 'js_utils_workers_js', j: 1});
+
+        jsl.push({f:'js/crypto.js', n: 'crypto_js', j: 1, w: 5});
+        jsl.push({f:'js/account.js', n: 'account_js', j: 1});
+        jsl.push({f:'js/filetypes.js', n: 'filetypes_js', j:1});
+        jsl.push({f:'js/thumbnail.js', n: 'thumbnail_js', j:1});
+        jsl.push({f:'js/vendor/exif.js', n: 'exif_js', j:1, w:3});
+        jsl.push({f:'js/vendor/smartcrop.js', n: 'smartcrop_js', j:1, w:7});
+
+        jsl.push({f:'js/transfers/xhr2.js', n: 'xhr_js', j:1});
+        jsl.push({f:'js/transfers/queue.js', n: 'queue', j:1,w:4});
+        jsl.push({f:'js/transfers/utils.js', n: 'tutils', j:1,w:4});
+        jsl.push({f:'js/transfers/download2.js', n: 'dl_js', j:1,w:3});
+        jsl.push({f:'js/transfers/upload2.js', n: 'upload_js', j:1,w:2});
+        jsl.push({f:'js/transfers/downloader.js', n: 'dl_downloader', j: 1, w: 3});
+        jsl.push({f:'js/transfers/reader.js', n: 'upload_reader_js', j: 1, w: 2});
+
+        jsl.push({f:'js/utils/factory/file-list.js', n: 'factory:filelist_js', j:1});
+        jsl.push({f:'js/utils/factory/pbkdf2.js', n: 'factory:pbkdf2_js', j: 1});
+        jsl.push({f:'js/utils/factory/mkdir.js', n: 'factory:mkdir_js', j:1});
+        jsl.push({f:'js/utils/factory/safe-name.js', n: 'factory:safename_js', j:1});
+        jsl.push({f:'js/utils/factory/safe-path.js', n: 'factory:safepath_js', j:1});
+
+        jsl.push({f:'js/ui/transfer/js/ui/components/breadcrumbs.js', n: 'ui_breadcrumbs_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/components/loader.js', n: 'ui_loader_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/components/simpletip.js', n: 'ui_simpletip_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/components/toast.js', n: 'ui_toast_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/theme.js', n: 'ui_theme_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/pages/page.js', n: 'ui_page_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/pages/pageheader.js', n: 'ui_pageheader_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/pages/dashboard.js', n: 'ui_dashboard_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/pages/fm.js', n: 'ui_fm_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/dialogs/lang-dialog.js', n: 'ui_lang_dialog_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/dialogs/login-dialog.js', n: 'ui_login_dialog_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/dialogs/msg-dialog.js', n: 'ui_msg_dialog_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/dialogs/nav-dialog.js', n: 'ui_nav_dialog_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/keyboard.js', n: 'utils_keyboard_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/sort.js', n: 'utils_sort_js', j: 1});
+
+        jsl.push({f:'js/ui/imagesViewer.js', n: 'imagesViewer_js', j:1});
+        jsl.push({f:'js/ui/megaZoomPan.js', n: 'mega_zoompan_js', j: 1, w:1});
+
+        // HTML
+        jsl.push({f:'js/ui/transfer/html/dialogs.html', n: 'js_ui_transfer_dialogs', j:0});
+        jsl.push({f:'js/ui/transfer/html/overlays.html', n: 'js_ui_transfer_overlays', j:0});
+
+        // CSS
+        jsl.push({f:'js/ui/transfer/css/sprites/it-mime-lg@uni.css', n: 'it_mime_lg_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/sprites/fm-mono@mono.css', n: 'fm_mono_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/general/style.css', n: 'general_style_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/components/avatar.css', n: 'avatar_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/components/breadcrumbs.css', n: 'breadcrumbs_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/components/datepicker.css', n: 'datepicker_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/components/tab.css', n: 'tab_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/components/tip.css', n: 'tip_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/components/toast.css', n: 'toast_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/sections/dashboard.css', n: 'dashboard_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/sections/fm.css', n: 'fm_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/dialogs/auth-dialogs.css', n: 'auth_dialogs_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/dialogs/lang-dialog.css', n: 'lang_dialog_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/dialogs/nav-dialog.css', n: 'nav_dialog_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/overlays/media-viewer.css', n: 'media_viewer_css', j:2,w:5});
+        jsl.push({f:'js/ui/transfer/css/overlays/video-player.css', n: 'video_player_css', j:2,w:5});
+
+        // Subpages
+        // @todo: move to jsl3 transferit subpages
+        jsl.push({f:'js/ui/transfer/js/ui/subpages/compare.js', n: 'js_ui_compare_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/subpages/contact.js', n: 'js_ui_contact_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/subpages/error.js', n: 'js_ui_error_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/subpages/faq.js', n: 'js_ui_faq_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/subpages/features.js', n: 'js_ui_features_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/subpages/privacy.js', n: 'js_ui_privacy_js', j: 1});
+        jsl.push({f:'js/ui/transfer/js/ui/subpages/terms.js', n: 'js_ui_terms_js', j: 1});
+
+        jsl.push({f:'js/ui/transfer/html/subpages/compare.html', n: 'js_ui_subpages_compare', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/contact.html', n: 'js_ui_subpages_contact', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/error.html', n: 'js_ui_subpages_error', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/faq.html', n: 'js_ui_subpages_faq', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/faq-body.html', n: 'js_ui_subpages_faq_body', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/features.html', n: 'js_ui_subpages_features', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/privacy.html', n: 'js_ui_subpages_privacy', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/rtu-body.html', n: 'js_ui_subpages_rtu_body', j:0});
+        jsl.push({f:'js/ui/transfer/html/subpages/terms.html', n: 'js_ui_subpages_terms', j:0});
+
+        jsl.push({f:'js/ui/transfer/css/vars/subpages.css', n: 'js_ui_vars_subpages_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/subpages/subpage.css', n: 'js_ui_subpage_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/subpages/compare.css', n: 'js_ui_compare_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/subpages/contact.css', n: 'js_ui_contact_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/subpages/error.css', n: 'js_ui_error_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/subpages/faq.css', n: 'js_ui_faq_css', j:2, w:30});
+        jsl.push({f:'js/ui/transfer/css/subpages/features.css', n: 'js_ui_features_css', j:2, w:30});
     }
 
     if (is_drop) {
@@ -2865,10 +2843,11 @@ else if (!browserUpdate) {
 
             jsl.push({f:'js/vendor/web-streams-polyfill.js', n: 'web_streams_polyfill_js', j: 1});
         }
-    }
 
-    if (page.substr(0, 5) === 'chat/') {
-        jsl.push({f:'html/chatlink.html', n: 'chatlink', j: 0});
+        if (!(typeof Scheduler !== 'undefined' && self.scheduler instanceof Scheduler && self.scheduler.yield)) {
+
+            jsl.push({f:'js/vendor/scheduler-polyfill.js', n: 'scheduler_polyfill_js', j: 1});
+        }
     }
 
     var jsl2 =
@@ -2919,7 +2898,7 @@ else if (!browserUpdate) {
         'codemirror_js': {f:'js/vendor/codemirror.js', n: 'codemirror_js', j:1},
         'codemirrorscroll_js': {f:'js/vendor/simplescrollbars.js', n: 'codemirrorscroll_js', j:1},
         'reportabuse_js': {f:'js/ui/reportAbuse.js', n:'reportabuse_js', j:1},
-        'folderlink_css':{f:'css/folder-link.css', n: 'folderlink_css', j: 2, w: 5, c: 1, d: 1, cache: 1},
+        'folderlink_css':{f:'css/folder-link.css', n: 'folderlink_css', j: 2, w: 5},
         'time_checker_js': {f:'js/time_checker.js', n:'time_checker_js', j:1},
         'filerequest_js': {f:'js/filerequest.js', n: 'filerequest_js', j:1 },
         'filerequest_upload_js': {f:'js/filerequest_upload.js', n: 'filerequest_upload_js', j:1 },
@@ -2965,6 +2944,75 @@ else if (!browserUpdate) {
             'rewind_utils_js': {f:'js/rewind/utils.js', n: 'rewind_utils_js', j: 1, w: 1},
             'rewind_storage_js': {f:'js/rewind/storage.js', n: 'rewind_storage_js', j: 1, w: 1}
         },
+        'devices': {
+            'devices_utils_js': {f:'js/fm/devices/utils.js', n: 'devices_utils_js', j: 1, w: 1},
+            'devices_main_js': {f:'js/fm/devices/main.js', n: 'devices_main_js', j: 1, w: 1},
+            'devices_s_devices_js': {f:'js/fm/devices/sections/devices.js', n: 'devices_s_devices_js', j: 1, w: 1},
+            'devices_s_device_folders_js': {f:'js/fm/devices/sections/device-folders.js', n: 'devices_s_device_folders_js', j: 1, w: 1},
+            'devices_s_folder_children_js': {f:'js/fm/devices/sections/folder-children.js', n: 'devices_s_folder_children_js', j: 1, w: 1},
+        },
+        'transferit': {
+            'it:0001': {f:'js/ui/transfer/core.js', n: 'js_ui_transfer_core_js', j: 1},
+            'it:0002': {f:'js/vendor/datepicker.js', n: 'datepicker_js', j: 1, w: 3},
+
+            'it:0010': {f:'js/ui/transfer/js/ui/components/dropdown.js', n: 'ui_dropdown_js', j: 1},
+            'it:0011': {f:'js/ui/transfer/js/ui/components/input.js', n: 'ui_input_js', j: 1},
+            'it:0012': {f:'js/ui/transfer/js/ui/components/radio.js', n: 'ui_radio_js', j: 1},
+
+            // Pages/Sections
+            'it:0030': {f:'js/ui/transfer/js/ui/pages/getlink.js', n: 'ui_getlink_js', j: 1},
+
+            // Dialogs
+            'it:0040': {f:'js/ui/transfer/js/ui/dialogs/dialog.js', n: 'ui_dialog_js', j: 1},
+
+            'it:0050': {f:'js/ui/transfer/js/common.js', n: 'utils_common_js', j: 1},
+
+            // HTML
+            'it:0060': {f:'js/ui/transfer/html/header.html', n: 'js_ui_transfer_header', j: 0},
+            'it:0061': {f:'js/ui/transfer/html/content.html', n: 'js_ui_transfer_content', j: 0, w: 3},
+            'it:0062': {f:'js/ui/transfer/html/footer.html', n: 'js_ui_transfer_footer', j: 0},
+
+            // Icons
+            'it:0070': {f:'js/ui/transfer/css/sprites/it-mime@uni.css', n: 'it_mime_css', j: 2, w: 30},
+            'it:0071': {f:'js/ui/transfer/css/sprites/it-x16-mono@mono.css', n: 'it_x16_mono_css', j: 2, w: 30},
+            'it:0072': {f:'js/ui/transfer/css/sprites/it-x24-mono@mono.css', n: 'it_x24_mono_css', j: 2, w: 30},
+            'it:0073': {f:'js/ui/transfer/css/sprites/it-x32-mono@mono.css', n: 'it_x32_mono_css', j: 2, w: 30},
+
+            // Variables
+            'it:0080': {f:'js/ui/transfer/css/vars/colors.css', n: 'vars_colors_css', j: 2, w: 30},
+            'it:0081': {f:'js/ui/transfer/css/vars/typo.css', n: 'vars_typo_css', j: 2, w: 30},
+            'it:0082': {f:'js/ui/transfer/css/vars/general.css', n: 'vars_general_css', j: 2, w: 30},
+            'it:0083': {f:'js/ui/transfer/css/vars/illustrations.css', n: 'vars_illustrations_css', j: 2, w: 30},
+
+            // General styles
+            'it:0090': {f:'js/ui/transfer/css/general/fonts.css', n: 'general_fonts_css', j: 2, w: 30},
+            'it:0092': {f:'js/ui/transfer/css/general/structure.css', n: 'general_structure_css', j: 2, w: 30},
+            'it:0093': {f:'js/ui/transfer/css/general/header.css', n: 'general_header_css', j: 2, w: 30},
+
+            // Components
+            'it:0110': {f:'js/ui/transfer/css/components/button.css', n: 'js_ui_transfer_button_css', j: 2, w: 30},
+            'it:0111': {f:'js/ui/transfer/css/components/checkbox.css', n: 'js_ui_transfer_checkbox_css', j: 2, w: 30},
+            'it:0112': {f:'js/ui/transfer/css/components/content-box.css', n: 'js_ui_transfer_content_box_css', j: 2, w: 30},
+            'it:0113': {f:'js/ui/transfer/css/components/dialog.css', n: 'js_ui_transfer_dialog_css', j: 2, w: 30},
+            'it:0114': {f:'js/ui/transfer/css/components/dropdown.css', n: 'js_ui_transfer_dropdown_css', j: 2, w: 30},
+            'it:0115': {f:'js/ui/transfer/css/components/grid.css', n: 'js_ui_transfer_grid_css', j: 2, w: 30},
+            'it:0116': {f:'js/ui/transfer/css/components/input.css', n: 'js_ui_transfer_input_css', j: 2, w: 30},
+            'it:0117': {f:'js/ui/transfer/css/components/link.css', n: 'js_ui_transfer_link_css', j: 2, w: 30},
+            'it:0118': {f:'js/ui/transfer/css/components/menu.css', n: 'js_ui_transfer_menu_css', j: 2, w: 30},
+            'it:0119': {f:'js/ui/transfer/css/components/overlay.css', n: 'js_ui_transfer_overlay_css', j: 2, w: 30},
+            'it:0120': {f:'js/ui/transfer/css/components/radio.css', n: 'js_ui_transfer_radio_css', j: 2, w: 30},
+            'it:0121': {f:'js/ui/transfer/css/components/segmented-control.css', n: 'js_ui_transfer_segmented_control_css', j: 2, w: 30},
+            'it:0122': {f:'js/ui/transfer/css/components/thumb-base.css', n: 'js_ui_transfer_thumb_base_css', j: 2, w: 30},
+            'it:0123': {f:'js/ui/transfer/css/components/toggle.css', n: 'js_ui_transfer_toggle_css', j: 2, w: 30},
+
+            // Sections !-->
+            'it:0130': {f:'js/ui/transfer/css/sections/create-link.css', n: 'create_link_css', j: 2, w: 30},
+
+            // Transfer it overlay integrated in MEGA
+            'it:0160': {f:'js/ui/transfer/html/transferit-overlay.html', n: 'js_ui_transferit_overlay', j: 0},
+            'it:0161': {f:'js/ui/transfer/js/ui/dialogs/transferit-overlay.js', n: 'ui_transferit_overlay_js', j: 1},
+            'it:0162': {f:'js/ui/transfer/css/overlays/transferit-overlay.css', n: 'transferit_overlay_css', j: 2, w: 30},
+        },
         'chat': {
             /* chat related css */
             'chat_messages_css':{f:'css/chat-messages.css', n: 'chat_messages_css', j:2,'w':5,'c':1,'cache':1,'d':1},
@@ -2985,7 +3033,6 @@ else if (!browserUpdate) {
             'keepalive_js': {f:'js/keepAlive.js', n: 'keepalive_js', j:1},
             'meganotifications_js': {f:'js/megaNotifications.js', n: 'meganotifications_js', j:1},
             'ionsound_js': {f:'js/vendor/ion.sound.js', n: 'ionsound_js', j:1},
-            'favico_js': {f:'js/vendor/favico.js', n: 'favico_js', j:1},
             'autolinker_js': {f:'js/vendor/autolinker.js', n: 'autolinker_js', j:1},
             'strongvelope_js': {f:'js/chat/strongvelope.js', n: 'strongvelope_js', j:1},
             'chatdpersist_js': {f:'js/chat/chatdPersist.js', n: 'chatdpersist_js', j:1},
@@ -3019,83 +3066,58 @@ else if (!browserUpdate) {
         'pwm': {
             'pwm:vars_pm_theme_css': {f:'css/vars/pm-theme.css', n: 'vars_pm_theme_css', j:2, w:30, c:1, d:1, cache:1},
             'pwm:pm_mono_css': {f:'css/sprites/pm-mono@mono.css', n: 'pm_mono_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:pm_dark_css': {f:'css/sprites/pm-theme@dark.css', n: 'pm_dark_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:pm_light_css': {f:'css/sprites/pm-theme@light.css', n: 'pm_light_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:checkbox_css': {f:'css/components/checkbox.css', n: 'checkbox_css', j:2, w:1},
-            'pwm:rack_css': {f:'css/components/rack.css', n: 'rack_css', j:2, w:1},
-            'pwm:toast_css': {f:'css/components/toast.css', n: 'toast_css', j:2, w:1},
-            'pwm:toggle_css': {f:'css/components/toggle-button.css', n: 'toggle_button_css', j:2, w:1},
-            'pwm:interactable_css': {f:'css/components/interactable.css', n: 'interactable_css', j:2, w:1},
-            'pwm:read_only_field_css': {f:'css/components/read-only.css', n: 'read_only_field_css', j:2, w:1},
-            'pwm:vars_mobile_theme_css': {f:'css/vars/mobile-theme.css', n: 'vars_mobile_theme_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:vars_mobile_theme_auto_css': {f:'css/vars/mobile-theme-auto.css', n: 'vars_mobile_theme_auto_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:mobile_fm_mono_css': {f:'css/sprites/mobile-fm-mono@mono.css', n: 'mobile_fm_mono_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:mobile_fm_dark_css': {f:'css/sprites/mobile-fm-theme@dark.css', n: 'mobile_fm_dark_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:mobile_fm_light_css': {f:'css/sprites/mobile-fm-theme@light.css', n: 'mobile_fm_light_css', j:2, w:30, c:1, d:1, cache:1},
-            'pwm:mobile_overlay_css': {f:'css/mobile/mobile.overlay.css', n: 'mobile_overlay_css', j:2, w:1},
-            'pwm:mobile_header_css': {f:'css/mobile/mobile.header.css', n: 'mobile_header_css', j:2, w:1},
-            'pwm:mobile_top_menu_css': {f:'css/mobile/mobile.top.menu.css', n: 'mobile_top_menu_css', j:2, w:1},
-            'pwm:header_css': {f:'css/pm/header.css', n: 'header_css', j: 2, w:1},
-            'pwm:top_menu_css': {f:'css/pm/top-menu.css', n: 'top_menu_css', j: 2, w:1},
-            'pwm:mobile_sheet_css': {f:'css/mobile/mobile.sheet.css', n:'mobile_sheet_css', j: 2, w:1},
-            'pwm:form_css': {f:'css/pm/form.css', n: 'pm_form_css', j:2, w:1},
-            'pwm:pm_password_list_page_css': {f:'css/pm/password-list-page.css', n: 'pm_password_list_page_css', j:2, w:1},
-            'pwm:top_nav_css': {f:'css/pm/top-nav.css', n: 'pm_top_nav_css', j:2, w:1},
-            'pwm:clickable_css': {f:'css/pm/clickable.css', n: 'pm_clickable_css', j:2, w:1},
-            'pwm:mega_inputs_css': {f:'css/pm/mega-inputs.css', n: 'pm_mega_inputs_css', j:2, w:1},
-            'pwm:general_css': {f:'css/pm/general.css', n: 'pm_general_css', j:2, w:1},
-            'pwm:layout_css': {f:'css/pm/layout.css', n: 'pm_layout_css', j:2, w:1},
-            'pwm:banner_css': {f:'css/pm/banner.css', n: 'pm_banner_css', j:2, w:1},
-            'pwm:spinners_css': {f:'css/pm/spinners.css', n: 'pm_spinners_css', j:2, w:1},
-            'pwm:dropdown_css': {f:'css/pm/dropdown.css', n: 'pm_dropdown_css', j:2, w:1},
-            'pwm:context_menu_css': {f:'css/pm/context-menu.css', n: 'pm_context_menu_css', j:2, w:1},
-            'pwm:overlay_css': {f:'css/pm/overlay.css', n: 'pm_overlay_css', j:2, w:1},
-            'pwm:slider_css': {f:'css/pm/slider.css', n: 'pm_slider_css', j:2, w:1},
-            'pwm:password_generator_css': {f:'css/pm/password-generator.css', n: 'pm_password_generator_css', j:2, w:1},
-            'pwm:menu_css': {f:'css/pm/menu.css', n: 'pm_menu_css', j:2, w:1},
-            'pwm:password_item_form_css': {f:'css/pm/password-item-form.css', n: 'pm_password_item_form_css', j:2, w:1},
-            'pwm:subscription_dialog_css': {f:'css/pm/subscription-dialog.css', n: 'subscription_dialog_css', j:2, w:1},
+            'pwm:read_only_field_css': {f:'css/pwm/components/read-only.css', n: 'pm_read_only_field_css', j:2, w:1},
+            'pwm:form_css': {f:'css/pwm/form.css', n: 'pm_form_css', j:2, w:1},
+            'pwm:pm_password_list_page_css': {f:'css/pwm/password-list-page.css', n: 'pm_password_list_page_css', j:2, w:1},
+            'pwm:top_nav_css': {f:'css/pwm/top-nav.css', n: 'pm_top_nav_css', j:2, w:1},
+            'pwm:clickable_css': {f:'css/pwm/clickable.css', n: 'pm_clickable_css', j:2, w:1},
+            'pwm:mega_inputs_css': {f:'css/pwm/mega-inputs.css', n: 'pm_mega_inputs_css', j:2, w:1},
+            'pwm:general_css': {f:'css/pwm/general.css', n: 'pm_general_css', j:2, w:1},
+            'pwm:banner_css': {f:'css/pwm/banner.css', n: 'pm_banner_css', j:2, w:1},
+            'pwm:spinners_css': {f:'css/pwm/spinners.css', n: 'pm_spinners_css', j:2, w:1},
+            'pwm:dropdown_css': {f:'css/pwm/dropdown.css', n: 'pm_dropdown_css', j:2, w:1},
+            'pwm:overlay_css': {f:'css/pwm/overlay.css', n: 'pm_overlay_css', j:2, w:1},
+            'pwm:slider_css': {f:'css/pwm/slider.css', n: 'pm_slider_css', j:2, w:1},
+            'pwm:password_generator_css': {f:'css/pwm/password-generator.css', n: 'pm_password_generator_css', j:2, w:1},
+            'pwm:pass_import_selector_css': {f:'css/pwm/pass-import-selector.css', n: 'pm_pass_import_selector_css', j:2, w:1},
+            'pwm:pass_import_data_handler_css': {f:'css/pwm/pass-import-data-handler.css', n: 'pm_pass_import_data_handler_css', j:2, w:1},
+            'pwm:password_item_form_css': {f:'css/pwm/password-item-form.css', n: 'pm_password_item_form_css', j:2, w:1},
+            'pwm:subscription_dialog_css': {f:'css/pwm/subscription-dialog.css', n: 'pm_subscription_dialog_css', j:2, w:1},
+            'pwm:settings_css': {f:'css/pwm/settings/settings.css', n: 'pm_settings_css', j:2, w:1},
+            'pwm:settings_list_css': {f:'css/pwm/settings/list.css', n: 'pm_settings_list_css', j:2, w:1},
 
-            'pwm:component_js': {f:'js/ui/components/component.js', n: 'component_js', j: 1, w:1},
-            'pwm:group_js': {f:'js/ui/components/group.js', n: 'group_js', j: 1, w:1},
-            'pwm:checkbox_js': {f:'js/ui/components/checkbox.js', n: 'checkbox_js', j: 1, w:1},
-            'pwm:rack_slot_js': {f:'js/ui/components/rack-slot.js', n: 'rack_slot_js', j: 1, w:1},
-            'pwm:rack_js': {f:'js/ui/components/rack.js', n: 'rack_js', j: 1, w:1},
-            'pwm:toast_js': {f:'js/ui/components/toast.js', n: 'toast_js', j: 1, w:1},
-            'pwm:toggle_button_js': {f:'js/ui/components/toggle-button.js', n: 'toggle_button_js', j: 1, w:1},
-            'pwm:interactable_js': {f:'js/ui/components/interactable.js', n: 'interactable_js', j: 1, w:1},
-            'pwm:link_js': {f:'js/ui/components/link.js', n: 'link_js', j: 1, w:1},
-            'pwm:button_js': {f:'js/ui/components/button.js', n: 'button_js', j: 1, w:1},
-            'pwm:read_only_field_js': {f:'js/ui/components/read-only-field.js', n: 'read_only_field_js', j: 1, w:1},
-            'pwm:mobile_overlay_js': {f:'js/mobile/mobile.overlay.js', n: 'mobile_overlay_js', j: 1, w:1},
-            'pwm:mobile_sheet_js': {f:'js/mobile/mobile.sheet.js', n:'mobile_sheet_js', j: 1, w:1},
+            'pwm:read_only_field_js': {f:'js/ui/pwm/components/read-only-field.js', n: 'pm_read_only_field_js', j: 1, w:1},
             'pwm:mobile_message_overlay_js': {f:'js/mobile/mobile.message-overlay.js', n: 'mobile_message_overlay_js', j: 1, w:1},
             'pwm:mobile_banner_js': {f:'js/mobile/mobile.banner.js', n: 'mobile_banner_js', j: 1, w:1},
-            'pwm:mobile_header_js': {f:'js/mobile/mobile.header.js', n: 'mobile_header_js', j: 1, w:1},
-            'pwm:mobile_top_menu_js': {f:'js/mobile/mobile.top.menu.js', n: 'mobile_top_menu_js', j: 1, w:1},
             'pwm:pm_js': {f:'js/ui/pwm/pm.js', n: 'pm_js', j: 1, w:1},
             'pwm:pm_ui_js': {f:'js/ui/pwm/pm-ui.js', n: 'pm_ui_js', j: 1, w:1},
+            'pwm:pm_ui_settings_js': {f:'js/ui/pwm/pm-ui-settings.js', n: 'pm_ui_settings_js', j: 1, w:1},
             'pwm:functions_js': {f:'js/ui/pwm/functions.js', n: 'pm_functions_js', j: 1, w:1},
-            'pwm:header_js': {f:'js/ui/pwm/component/header.js', n: 'header_js', j: 1, w:1},
-            'pwm:top_menu_js': {f:'js/ui/pwm/component/top-menu.js', n: 'top_menu_js', j: 1, w:1},
-            'pwm:top_nav_js': {f:'js/ui/pwm/component/top-nav.js', n: 'top_nav_js', j: 1, w:1},
-            'pwm:banner_js': {f:'js/ui/pwm/component/banner.js', n: 'banner_js', j: 1, w:1},
-            'pwm:view_js': {f:'js/ui/pwm/component/view.js', n: 'view_js', j: 1, w:1},
-            'pwm:form_js': {f:'js/ui/pwm/component/form.js', n: 'form_js', j: 1, w:1},
-            'pwm:password_item_form_js': {f:'js/ui/pwm/component/password-item-form.js', n: 'password_item_form_js', j: 1, w:1},
-            'pwm:password_list_js': {f:'js/ui/pwm/component/password-list.js', n: 'password_list_js', j: 1, w:1},
-            'pwm:password_item_detail_js': {f:'js/ui/pwm/component/password-item-detail.js', n: 'password_item_detail_js', j: 1, w:1},
-            'pwm:dropdown_items_js': {f:'js/ui/pwm/component/dropdown-items.js', n: 'dropdown_items_js', j: 1, w:1},
-            'pwm:dropdown_js': {f:'js/ui/pwm/component/dropdown.js', n: 'dropdown_js', j: 1, w:1},
-            'pwm:overlay_js': {f:'js/ui/pwm/component/overlay.js', n: 'overlay_js', j: 1, w:1},
-            'pwm:menu_js': {f:'js/ui/pwm/component/menu.js', n: 'menu_js', j: 1, w:1},
-            'pwm:context_menu_js': {f:'js/ui/pwm/component/context-menu.js', n: 'context_menu_js', j: 1, w:1},
-            'pwm:range_slider_js': {f:'js/ui/pwm/component/range-slider.js', n: 'range_slider_js', j: 1, w:1},
-            'pwm:password_generator_js': {f:'js/ui/pwm/component/password-generator.js', n: 'password_generator_js', j: 1, w:1},
-            'pwm:megaInputs_pmTextArea_js': {f:'js/ui/pwm/utils/megaInputs-pmTextArea.js', n: 'megaInputs_pmTextArea_js', j: 1, w:1},
-            'pwm:megaInputs_pmText_js': {f:'js/ui/pwm/utils/megaInputs-pmText.js', n: 'megaInputs_pmText_js', j: 1, w:1},
-            'pwm:sort_js': {f:'js/ui/pwm/utils/sort.js', n: 'sort_js', j: 1, w:1},
-            'pwm:deleteItem_js': {f:'js/ui/pwm/deleteItem.js', n: 'deleteItem_js', j: 1, w:1}
+            'pwm:functions_settings_js': {f:'js/ui/pwm/functions-settings.js', n: 'pm_functions_settings_js', j: 1, w:1},
+            'pwm:top_nav_js': {f:'js/ui/pwm/components/top-nav.js', n: 'pm_top_nav_js', j: 1, w:1},
+            'pwm:banner_js': {f:'js/ui/pwm/components/banner.js', n: 'pm_banner_js', j: 1, w:1},
+            'pwm:view_js': {f:'js/ui/pwm/components/view.js', n: 'pm_view_js', j: 1, w:1},
+            'pwm:form_js': {f:'js/ui/pwm/components/form.js', n: 'pm_form_js', j: 1, w:1},
+            'pwm:password_item_form_js': {f:'js/ui/pwm/components/password-item-form.js', n: 'pm_password_item_form_js', j: 1, w:1},
+            'pwm:credit_card_item_form_js': {f:'js/ui/pwm/components/credit-card-item-form.js', n: 'pm_credit_card_item_form_js', j: 1, w:1},
+            'pwm:password_list_js': {f:'js/ui/pwm/components/password-list.js', n: 'pm_password_list_js', j: 1, w:1},
+            'pwm:password_item_detail_js': {f:'js/ui/pwm/components/password-item-detail.js', n: 'pm_password_item_detail_js', j: 1, w:1},
+            'pwm:dropdown_items_js': {f:'js/ui/pwm/components/dropdown-items.js', n: 'pm_dropdown_items_js', j: 1, w:1},
+            'pwm:dropdown_js': {f:'js/ui/pwm/components/dropdown.js', n: 'pm_dropdown_js', j: 1, w:1},
+            'pwm:menu_js': {f:'js/ui/pwm/components/menu.js', n: 'pm_menu_js', j: 1, w:1},
+            'pwm:context_menu_js': {f:'js/ui/pwm/components/context-menu.js', n: 'pm_context_menu_js', j: 1, w:1},
+            'pwm:range_slider_js': {f:'js/ui/pwm/components/range-slider.js', n: 'pm_range_slider_js', j: 1, w:1},
+            'pwm:password_generator_js': {f:'js/ui/pwm/components/password-generator.js', n: 'pm_password_generator_js', j: 1, w:1},
+            'pwm:pass_import_selector_js': {f:'js/ui/pwm/components/pass-import-selector.js', n: 'pm_pass_import_selector_js', j: 1, w:1},
+            'pwm:pass_import_data_handler_js': {f:'js/ui/pwm/components/pass-import-data-handler.js', n: 'pm_pass_import_data_handler_js', j: 1, w:1},
+            'pwm:pass_extension_selector_js': {f:'js/ui/pwm/components/pass-extension-selector.js', n: 'pm_pass_extension_selector_js', j: 1, w:1},
+            'pwm:tutorial_password_item_form_js': {f:'js/ui/pwm/components/tutorial-password-item-form.js', n: 'pm_tutorial_password_item_form_js', j: 1, w:1},
+            'pwm:tutorial_otp_js': {f:'js/ui/pwm/components/tutorial-otp.js', n: 'pm_tutorial_otp_js', j: 1, w:1},
+            'pwm:megaPassList_js': {f:'js/ui/pwm/components/settings/megaPassList.js', n: 'pm_megaPassList_js', j: 1, w:1},
+            'pwm:megaPassListItem_js': {f:'js/ui/pwm/components/settings/megaPassListItem.js', n: 'pm_megaPassListItem_js', j: 1, w:1},
+            'pwm:megaInputs_pmTextArea_js': {f:'js/ui/pwm/utils/megaInputs-pmTextArea.js', n: 'pm_megaInputs_pmTextArea_js', j: 1, w:1},
+            'pwm:sort_js': {f:'js/ui/pwm/utils/sort.js', n: 'pm_sort_js', j: 1, w:1},
+            'pwm:deleteItem_js': {f:'js/ui/pwm/deleteItem.js', n: 'pm_deleteItem_js', j: 1, w:1}
         }
     };
 
@@ -3115,13 +3137,13 @@ else if (!browserUpdate) {
         'folder': ['folderlink_css'],
         'collection': ['folderlink_css'],
         'discountpromo': ['discountpromo_js'],
+        'discount': ['discountpromo_js'],
         's': ['discountpromo_js'], // Short URL for 'sale' e.g. /s/blackfriday
         'disputenotice': ['disputenotice', 'copyright_js'],
         'support': ['support_js', 'support'],
         'recover': ['reset', 'reset_js'],
         'redeem': ['redeem', 'redeem_js'],
         'unsub': ['unsub', 'unsub_js'],
-        'developersettings': ['developersettings', 'developersettings_js'],
         'filerequest': ['filerequest', 'filerequest_upload_js']
     };
 
@@ -3131,13 +3153,16 @@ else if (!browserUpdate) {
     }
 
     if (page.substr(0, 5) === 'chat/') {
-        // jsl = [{f: langFilepath, n: 'lang', j: 3}];
-        // ^ @todo: consider loading only needed files...
-        // jsl.push({f:'html/chatlink.html', n: 'chatlink', j: 0});
-
         tmp = Object.keys(jsl3.chat);
         for (var u = 0; u < tmp.length; ++u) {
             jsl.push(jsl3.chat[tmp[u]]);
+        }
+        tmp = 0;
+    }
+    else if (is_transferit) {
+        tmp = Object.keys(jsl3.transferit);
+        for (var y = 0; y < tmp.length; ++y) {
+            jsl.push(jsl3.transferit[tmp[y]]);
         }
         tmp = 0;
     }
@@ -3147,7 +3172,7 @@ else if (!browserUpdate) {
         'computerbild2019': 'redeem'
     })[page] || page;
 
-    if (page && !is_iframed)
+    if (page && !is_iframed && !self.is_transferit)
     {
         for (var p in subpages)
         {
@@ -3475,7 +3500,7 @@ else if (!browserUpdate) {
                 xhr_stack[xhri].timeout = xhr_timeout;
             }
 
-            if (is_firefox_web_ext) {
+            if (window.is_firefox_web_ext) {
                 xhr_stack[xhri].overrideMimeType('text/plain');
             }
             xhr_stack[xhri].send(null);
@@ -3513,7 +3538,7 @@ else if (!browserUpdate) {
             'es6s =' +
             (is_embed || ' BigInt(Math.pow(2, 48)) << 16n === 18446744073709551616n') + // C67 E79 F68 O54 S14
             ' && "\u044b \u0432".match(/\\p{L}+/gu)[1] === "\u0432"' + // C64 E79 F78 O51 S11
-            ' && (Array.prototype.values === Array.prototype[Symbol.iterator])' + // C66 E12 F60 O53 S9
+            ' && (Array.prototype.flatMap !== undefined)' + // C69 E79 F62 O56 S12
             ' && (function *(a=1,){yield a})(2).next().value === 2', // C58 E14 F52 O45 S10
             function(error) {
                 if (error || !window.es6s) {
@@ -3691,7 +3716,7 @@ else if (!browserUpdate) {
     var istaticpath = '/';
 
     // The loading-sprite images are embedded inside the extensions
-    if (is_chrome_web_ext || is_firefox_web_ext) {
+    if (window.is_extension) {
         istaticpath = '../images/mega/';
     }
 
@@ -3699,7 +3724,7 @@ else if (!browserUpdate) {
         'use strict';
         return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     })();
-    mCreateElement('style', {type: 'text/css'}, 'body').textContent = '.div, span, input {outline: none;}.hidden {display: none;}.clear {clear: both;margin: 0px;padding: 0px;display: block;}.loading-main-block {width: 100%;height: 100%;position: fixed;z-index: 10000;font-family:Arial, Helvetica, sans-serif;top:0;left:0;}.main-blur-block,.bottom-page.scroll-block{display:none}.loading-mid-white-block {height: 100%;width:100%;' + (darkloader ? 'background-color: #333' : '') + '}.loading-cloud {width: 222px;position: fixed;height: 158px;background-image: url(' + istaticpath + 'loading-sprite_v4.png);background-repeat: no-repeat;background-position: 0 0;left:50%;top:50%;margin:-79px 0 0 -111px;}.loading-m-block{width:60px;height:60px;position:absolute; left:81px;top:65px;background-color:' + (darkloader ? '#333' : 'white') + ';background-image: url(' + istaticpath + 'loading-sprite_v4.png);background-repeat: no-repeat;background-position: -81px -65px;border-radius: 100%;-webkit-border-radius: 100%;border-radius: 100%;z-index:10;}.loading-percentage { width: 80px;height: 80px; background-color: ' + (darkloader ? '#444' : '#e1e1e1') + ';position: absolute;-moz-border-radius: 100%;-webkit-border-radius: 100%;border-radius: 100%;overflow: hidden;background-image: url(' + istaticpath + 'loading-sprite_v4.png);background-repeat: no-repeat;background-position: -70px -185px;left:71px;top:55px;}.loading-percentage ul {list-style-type: none;-moz-border-radius: 100%;-webkit-border-radius: 100%;border-radius: 100%;overflow: hidden;}.loading-percentage li {position: absolute;top: 0px;}.loading-percentage p, .loading-percentage li, .loading-percentage ul{width: 80px;height: 80px;padding: 0;margin: 0;}.loading-percentage span {display: block;width: 40px;height: 80px;}.loading-percentage ul :nth-child(odd) {clip: rect(0px, 80px, 80px, 40px);}.loading-percentage ul :nth-child(even) {clip: rect(0px, 40px, 80px, 0px);}.loading-percentage .right-c span {-moz-border-radius-topleft: 40px;-moz-border-radius-bottomleft: 40px;-webkit-border-top-left-radius: 40px;-webkit-border-bottom-left-radius: 40px;border-top-left-radius: 40px;border-bottom-left-radius: 40px;background-color:#dc0000;}.loading-percentage .left-c span {margin-left: 40px;-moz-border-radius-topright: 40px;-moz-border-radius-bottomright: 40px;-webkit-border-top-right-radius: 40px;-webkit-border-bottom-right-radius: 40px;border-top-right-radius: 40px;border-bottom-right-radius: 40px;background-color:#dc0000;}.loading-main-bottom {max-width: 940px;width: 100%;position: absolute;bottom: 20px;left: 50%;margin: 0 0 0 -470px;text-align: center;}.loading-bottom-button {height: 29px;width: 29px;float: left;background-image: url(' + istaticpath + 'loading-sprite_v4.png);background-repeat: no-repeat;cursor: pointer;}.st-social-block-load {position: fixed;bottom: 20px;left: 0;width: 100%;height: 43px;text-align: center;}.st-bottom-button {height: 24px;width: 24px;margin: 0 8px;display: inline-block;background-image: url(' + istaticpath + 'loading-sprite_v4.png);background-repeat: no-repeat;background-position:11px -405px;cursor: pointer;-moz-border-radius: 100%;-webkit-border-radius: 100%;border-radius: 100%;-webkit-transition: all 200ms ease-in-out;-moz-transition: background-color 200ms ease-in-out;-o-transition: background-color 200ms ease-in-out;-ms-transition: background-color 200ms ease-in-out;transition: background-color 200ms ease-in-out;background-color:#999999;}.st-bottom-button.st-google-button {background-position: 11px -405px;}.st-bottom-button.st-google-button {background-position: -69px -405px;}.st-bottom-button.st-twitter-button{background-position: -29px -405px;}.st-bottom-button:hover {background-color:#334f8d;}.st-bottom-button.st-twitter-button:hover {background-color:#1a96f0;}.st-bottom-button.st-google-button:hover {background-color:#d0402a;}@media only screen and (-webkit-min-device-pixel-ratio: 1.5), only screen and (-o-min-device-pixel-ratio: 3/2), only screen and (min--moz-device-pixel-ratio: 1.5), only screen and (min-device-pixel-ratio: 1.5) {.maintance-block, .loading-percentage, .loading-m-block, .loading-cloud, .loading-bottom-button,.st-bottom-button, .st-bottom-scroll-button {background-image: url(' + istaticpath + 'loading-sprite_v4@2x.png);    background-size: 222px auto;}}';
+    mCreateElement('style', {type: 'text/css'}, 'body').textContent = 'div, span, input {outline: none;}.hidden {display: none;}.clear {clear: both;margin: 0px;padding: 0px;display: block;}.loading-main-block {width: 100%;height: 100%;position: fixed;z-index: 10000;font-family:Arial, Helvetica, sans-serif;top:0;left:0;}.main-blur-block,.bottom-page.scroll-block{display:none}.loading-mid-white-block {height: 100%;width:100%;' + (self.is_transferit ? darkloader ? 'background-color: rgb(30, 33, 36);' : 'background-color: rgb(250, 252, 255);' : darkloader ? 'background-color: #222' : '') + '}.loading-cloud {width: 225px;position: fixed;height: 160px;' + (self.is_transferit ? '' : 'background-image: url(' + istaticpath + 'loading-sprite_' + (darkloader ? 'dark' : 'light') + '.png);') + 'background-repeat: no-repeat;background-position: center 0;left:50%;top:50%;margin:-80px 0 0 -112px;}.loading-m-block{' + (self.is_transferit ? 'width:100px;height:100px;left:50%; top:50%;transform:translate(-50%, -50%);' : 'width:60px;height:60px;left:82px;top:66px;') + 'position:absolute;background-color:' + (self.is_transferit ? darkloader ? 'rgb(30, 33, 36);' : 'rgb(250, 252, 255);' : darkloader ? '#222' : 'white') + ';background-image: url(' + istaticpath + (self.is_transferit ? 'transferit-loading.svg' : 'loading-sprite_' + (darkloader ? 'dark' : 'light') + '.png') + ');background-repeat: no-repeat;background-position: ' + (self.is_transferit ? 'center;background-size:52px;' : '-86px -61px;') + 'border-radius: 100%;z-index:10;}.loading-percentage {' + (self.is_transferit ? 'width: 116px;height: 116px;left: 50%;top: 50%;transform: translate(-50%, -50%);' : 'width: 80px;height: 80px;left:72px;top:56px;') + ' background-color:' + (self.is_transferit ? 'rgba(29, 129, 255, 0.1)' : darkloader ? '#444' : '#e1e1e1') + ';position: absolute;border-radius: 100%;overflow: hidden;}.loading-percentage ul {list-style-type: none;border-radius: 100%;overflow: hidden;}.loading-percentage li {position: absolute;top: 0px;}.loading-percentage p, .loading-percentage li, .loading-percentage ul{width: 100%;height: 100%;padding: 0;margin: 0;}.loading-percentage span {display: block;width: 50%;height: 100%;}.loading-percentage ul :nth-child(odd) {' + (self.is_transferit ? 'clip: rect(0px, 116px, 116px, 58px);' : 'clip: rect(0, 80px, 80px, 40px);') + '}.loading-percentage ul :nth-child(even) {' + (self.is_transferit ? 'clip: rect(0, 58px, 116px, 0);' : 'clip: rect(0, 40px, 80px, 0);') + '}.loading-percentage .right-c span {border-top-left-radius: 50%;border-bottom-left-radius: 50%;background-color:' + (self.is_transferit ? '#1D81FF' : '#dc0000') + ';}.loading-percentage .left-c span {margin-left: 50%;border-top-right-radius: 50%;border-bottom-right-radius: 50%;background-color:' + (self.is_transferit ? '#1D81FF' : '#dc0000') + ';}.st-social-block-load {position: fixed;bottom: 20px;left: 0;width: 100%;height: 43px;text-align: center;}.st-bottom-button {height: 24px;width: 24px;margin: 0 8px;display: inline-block;background-image: url(' + istaticpath + 'loading-sprite_' + (darkloader ? 'dark' : 'light') + '.png);background-repeat: no-repeat;background-position: 11px -171px;cursor: pointer;border-radius: 100%;-webkit-transition: all 200ms ease-in-out;-moz-transition: background-color 200ms ease-in-out;-o-transition: background-color 200ms ease-in-out;-ms-transition: background-color 200ms ease-in-out;transition: background-color 200ms ease-in-out;background-color:#999999;}..st-bottom-button.st-google-button {background-position: -69px -171px;}.st-bottom-button.st-twitter-button{background-position: -29px -171px;}.st-bottom-button:hover {background-color:#334f8d;}.st-bottom-button.st-twitter-button:hover {background-color:#1a96f0;}.st-bottom-button.st-google-button:hover {background-color:#d0402a;}@media only screen and (-webkit-min-device-pixel-ratio: 1.5), only screen and (-o-min-device-pixel-ratio: 3/2), only screen and (min--moz-device-pixel-ratio: 1.5), only screen and (min-device-pixel-ratio: 1.5) {.st-bottom-button, .loading-m-block, .loading-cloud {' + (self.is_transferit ? '' : 'background-image: url(' + istaticpath + 'loading-sprite_' + (darkloader ? 'dark' : 'light') + '@2x.png);background-size: 225px auto;') + '}}';
 
     mCreateElement('div', { "class": "loading-main-block", id: "loading"}, 'body')
         .innerHTML =
@@ -3713,10 +3738,11 @@ else if (!browserUpdate) {
             '        </div>'+
             '        <div class="loading-m-block"></div>'+
             '    </div>'+
+            (self.is_transferit ? '' :
             '    <div class="st-social-block-load" id="bootbottom">'+
             '        <a href="https://www.facebook.com/MEGAprivacy" target="_blank" rel="noopener noreferrer" class="st-bottom-button st-facebook-button"></a>'+
             '        <a href="https://www.twitter.com/MEGAprivacy" target="_blank" rel="noopener noreferrer" class="st-bottom-button st-twitter-button"></a>'+
-            '    </div>'+
+            '    </div>') +
             '</div>';
 
     if (is_iframed || window.top !== window) {
@@ -3727,6 +3753,7 @@ else if (!browserUpdate) {
             document.body.textContent = '';
             document.body.style.background = is_drop ? '#fff' : '#000';
             document.body.className = is_drop ? 'theme-light' : 'theme-dark-forced';
+
             jsl_progress = function() {};
         }
         catch (ex) {
@@ -4009,9 +4036,11 @@ else if (!browserUpdate) {
             }
         }
 
-        mBroadcaster.sendMessage('boot_done');
+        if (!is_drop) {
+            mBroadcaster.sendMessage('boot_done');
+        }
 
-        if (u_checked) {
+        if (self.u_checked) {
             startMega();
         }
         else if (loginresponse === -15) {
@@ -4122,7 +4151,12 @@ function wchecksum(data, seed) {
 
 function onIdle(callback) {
     'use strict';
-    return window.requestIdleCallback(callback, {timeout: 51});
+    if (document.hidden) {
+        return queueMicrotask(callback);
+    }
+    // requestIdleCallback() is no longer reliable, hence
+    // using our setTimeout() replacement in timers.js...
+    setTimeout(callback, 60);
 }
 
 function makeUUID(a) {
@@ -4211,7 +4245,10 @@ function echo(a) {
 // Promise.catch helper
 function tell(ex) {
     'use strict';
-    if (d) {
+    if (self.reportError && ex instanceof Error) {
+        reportError(ex);
+    }
+    else if (self.d) {
         console.error(ex);
     }
     msgDialog('warninga', l[135], l[47], ex < 0 ? api_strerror(ex) : ex);
@@ -4223,9 +4260,20 @@ tryCatch(function(x) {
     var psy = tryCatch(function(f) {
         return String(f).indexOf('Synchronizetion') > 0;
     });
+    var seal = tryCatch(function(p, f) {
+        var v = p[f];
+        if (v !== undefined) {
+            delete p[f];
+            return Object.defineProperty(p, f, {value: v, writable: false, configurable: true});
+        }
+    });
     x.addEventListener = function(t, f) {
+        if (t === 'antifor-fC') {
+            window.onerror = nop;
+            throw t;
+        }
         if (t === 'contextmenu' && psy(f)) {
-            window.onerror = null;
+            window.onerror = nop;
             return;
         }
         return ael.apply(x, arguments);
@@ -4233,6 +4281,13 @@ tryCatch(function(x) {
     mBroadcaster.once('startMega', tryCatch(function() {
         x.addEventListener = ael;
     }));
+    [[window, 'fetch'], [window, 'WebSocket'], [XMLHttpRequest.prototype, 'open']]
+        .forEach(function(m) {
+            var v = m[0][m[1]];
+            if (seal(m[0], m[1]) !== m[0]) {
+                m[0][m[1]] = v;
+            }
+        });
 })(window);
 
 var dump = nop;
@@ -4264,11 +4319,10 @@ mBroadcaster.once('startMega', function() {
         });
     }
 
-    if (sessionStorage.affid && 'csp' in window) {
-        delay('aff:cspchk:movelocal', function() {
-            if ('affiliate' in M) {
-                M.affiliate.persist();
-            }
+    if (window.uTagMJID && self.u_attr) {
+        onIdle(function() {
+            api.req({ a: 'log', e: 500674, j: window.uTagMJID }).dump('miojid');
+            delete window.uTagMJID;
         });
     }
 
@@ -4276,3 +4330,5 @@ mBroadcaster.once('startMega', function() {
 });
 
 Object.defineProperty(self, 's4', {value: Object.create(null)});
+Object.defineProperty(self, 'T', {value: Object.create(null)});
+Object.defineProperty(T, 'ui', {value: Object.create(null)});

@@ -3,7 +3,6 @@
 var u_p; // prepared password
 var u_attr; // attributes
 
-/* jshint -W098 */  // It is used in another file
 // log in
 // returns user type if successful, false if not
 // valid user types are: 0 - anonymous, 1 - email set, 2 - confirmed, but no RSA, 3 - complete
@@ -17,12 +16,11 @@ function u_login(ctx, email, password, uh, pinCode, permanent) {
 
     api_getsid(ctx, email, keypw, uh, pinCode);
 }
-/* jshint +W098 */
 
 function u_login2(ctx, ks) {
     if (ks !== false) {
         sessionStorage.signinorup = 1;
-        security.login.rememberMe = !!ctx.permanent;
+        security.login.rememberMe = ctx.permanent !== false;
         security.login.loginCompleteCallback = (res) => {
             ctx.checkloginresult(ctx, res);
             ctx = ks = undefined;
@@ -230,6 +228,10 @@ function u_checklogin3a(res, ctx) {
         if (r === 3) {
             document.body.classList.add('logged');
             document.body.classList.remove('not-logged');
+
+            if (self.u_handle === 'pGTOqu7_Fek') {
+                self.vw = 1;
+            }
         }
 
         // Recovery key has been saved
@@ -294,7 +296,7 @@ function u_checklogin3a(res, ctx) {
                 }
             })
             .then(() => {
-                if (!r || is_iframed || pfid || isPublicLink()) {
+                if (!r || !mega.keyMgr || is_iframed || self.pfid || isPublicLink()) {
                     // Nothing to do here.
                     return;
                 }
@@ -344,18 +346,10 @@ function u_checklogin3a(res, ctx) {
                 // in normal users there's no problem, however in business the user will be disabled
                 // till they pay. therefore, if the importing didnt finish before 'upb' then the importing
                 // will fail.
-                if (r > 2 && !is_iframed) {
-                    const {handle} = mBroadcaster.crossTab;
-
-                    console.assert(!handle, 'FIXME: cross-tab already initialized.', handle, u_handle);
-                    console.assert(!handle || handle === u_handle, 'Unmatched cross-tab handle', handle, u_handle);
-
-                    return mBroadcaster.crossTab.initialize();
-                }
-                else if ($.createanonuser === u_attr.u) {
+                if ($.createanonuser === u_attr.u) {
                     delete $.createanonuser;
 
-                    if (pfid) {
+                    if (self.pfid) {
                         M.importWelcomePDF().catch(dump);
                     }
                     else {
@@ -412,7 +406,14 @@ async function u_checklogin4(sid) {
 
         u_type = res;
         u_checked = true;
-        onIdle(topmenuUI);
+        onIdle(() => {
+            topmenuUI();
+
+            // until old header deprecated, pmlayout check is required
+            if (typeof pmlayout !== 'undefined') {
+                mega.ui.header.update();
+            }
+        });
 
         if (typeof dlmanager === 'object') {
             dlmanager.setUserFlags();
@@ -461,11 +462,13 @@ function u_logout(logout) {
         }
 
         delete localStorage.voucher;
+        delete localStorage.pra;
         delete sessionStorage.signinorup;
         localStorage.removeItem('signupcode');
         localStorage.removeItem('registeremail');
         localStorage.removeItem('mInfinity');
         localStorage.removeItem('megaLiteMode');
+        delete sessionStorage.buextra;
 
         fminitialized = false;
         if ($.leftPaneResizable) {
@@ -529,8 +532,11 @@ function u_reset() {
     api.setSID(window.u_sid);
 
     // close fmdb
-    if (typeof mDBcls === 'function') {
-        mDBcls();
+    if (self.fmdb) {
+        if (fmdb.db) {
+            fmdb.db.close();
+        }
+        fmdb = false;
     }
 
     if (window.M && M.reset) {
@@ -645,11 +651,7 @@ function u_setrsa(rsakey) {
 
                         watchdog.notify('setrsa', [u_type, u_sid]);
 
-                        // Recovery Key Onboarding improvements
-                        // Show newly registered user the download recovery key dialog.
                         M.onFileManagerReady(function() {
-                            M.showRecoveryKeyDialog(1);
-
                             if ('csp' in window) {
                                 const storage = localStorage;
                                 const value = storage[`csp.${u_handle}`];
@@ -886,10 +888,6 @@ function processEmailChangeActionPacket(ap) {
 
             if (ap.u === u_handle) {
                 u_attr.email = user.m;
-
-                if (M.currentdirid === 'account/profile') {
-                    $('.nw-fm-left-icon.account').trigger('click');
-                }
             }
         }
         // update the underlying fmdb cache
@@ -939,7 +937,7 @@ function processEmailChangeActionPacket(ap) {
  * Contains a list of permitted landing pages.
  * @var {array} allowedLandingPages
  */
-var allowedLandingPages = ['fm', 'recents', 'chat'];
+var allowedLandingPages = ['fm', 'recents', 'chat', 's4'];
 
 /**
  * Fetch the landing page.
@@ -968,8 +966,10 @@ function setLandingPage(page) {
  * @returns {undefined}
  */
 function initMegaIoIframe(loginStatus, planNum) {
-
     'use strict';
+    if (!self.is_livesite) {
+        return Promise.resolve();
+    }
 
     // Set constants for URLs (easier to change for local testing)
     const megapagesUrl = 'https://mega.io';
@@ -1092,7 +1092,7 @@ function initMegaIoIframe(loginStatus, planNum) {
     };
 
     const setLastInteractionQueue = [];
-    const SET_LAST_INTERACTION_TIMER = 60; // seconds
+    const SET_LAST_INTERACTION_TIMER = 180; // seconds
 
     /**
      * Returns a promise which will be resolved with a string, formatted like this "$typeOfInteraction:$timestamp"
@@ -1257,28 +1257,14 @@ function initMegaIoIframe(loginStatus, planNum) {
             return MegaPromise.reject(EARGS);
         }
 
-        var isDone = false;
-        var $promise = createTimeoutPromise(
-            () => {
-                return isDone === true;
-            },
-            500,
-            10000,
-            false,
-            `SetLastInteraction(${u_h})`
-        );
-
-        $promise.always(function () {
-            isDone = true;
-        });
-
+        // @todo -- FIXME -- REVAMP..
+        const $promise = mega.promise;
 
         getLastInteractionWith(u_h, true)
             .done(function (timestamp) {
                 if (_compareLastInteractionStamp(v, timestamp) === false) {
                     // older timestamp found in `v`, resolve the promise with the latest timestamp
                     $promise.resolve(v);
-                    $promise.verify();
                 }
                 else {
                     _lastUserInteractionCache[u_h] = v;
@@ -1286,9 +1272,8 @@ function initMegaIoIframe(loginStatus, planNum) {
                     $promise.resolve(_lastUserInteractionCache[u_h]);
 
                     // TODO: check why `M.u[u_h]` might not be set...
+                    console.assert(u_h in M.u, `SetLastInteraction(${u_h})`);
                     Object(M.u[u_h]).ts = parseInt(v.split(":")[1], 10);
-
-                    $promise.verify();
 
                     mega.attr.setArrayAttribute(
                         'lstint',
@@ -1316,13 +1301,10 @@ function initMegaIoIframe(loginStatus, planNum) {
                         false,
                         true
                     );
-
-                    $promise.verify();
                 }
                 else {
                     $promise.reject(res);
-                    console.error("setLastInteraction failed, err: ", res);
-                    $promise.verify();
+                    console.error("setLastInteraction failed for", u_h, res);
                 }
             });
 

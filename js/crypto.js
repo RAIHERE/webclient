@@ -297,6 +297,18 @@ function api_reqfailed(channel, error) {
             mega.loadReport.errs++;
         }
     }
+    else if (self.is_transferit) {
+        if (e === ESID) {
+            u_logout(true);
+            onIdle(() => T.ui.pageHeader.init());
+            onIdle(() => showToast('clipboard', l[19]));
+            loadSubPage('start');
+        }
+        else {
+            console.error(`unhandled request-level error on #${c}...`, e);
+        }
+        return e;
+    }
     else if (self.is_iframed) {
         // most of the functions used here are not available on i-framed contexts, show a generic message.
         tell(e);
@@ -385,7 +397,8 @@ function api_reqfailed(channel, error) {
                 }
                 else {
                     // Unknown reasonCode
-                    reasonText = l[17740]; // Your account was terminated due to breach of Mega's Terms of Service...
+                    // Your account was terminated due to breach of Mega's Terms of Service...
+                    reasonText = l.blocked_rsn_terminated;
                 }
 
                 // Log the user out for all scenarios except SMS required (500)
@@ -413,7 +426,10 @@ function api_reqfailed(channel, error) {
                 M.account = null;
             }
             if (window.loadingDialog) {
-                loadingDialog.hide();
+                loadingDialog.hide('force');
+            }
+            if ($.dialog && $.dialog !== 'over-storage-quota') {
+                closeDialog();
             }
             M.showOverStorageQuota(e).catch(dump);
         }
@@ -895,10 +911,6 @@ async function api_createuser(ctx, invitecode, invitename) {
         ctx.uh = ab_to_base64(derivedAuthenticationKeyBytes);
     }
 
-    if (mega.affid) {
-        req.aff = mega.affid;
-    }
-
     watchdog.notify('user-created');
     return api.screq(req, ctx);
 }
@@ -1069,7 +1081,10 @@ function api_getsid2(res, ctx) {
         emailchange.verify(new sjcl.cipher.aes(ctx.passwordkey), { k1: res.k, k2: k });
     }
 
-    ctx.result(ctx, r);
+    if (ctx.result) {
+        ctx.result(ctx, r);
+    }
+    return r;
 }
 
 // We call ug using the sid from setsid() and the user's master password to obtain the master key (and other credentials)
@@ -1099,7 +1114,7 @@ async function api_setattr(n) {
     const req = {a: 'a', n: n.h, at: ab_to_base64(crypto_makeattr(n))};
     const root = M.getNodeRoot(n.h);
     if (root === M.InboxID) {
-        mega.backupCenter.ackVaultWriteAccess(n.h, req);
+        mega.devices.ui.ackVaultWriteAccess(n.h, req);
     }
     else if (root === 'pwm') {
         req.vw = 1;
@@ -1127,10 +1142,6 @@ function stringhash(s, aes) {
 // Can also be used to set keys and to confirm accounts (.c)
 function api_updateuser(ctx, newuser) {
     newuser.a = 'up';
-
-    if (mega.affid) {
-        newuser.aff = mega.affid;
-    }
 
     api_req(newuser, ctx);
 }
@@ -1372,9 +1383,10 @@ async function api_setshare(node, targets, sharenodes) {
                 }
             }
         }
+        const ec = Number(res && res.result || res);
 
-        if (!--maxretry || res === EARGS) {
-            throw new MEGAException(`Share operation failed for ${node}: ${api.strerror(res)}`, res);
+        if (!--maxretry || ec === EARGS || ec === EACCESS) {
+            throw new MEGAException(`Share operation failed for ${node}: ${api.strerror(ec || res)}`, res);
         }
 
         await tSleep(Math.min(2e4, backoff <<= 1) / 1e3);
@@ -1622,6 +1634,10 @@ function api_storefileattr(id, type, key, data, ctx, ph) {
             storedattr[id] = Object.create(null);
         }
 
+        if (self.d > 1) {
+            console.info(id | 0, `fa(${type})`, mObjectURL([data], 'image/jpeg'));
+        }
+
         if (key) {
             data = asmCrypto.AES_CBC.encrypt(data, a32_to_ab(key), false);
         }
@@ -1632,15 +1648,12 @@ function api_storefileattr(id, type, key, data, ctx, ph) {
             type: type,
             data: data,
             handle: handle,
-            callback: api_fareq,
             startTime: Date.now()
         };
     }
 
     var req = {
-        a: 'ufa',
         s: ctx.data.byteLength,
-        ssl: use_ssl
     };
 
     if (M.d[ctx.handle] && M.getNodeRights(ctx.handle) > 1) {
@@ -1650,7 +1663,7 @@ function api_storefileattr(id, type, key, data, ctx, ph) {
         req.ph = ctx.ph;
     }
 
-    api_req(req, ctx, pfid ? 1 : 0);
+    return api_fareq.fire(req, ctx, self.pfid ? 1 : 0).catch(reportError);
 }
 
 async function api_getfileattr(fa, type, procfa, errfa) {
@@ -1701,10 +1714,8 @@ async function api_getfileattr(fa, type, procfa, errfa) {
         }
     }
 
-    // eslint-disable-next-line guard-for-in
-    for (const n in p) {
+    const ufa = (n) => {
         const ctx = {
-            callback: api_fareq,
             type: type,
             p: p[n],
             h: h,
@@ -1719,15 +1730,17 @@ async function api_getfileattr(fa, type, procfa, errfa) {
                 return procfa(ctx, h, buf);
             },
             errfa: errfa,
-            startTime: Date.now(),
             plaintext: plain[n]
         };
-        api_req({
-            a: 'ufa',
+        const payload = {
             fah: base64urlencode(ctx.p.substr(0, 8)),
-            ssl: use_ssl,
             r: +fa_handler.chunked
-        }, ctx);
+        };
+        api_fareq.fire(payload, ctx).catch(reportError);
+    };
+    // eslint-disable-next-line guard-for-in
+    for (const n in p) {
+        ufa(n);
     }
 }
 
@@ -1735,8 +1748,10 @@ async function api_getfileattr(fa, type, procfa, errfa) {
 lazy(fa_handler, 'lru', () => {
     'use strict';
     const lru = Object.create(null);
-    lazy(lru, 0, () => LRUMegaDexie.create('fa-handler.0', 1e4));
-    lazy(lru, 1, () => LRUMegaDexie.create('fa-handler.1', 1e3));
+    if (self.LRUMegaDexie) {
+        lazy(lru, 0, () => LRUMegaDexie.create('fa-handler.0', 1e4));
+        lazy(lru, 1, () => LRUMegaDexie.create('fa-handler.1', 1e3));
+    }
     return lru;
 });
 
@@ -2122,14 +2137,8 @@ function api_faretry(ctx, error, host) {
                      ctx.faRetryI);
 
         return setTimeout(function () {
-            ctx.startTime = Date.now();
             if (ctx.p) {
-                api_req({
-                    a: 'ufa',
-                    fah: base64urlencode(ctx.p.substr(0, 8)),
-                    ssl: use_ssl,
-                    r: +fa_handler.chunked
-                }, ctx);
+                api_fareq.fire(ctx.payload, ctx).catch(reportError);
             }
             else {
                 api_storefileattr(null, null, null, null, ctx);
@@ -2164,9 +2173,28 @@ function api_faerrlauncher(ctx, host) {
     return r;
 }
 
+Object.defineProperty(api_fareq, 'fire', {
+    async value(payload, ctx, channel) {
+        'use strict';
+        payload.a = 'ufa';
+        payload.ssl = self.use_ssl;
+
+        ctx.payload = {...payload};
+        ctx.startTime = Date.now();
+
+        return api.req(payload, channel)
+            .catch(echo)
+            .then((res) => {
+                const result = Number(res.result || res) | 0;
+                return api_fareq(result < 0 ? result : res.result, ctx, {q: !1});
+            });
+    }
+});
+
 function api_fareq(res, ctx, xhr) {
     var logger = d > 1 && MegaLogger.getLogger('crypt');
-    var error = typeof res === 'number' && res || '';
+    const error = typeof res !== 'object' || !res
+        ? typeof res === 'number' ? res : EINCOMPLETE : false;
 
     if (ctx.startTime && logger) {
         logger.debug('Reply in %dms for %s', (Date.now() - ctx.startTime), xhr.q.url);
@@ -2826,7 +2854,7 @@ function crypto_setsharekey(h, k, ignoreDB, fromKeyMgr) {
     assert(crypto_setsharekey2(h, k), 'Invalid setShareKey() invocation...');
 
     if (!fromKeyMgr && !pfid) {
-        mega.keyMgr.createShare(h, k, true).catch(dump);
+        mega.keyMgr.createShare(h, true).catch(reportError);
     }
 
     if (sharemissing[h]) {

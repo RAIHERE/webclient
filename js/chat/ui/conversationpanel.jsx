@@ -16,41 +16,30 @@ import { IncSharesAccordionPanel } from './incomingSharesAccordionPanel.jsx';
 import { ChatlinkDialog } from './chatlinkDialog.jsx';
 import PushSettingsDialog from './pushSettingsDialog.jsx';
 import Call, { EXPANDED_FLAG, TYPE, inProgressAlert, isGuest } from './meetings/call.jsx';
-import HistoryPanel from "./historyPanel.jsx";
-import ComposedTextArea from "./composedTextArea.jsx";
-import Loading from "./meetings/workflow/loading.jsx";
-import Join from "./meetings/workflow/join.jsx";
+import HistoryPanel from './historyPanel.jsx';
+import ComposedTextArea from './composedTextArea.jsx';
+import Loading from './meetings/workflow/loading.jsx';
+import Join from './meetings/workflow/join.jsx';
 import Alert from './meetings/workflow/alert.jsx';
 import { isSameDay, isToday, isTomorrow } from './meetings/schedule/helpers.jsx';
 import { withHostsObserver } from './meetings/hostsObserver.jsx';
 import WaitingRoom from './meetings/waitingRoom/waitingRoom.jsx';
 import { renderEndConfirm, renderLeaveConfirm } from './meetings/streamControls';
-import { InviteParticipantsPanel } from "./inviteParticipantsPanel.jsx";
+import { InviteParticipantsPanel } from './inviteParticipantsPanel.jsx';
 import ChatOverlay, { ChatOverlays } from './chatOverlay.jsx';
-import Link from "./link.jsx";
+import Link from './link.jsx';
 
 const ENABLE_GROUP_CALLING_FLAG = true;
 const MAX_USERS_CHAT_PRIVATE = 100;
 const ALERTS_BASE_OFFSET = 4;
+const DISMISS_TRANSITIONS = {
+    NOT_SHOWN: 0,
+    SHOWN: 1,
+    DISMISSED: 2,
+};
 
-class EndCallButton extends MegaRenderMixin {
+class EndCallButton extends React.Component {
     IS_MODERATOR = Call.isModerator(this.props.chatRoom, u_handle);
-
-    EVENTS = ['onCallPeerJoined.endCallButton', 'onCallPeerLeft.endCallButton'];
-
-    shouldComponentUpdate() {
-        return true;
-    }
-
-    componentWillUnmount() {
-        super.componentWillUnmount();
-        this.EVENTS.map(ev => this.props.chatRoom.unbind(ev));
-    }
-
-    componentDidMount() {
-        super.componentDidMount();
-        this.EVENTS.map(ev => this.props.chatRoom.rebind(ev, () => this.safeForceUpdate()));
-    }
 
     LeaveButton = withHostsObserver(
         ({ hasHost, chatRoom, confirmLeave, onLeave }) => {
@@ -71,8 +60,8 @@ class EndCallButton extends MegaRenderMixin {
                                     altCta: l.leave_anyway /* `Leave anyway` */,
                                 });
 
-                        const { recorder, sfuClient } = chatRoom.call;
-                        return recorder && recorder === u_handle ?
+                        const { recorderCid, sfuClient } = chatRoom.call;
+                        return recorderCid && recorderCid === sfuClient.cid ?
                             renderLeaveConfirm(doLeave, () => sfuClient.recordingStop()) :
                             doLeave();
                     }}
@@ -134,8 +123,8 @@ class EndCallButton extends MegaRenderMixin {
                                 icon="sprite-fm-mono icon-contacts"
                                 label={l.end_for_all}
                                 onClick={() => {
-                                    const { recorder, sfuClient } = call;
-                                    return recorder && recorder === u_handle ?
+                                    const { recorderCid, sfuClient } = call;
+                                    return recorderCid && recorderCid === u_handle ?
                                         renderEndConfirm(doEnd, () => sfuClient.recordingStop()) :
                                         doEnd();
                                 }}
@@ -181,46 +170,36 @@ class EndCallButton extends MegaRenderMixin {
     }
 }
 
-class StartMeetingNotification extends MegaRenderMixin {
-    customIsEventuallyVisible = () => true;
-
-    render() {
-        const { chatRoom, offset, onWaitingRoomJoin, onStartCall } = this.props;
-
-        if (chatRoom.call || !megaChat.hasSupportForCalls) {
-            return null;
-        }
-
-        return (
-            <div
-                className="in-call-notif neutral start"
-                style={{ marginTop: offset }}
-                onClick={() => {
-                    eventlog(500288);
-                    if (chatRoom.options.w && !chatRoom.iAmOperator()) {
-                        return onWaitingRoomJoin();
-                    }
-                    return onStartCall(TYPE.AUDIO);
-                }}>
-                <button className="mega-button positive small">{l.schedule_start_aot}</button>
-            </div>
-        );
+const StartMeetingNotification = ({ chatRoom, offset, onWaitingRoomJoin, onStartCall }) => {
+    if (chatRoom.call || !megaChat.hasSupportForCalls) {
+        return null;
     }
-}
 
-export class JoinCallNotification extends MegaRenderMixin {
-    customIsEventuallyVisible = () => true;
+    return (
+        <div
+            className="in-call-notif neutral start"
+            style={{ marginTop: offset }}
+            onClick={() => {
+                eventlog(500288);
+                if (chatRoom.options.w && !chatRoom.iAmOperator()) {
+                    return onWaitingRoomJoin();
+                }
+                return onStartCall(TYPE.AUDIO);
+            }}>
+            <button className="mega-button positive small">{l.schedule_start_aot}</button>
+        </div>
+    );
+};
 
-    render() {
-        const { chatRoom, offset, rhpCollapsed } = this.props;
+export const JoinCallNotification = ({ chatRoom, offset, rhpCollapsed }) => {
+    if (chatRoom.call) {
+        return null;
+    }
 
-        if (chatRoom.call) {
-            return null;
-        }
-
-        if (!megaChat.hasSupportForCalls) {
-            // `There is an active call in this room, but your browser does not support calls.`
-            return <Alert
+    if (!megaChat.hasSupportForCalls) {
+        // `There is an active call in this room, but your browser does not support calls.`
+        return (
+            <Alert
                 className={`
                     ${rhpCollapsed ? 'full-span' : ''}
                     ${offset === ALERTS_BASE_OFFSET ? 'single-alert' : ''}
@@ -229,37 +208,39 @@ export class JoinCallNotification extends MegaRenderMixin {
                 offset={offset === ALERTS_BASE_OFFSET ? 0 : offset}
                 type={Alert.TYPE.MEDIUM}
                 content={l.active_call_not_supported}
-            />;
-        }
+            />
+        );
+    }
 
-        if (chatRoom.callUserLimited && !chatRoom.canJoinLimitedCall()) {
-            /* `Cannot join, this call can only support 100 participants. Reach out to organiser for more info` */
-            return <div
+    if (chatRoom.callUserLimited && !chatRoom.canJoinLimitedCall()) {
+        /* `Cannot join, this call can only support 100 participants. Reach out to organiser for more info` */
+        return (
+            <div
                 className="call-user-limit-banner"
                 style={{ marginTop: offset }}>
                 {l.call_join_user_limit_banner}
-            </div>;
-        }
-
-        return (
-            <div
-                className="in-call-notif neutral join"
-                style={{ marginTop: offset }}>
-                <i className="sprite-fm-mono icon-phone"/>
-                <ParsedHTML
-                    onClick={() => {
-                        return inProgressAlert(true, chatRoom)
-                            .then(() => chatRoom.joinCall())
-                            .catch((ex) => d && console.warn('Already in a call.', ex));
-                    }}>
-                    {(l[20460] || 'There is an active group call. [A]Join[/A]')
-                        .replace('[A]', '<button class="mega-button positive joinActiveCall small">')
-                        .replace('[/A]', '</button>')}
-                </ParsedHTML>
             </div>
         );
     }
-}
+
+    return (
+        <div
+            className="in-call-notif neutral join"
+            style={{ marginTop: offset }}>
+            <i className="sprite-fm-mono icon-phone"/>
+            <ParsedHTML
+                onClick={() => {
+                    return inProgressAlert(true, chatRoom)
+                        .then(() => chatRoom.joinCall())
+                        .catch((ex) => d && console.warn('Already in a call.', ex));
+                }}>
+                {(l[20460] || 'There is an active group call. [A]Join[/A]')
+                    .replace('[A]', '<button class="mega-button positive joinActiveCall small">')
+                    .replace('[/A]', '</button>')}
+            </ParsedHTML>
+        </div>
+    );
+};
 
 export const allContactsInChat = (participants) => {
     var currentContacts = M.u.keys();
@@ -286,6 +267,7 @@ export const excludedParticipants = (room) => {
 };
 
 class Occurrences extends MegaRenderMixin {
+    domRef = React.createRef();
     loadingMore = false;
 
     state = {
@@ -327,7 +309,7 @@ class Occurrences extends MegaRenderMixin {
             );
         }
 
-        return chatRoom.hasUserMessages() ?
+        return chatRoom.hasMessages(true) ?
             msgDialog(
                 `confirmation:!^${l.cancel_meeting_button}!${l.schedule_cancel_abort}`,
                 'cancel-occurrence',
@@ -438,30 +420,29 @@ class Occurrences extends MegaRenderMixin {
     }
 
     render() {
-        const { chatRoom, scheduledMeeting } = this.props;
-        const { editDialog, occurrenceId } = this.state;
-
         return (
-            <>
-                <div className="chat-occurrences-list">
-                    <PerfectScrollbar
-                        chatRoom={chatRoom}
-                        ref={ref => {
-                            this.contactsListScroll = ref;
-                        }}
-                        disableCheckingVisibility={true}
-                        onUserScroll={ps => ps.isCloseToBottom(30) && this.loadOccurrences()}
-                        isVisible={this.isCurrentlyActive}
-                        options={{ suppressScrollX: true }}>
-                        <div className="chat-occurrences-list-inner">{this.renderOccurrences()}</div>
-                    </PerfectScrollbar>
-                </div>
-            </>
+            <div
+                ref={this.domRef}
+                className="chat-occurrences-list">
+                <PerfectScrollbar
+                    chatRoom={this.props.chatRoom}
+                    ref={ref => {
+                        this.contactsListScroll = ref;
+                    }}
+                    disableCheckingVisibility={true}
+                    onUserScroll={ps => ps.isCloseToBottom(30) && this.loadOccurrences()}
+                    isVisible={this.isCurrentlyActive}
+                    options={{ suppressScrollX: true }}>
+                    <div className="chat-occurrences-list-inner">{this.renderOccurrences()}</div>
+                </PerfectScrollbar>
+            </div>
         );
     }
 }
 
 export class ConversationRightArea extends MegaRenderMixin {
+    domRef = React.createRef();
+
     static defaultProps = {
         'requiresUpdateOnResize': true
     };
@@ -585,11 +566,11 @@ export class ConversationRightArea extends MegaRenderMixin {
             };
 
             if (isRecurring) {
-                return chatRoom.hasUserMessages() ?
+                return chatRoom.hasMessages(true) ?
                     msgDialog(
                         `confirmation:!^${l.cancel_meeting_button}!${l.schedule_cancel_abort}`,
                         null,
-                        l.schedule_cancel_dialog_title.replace('%s', title),
+                        l.schedule_cancel_dialog_title.replace('%s', megaChat.html(title)),
                         l.schedule_cancel_dialog_move_recurring,
                         doConfirm,
                         1
@@ -597,18 +578,18 @@ export class ConversationRightArea extends MegaRenderMixin {
                     msgDialog(
                         `confirmation:!^${l.schedule_cancel_dialog_confirm}!${l.schedule_cancel_abort}`,
                         null,
-                        l.schedule_cancel_dialog_title.replace('%s', title),
+                        l.schedule_cancel_dialog_title.replace('%s', megaChat.html(title)),
                         l.schedule_cancel_dialog_archive_recurring,
                         doConfirm,
                         1
                     );
             }
 
-            return chatRoom.hasUserMessages() ?
+            return chatRoom.hasMessages(true) ?
                 msgDialog(
                     `confirmation:!^${l.cancel_meeting_button}!${l.schedule_cancel_abort}`,
                     null,
-                    l.schedule_cancel_dialog_title.replace('%s', title),
+                    l.schedule_cancel_dialog_title.replace('%s', megaChat.html(title)),
                     l.schedule_cancel_dialog_move_single,
                     doConfirm,
                     1
@@ -616,7 +597,7 @@ export class ConversationRightArea extends MegaRenderMixin {
                 msgDialog(
                     `confirmation:!^${l.schedule_cancel_dialog_confirm}!${l.schedule_cancel_abort}`,
                     null,
-                    l.schedule_cancel_dialog_title.replace('%s', title),
+                    l.schedule_cancel_dialog_title.replace('%s', megaChat.html(title)),
                     l.schedule_cancel_dialog_archive_single,
                     doConfirm,
                     1
@@ -809,10 +790,10 @@ export class ConversationRightArea extends MegaRenderMixin {
         if (
             !room.iAmOperator() ||
             room.isReadOnly() ||
-            room.messagesBuff.messages.length === 0 ||
+            room.messagesBuff?.messages.length === 0 ||
             (
-                room.messagesBuff.messages.length === 1 &&
-                room.messagesBuff.messages.getItem(0).dialogType === "truncated"
+                room.messagesBuff?.messages.length === 1 &&
+                room.messagesBuff?.messages.getItem(0).dialogType === "truncated"
             )
         ) {
             dontShowTruncateButton = true;
@@ -1015,7 +996,9 @@ export class ConversationRightArea extends MegaRenderMixin {
         }
 
         return (
-            <div className="chat-right-area">
+            <div
+                ref={this.domRef}
+                className="chat-right-area">
                 <PerfectScrollbar
                     className="chat-right-area conversation-details-scroll"
                     options={{ 'suppressScrollX': true }}
@@ -1025,10 +1008,7 @@ export class ConversationRightArea extends MegaRenderMixin {
                     triggerGlobalResize={true}
                     isVisible={room.isCurrentlyActive}
                     chatRoom={room}>
-                    <div
-                        className={`
-                            chat-right-pad
-                        `}>
+                    <div className="chat-right-pad">
                         <Accordion
                             {...this.state}
                             chatRoom={room}
@@ -1038,7 +1018,7 @@ export class ConversationRightArea extends MegaRenderMixin {
                                     this.rightScroll.reinitialise();
                                 }
                                 if (this.participantsListRef) {
-                                    this.participantsListRef.safeForceUpdate();
+                                    this.participantsListRef.safeForceUpdate?.();
                                 }
                             })}
                             expandedPanel={{
@@ -1066,6 +1046,7 @@ export class ConversationRightArea extends MegaRenderMixin {
                                 </AccordionPanel> :
                                 null
                             }
+
                             {room.type === 'public' && room.observers > 0 && !room.options.w ?
                                 <div className="accordion-text observers">
                                     {l[20466] /* `Observers` */}
@@ -1103,158 +1084,173 @@ export class ConversationRightArea extends MegaRenderMixin {
                                 chatRoom={room}
                                 sfuClient={window.sfuClient}>
                                 <>
-                                    {addParticipantBtn}
-                                    {startAudioCallButton}
-                                    {startVideoCallButton}
-                                    <EndCallButton
-                                        call={room.havePendingGroupCall() || room.haveActiveCall()}
-                                        chatRoom={room}
-                                    />
-                                    {scheduledMeeting && <div
-                                        className={`
-                                            link-button light schedule-view-desc
-                                            ${room.isReadOnly() || !scheduledMeeting.description ? 'disabled' : ''}
-                                        `}
-                                        onClick={() => {
-                                            if (!room.isReadOnly() && scheduledMeeting.description) {
-                                                onShowScheduledDescription();
-                                            }
-                                        }}>
-                                        <i className="sprite-fm-mono icon-description" />
-                                        <span>{l.schedule_view_desc /* `View description` */}</span>
-                                    </div>}
-                                    {(room.type === 'group' || room.type === 'public') && !scheduledMeeting ?
-                                        <div
-                                            className={renameButtonClass}
-                                            onClick={(e) => {
-                                                if ($(e.target).closest('.disabled').length > 0) {
-                                                    return false;
-                                                }
-                                                if (this.props.onRenameClicked) {
-                                                    this.props.onRenameClicked();
-                                                }
-                                            }}>
-                                            <i className="sprite-fm-mono icon-rename"/>
-                                            <span>{room.isMeeting
-                                                ? l.rename_meeting /* `Rename Meeting` */
-                                                : l[9080] /* `Rename group` */}</span>
-                                        </div> :
-                                        null
-                                    }
-                                    {scheduledMeeting ?
-                                        <div
-                                            className={`
-                                                link-button
-                                                light
-                                                ${room.iAmOperator() ? '' : 'disabled'}
-                                            `}
-                                            onClick={() => {
-                                                const { plugins } = megaChat;
-                                                return room.iAmOperator() ?
-                                                    megaChat.trigger(plugins.meetingsManager.EVENTS.EDIT, room) :
-                                                    null;
-                                            }}>
-                                            <i className="sprite-fm-mono icon-rename"/>
-                                            {scheduledMeeting.isRecurring ?
-                                                <span>{l.edit_meeting_series_button /* `Edit entire series` */}</span> :
-                                                <span>{l.edit_meeting_button /* `Edit meeting` */}</span>}
-                                        </div> :
-                                        null
-                                    }
-                                    {room.type === 'public' && !room.isMeeting ?
-                                        <div
-                                            className={getChatLinkClass}
-                                            onClick={e => {
-                                                if ($(e.target).closest('.disabled').length > 0) {
-                                                    return false;
-                                                }
-                                                this.props.onGetManageChatLinkClicked();
-                                            }}>
-                                            <i className="sprite-fm-mono icon-link-filled"/>
-                                            <span>{l[20481] /* `Get chat link */}</span>
-                                        </div> :
-                                        null
-                                    }
-                                    {scheduledMeeting ?
-                                        <div
-                                            className={`
-                                                link-button
-                                                light
-                                                ${room.iAmOperator() && !scheduledMeeting.canceled ? '' : 'disabled'}
-                                            `}
-                                            onClick={() => {
-                                                if (room.iAmOperator() && !scheduledMeeting.canceled) {
-                                                    this.handleCancelMeeting();
-                                                }
-                                            }}>
-                                            <i className="sprite-fm-mono icon-bin-filled"/>
-                                            {scheduledMeeting.isRecurring ?
-                                                <span>
-                                                    {l.cancel_meeting_series_button /* `Cancel entire series` */}
-                                                </span> :
-                                                <span>{l.cancel_meeting_button /* `Cancel meeting` */}</span>}
-                                        </div> :
-                                        null
-                                    }
-                                    {
-                                        !room.membersSetFromApi.members.hasOwnProperty(u_handle) &&
-                                        room.type === 'public' &&
-                                        !is_chatlink &&
-                                        room.publicChatHandle &&
-                                        room.publicChatKey ?
-                                            <div
-                                                className="link-button light"
-                                                onClick={(e) => {
-                                                    if ($(e.target).closest('.disabled').length > 0) {
-                                                        return false;
-                                                    }
-                                                    this.props.onJoinViaPublicLinkClicked();
-                                                }}>
-                                                <i className="sprite-fm-mono icon-rename"/>
-                                                <span>{l[20597] /* `Join Group` */}</span>
-                                            </div> :
-                                            null
-                                    }
-                                    {scheduledMeeting ?
+                                    {room.isNote ?
                                         null :
                                         <>
-                                            {AVseperator}
-                                            <Button
-                                                className="link-button light dropdown-element"
-                                                icon="sprite-fm-mono icon-upload-filled"
-                                                label={l[23753]}
-                                                disabled={room.isReadOnly()}>
-                                                <Dropdown
-                                                    className="wide-dropdown send-files-selector light"
-                                                    noArrow="true"
-                                                    vertOffset={4}
-                                                    onClick={() => false}>
-                                                    <div className="dropdown info-txt">
-                                                        {l[23753] || 'Send...'}
-                                                    </div>
-                                                    <DropdownItem
-                                                        className="link-button"
-                                                        icon="sprite-fm-mono icon-cloud-drive"
-                                                        label={l[19794] || 'My Cloud Drive'}
-                                                        disabled={mega.paywall}
-                                                        onClick={() => {
-                                                            this.props.onAttachFromCloudClicked();
-                                                        }}
-                                                    />
-                                                    <DropdownItem
-                                                        className="link-button"
-                                                        icon="sprite-fm-mono icon-session-history"
-                                                        label={l[19795] || 'My computer'}
-                                                        disabled={mega.paywall}
-                                                        onClick={() => {
-                                                            this.props.onAttachFromComputerClicked();
-                                                        }}
-                                                    />
-                                                </Dropdown>
-                                            </Button>
+                                            {addParticipantBtn}
+                                            {startAudioCallButton}
+                                            {startVideoCallButton}
+                                            <EndCallButton
+                                                call={room.havePendingGroupCall() || room.haveActiveCall()}
+                                                chatRoom={room}
+                                            />
+                                            {scheduledMeeting &&
+                                                <div
+                                                    className={`
+                                                        link-button light
+                                                        schedule-view-desc
+                                                        ${room.isReadOnly() ||
+                                                            !scheduledMeeting.description ? 'disabled' : ''
+                                                        }
+                                                    `}
+                                                    onClick={() => {
+                                                        if (!room.isReadOnly() && scheduledMeeting.description) {
+                                                            onShowScheduledDescription();
+                                                        }
+                                                    }}>
+                                                    <i className="sprite-fm-mono icon-description"/>
+                                                    <span>{l.schedule_view_desc /* `View description` */}</span>
+                                                </div>
+                                            }
+                                            {(room.type === 'group' || room.type === 'public') && !scheduledMeeting ?
+                                                <div
+                                                    className={renameButtonClass}
+                                                    onClick={(e) => {
+                                                        if ($(e.target).closest('.disabled').length > 0) {
+                                                            return false;
+                                                        }
+                                                        if (this.props.onRenameClicked) {
+                                                            this.props.onRenameClicked();
+                                                        }
+                                                    }}>
+                                                    <i className="sprite-fm-mono icon-rename"/>
+                                                    <span>{room.isMeeting
+                                                        ? l.rename_meeting /* `Rename Meeting` */
+                                                        : l[9080] /* `Rename group` */}</span>
+                                                </div> :
+                                                null
+                                            }
+                                            {scheduledMeeting ?
+                                                <div
+                                                    className={`
+                                                        link-button
+                                                        light
+                                                        ${room.iAmOperator() ? '' : 'disabled'}
+                                                    `}
+                                                    onClick={() =>
+                                                        room.iAmOperator() ?
+                                                            megaChat.trigger(
+                                                                megaChat.plugins.meetingsManager.EVENTS.EDIT, room
+                                                            ) :
+                                                            null
+                                                    }>
+                                                    <i className="sprite-fm-mono icon-rename"/>
+                                                    {scheduledMeeting.isRecurring ?
+                                                        <span>
+                                                            {l.edit_meeting_series_button /* `Edit entire series` */}
+                                                        </span> :
+                                                        <span>
+                                                            {l.edit_meeting_button /* `Edit meeting` */}
+                                                        </span>
+                                                    }
+                                                </div> :
+                                                null
+                                            }
+                                            {room.type === 'public' && !room.isMeeting ?
+                                                <div
+                                                    className={getChatLinkClass}
+                                                    onClick={e => {
+                                                        if ($(e.target).closest('.disabled').length > 0) {
+                                                            return false;
+                                                        }
+                                                        this.props.onGetManageChatLinkClicked();
+                                                    }}>
+                                                    <i className="sprite-fm-mono icon-link-filled"/>
+                                                    <span>{l[20481] /* `Get chat link */}</span>
+                                                </div> :
+                                                null
+                                            }
+                                            {scheduledMeeting ?
+                                                <div
+                                                    className={`
+                                                        link-button
+                                                        light
+                                                        ${room.iAmOperator() &&
+                                                            !scheduledMeeting.canceled ? '' : 'disabled'}
+                                                    `}
+                                                    onClick={() => {
+                                                        if (room.iAmOperator() && !scheduledMeeting.canceled) {
+                                                            this.handleCancelMeeting();
+                                                        }
+                                                    }}>
+                                                    <i className="sprite-fm-mono icon-bin-filled"/>
+                                                    {scheduledMeeting.isRecurring ?
+                                                        <span>{l.cancel_meeting_series_button}</span> :
+                                                        <span>{l.cancel_meeting_button /* `Cancel meeting` */}</span>}
+                                                </div> :
+                                                null
+                                            }
+                                            {
+                                                !room.membersSetFromApi.members.hasOwnProperty(u_handle) &&
+                                                room.type === 'public' &&
+                                                !is_chatlink &&
+                                                room.publicChatHandle &&
+                                                room.publicChatKey ?
+                                                    <div
+                                                        className="link-button light"
+                                                        onClick={(e) => {
+                                                            if ($(e.target).closest('.disabled').length > 0) {
+                                                                return false;
+                                                            }
+                                                            this.props.onJoinViaPublicLinkClicked();
+                                                        }}>
+                                                        <i className="sprite-fm-mono icon-rename"/>
+                                                        <span>{l[20597] /* `Join Group` */}</span>
+                                                    </div> :
+                                                    null
+                                            }
+                                            {scheduledMeeting ?
+                                                null :
+                                                <>
+                                                    {AVseperator}
+                                                    <Button
+                                                        className="link-button light dropdown-element"
+                                                        icon="sprite-fm-mono icon-upload-filled"
+                                                        label={l[23753]}
+                                                        disabled={room.isReadOnly()}>
+                                                        <Dropdown
+                                                            className="wide-dropdown send-files-selector light"
+                                                            noArrow="true"
+                                                            vertOffset={4}
+                                                            onClick={() => false}>
+                                                            <div className="dropdown info-txt">
+                                                                {l[23753] || 'Send...'}
+                                                            </div>
+                                                            <DropdownItem
+                                                                className="link-button"
+                                                                icon="sprite-fm-mono icon-cloud-drive"
+                                                                label={l[19794] || 'My Cloud Drive'}
+                                                                disabled={mega.paywall}
+                                                                onClick={() => {
+                                                                    this.props.onAttachFromCloudClicked();
+                                                                }}
+                                                            />
+                                                            <DropdownItem
+                                                                className="link-button"
+                                                                icon="sprite-fm-mono icon-session-history"
+                                                                label={l[19795] || 'My computer'}
+                                                                disabled={mega.paywall}
+                                                                onClick={() => {
+                                                                    this.props.onAttachFromComputerClicked();
+                                                                }}
+                                                            />
+                                                        </Dropdown>
+                                                    </Button>
+                                                </>
+                                            }
+                                            {this.renderPushSettingsButton()}
                                         </>
                                     }
-                                    {this.renderPushSettingsButton()}
                                     {room.type === 'private' ?
                                         null :
                                         <>
@@ -1266,7 +1262,7 @@ export class ConversationRightArea extends MegaRenderMixin {
                                     }
                                     <Button
                                         className="link-button light export-chat-button"
-                                        disabled={room.messagesBuff.messages.length === 0 || room.exportIo}
+                                        disabled={room.messagesBuff?.messages.length === 0 || room.exportIo}
                                         onClick={() => {
                                             room.exportToFile();
                                         }}
@@ -1367,9 +1363,9 @@ export class ConversationRightArea extends MegaRenderMixin {
                                 key="sharedFiles"
                                 title={l[19796] || 'Shared Files'}
                                 chatRoom={room}
-                                sharedFiles={room.messagesBuff.sharedFiles}
+                                sharedFiles={room.messagesBuff?.sharedFiles}
                             />
-                            {room.type === "private" ?
+                            {room.type === 'private' && !room.isNote ?
                                 <IncSharesAccordionPanel key="incomingShares" title={l[5542]} chatRoom={room} /> :
                                 null
                             }
@@ -1420,9 +1416,13 @@ export class ConversationRightArea extends MegaRenderMixin {
 }
 
 export class ConversationPanel extends MegaRenderMixin {
-    containerRef = React.createRef();
-    $container = null;
-    $messages = null;
+    domRef = React.createRef();
+    messagesBlockRef = React.createRef();
+
+    $container = undefined;
+    $messages = undefined;
+
+    selectedNodes = [];
 
     state = {
         startCallPopupIsActive: false,
@@ -1430,7 +1430,6 @@ export class ConversationPanel extends MegaRenderMixin {
         isFullscreenModeEnabled: false,
         mouseOverDuringCall: false,
         attachCloudDialog: false,
-        messagesToggledInCall: false,
         sendContactDialog: false,
         confirmDeleteDialog: false,
         pasteImageConfirmDialog: false,
@@ -1448,15 +1447,20 @@ export class ConversationPanel extends MegaRenderMixin {
         occurrencesLoading: false,
         waitingRoom: false,
         callUserLimit: false,
+        historyTimeOutBanner: DISMISS_TRANSITIONS.NOT_SHOWN,
+        renameDialog: false,
+        renameDialogValue: undefined,
+        typingAreaText: '',
     };
 
     constructor(props) {
         super(props);
 
         const { chatRoom } = this.props;
-        chatRoom.rebind(`openAttachCloudDialog.${this.getUniqueId()}`, () => this.openAttachCloudDialog());
-        chatRoom.rebind(`openSendContactDialog.${this.getUniqueId()}`, () => this.openSendContactDialog());
-        chatRoom.rebind(`openSchedDescDialog.${this.getUniqueId()}`, () => this.openSchedDescDialog());
+        const uniqueId = this.getUniqueId();
+        chatRoom.rebind(`openAttachCloudDialog.${uniqueId}`, () => this.setState({ attachCloudDialog: true }));
+        chatRoom.rebind(`openSendContactDialog.${uniqueId}`, () => this.setState({ sendContactDialog: true }));
+        chatRoom.rebind(`openDescriptionDialog.${uniqueId}`, () => this.setState({ descriptionDialog: true }));
 
         this.handleKeyDown = SoonFc(120, (ev) => this._handleKeyDown(ev));
 
@@ -1467,18 +1471,6 @@ export class ConversationPanel extends MegaRenderMixin {
 
     customIsEventuallyVisible() {
         return this.props.chatRoom.isCurrentlyActive;
-    }
-
-    openAttachCloudDialog() {
-        this.setState({ 'attachCloudDialog': true });
-    }
-
-    openSendContactDialog() {
-        this.setState({ 'sendContactDialog': true });
-    }
-
-    openSchedDescDialog() {
-        this.setState({ descriptionDialog: true });
     }
 
     @utils.SoonFcWrap(360)
@@ -1543,6 +1535,157 @@ export class ConversationPanel extends MegaRenderMixin {
         return null;
     }
 
+    RenameDialog = () => {
+        const { chatRoom } = this.props;
+        const { renameDialogValue } = this.state;
+        const isDisabled = renameDialogValue === chatRoom.getRoomTitle() || !$.trim(renameDialogValue).length;
+        const onSubmit = () =>
+            chatRoom.setRoomTopic(renameDialogValue)
+                .then(() => this.setState({ renameDialog: false, renameDialogValue: undefined }))
+                .catch(dump);
+
+        return (
+            <ModalDialogsUI.ModalDialog
+                chatRoom={chatRoom}
+                title={chatRoom.isMeeting ? l.rename_meeting /* `Rename Meeting` */ : l[9080] /* `Rename Group` */}
+                name="rename-group"
+                className="chat-rename-dialog dialog-template-main"
+                onClose={() => this.setState({ renameDialog: false, renameDialogValue: undefined })}
+                buttons={[
+                    {
+                        label: l[1686] /* `Cancel` */,
+                        onClick: () => this.setState({ renameDialog: false, renameDialogValue: undefined })
+                    },
+                    {
+                        label: l[61] /* `Rename` */,
+                        className: `
+                            positive
+                            ${isDisabled ? 'disabled' : ''}
+                        `,
+                        onClick: isDisabled ? null : onSubmit
+                    },
+                ]}>
+                <section className="content">
+                    <div className="content-block">
+                        <div className="dialog secondary-header">
+                            <div className="rename-input-bl">
+                                <input
+                                    type="text"
+                                    name="newTopic"
+                                    className="chat-rename-group-dialog"
+                                    value={
+                                        renameDialogValue === undefined ? chatRoom.getRoomTitle() : renameDialogValue
+                                    }
+                                    maxLength={ChatRoom.TOPIC_MAX_LENGTH}
+                                    onChange={ev =>
+                                        this.setState({ renameDialogValue: ev.target.value.substr(0, 30) })
+                                    }
+                                    onKeyUp={ev => isDisabled ? null : ev.which === 13 /* RET */ && onSubmit()}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </ModalDialogsUI.ModalDialog>
+        );
+    };
+
+    CloudBrowserDialog = () => {
+        const { chatRoom } = this.props;
+
+        return (
+            <CloudBrowserModalDialog.CloudBrowserDialog
+                room={chatRoom}
+                allowAttachFolders={true}
+                onSelected={nodes => {
+                    this.selectedNodes = nodes;
+                }}
+                onAttachClicked={() => {
+                    this.setState({ attachCloudDialog: false }, () => {
+                        chatRoom.scrolledToBottom = true;
+                        chatRoom.attachNodes(this.selectedNodes).catch(dump);
+                    });
+                }}
+                onClose={() => {
+                    this.setState({ attachCloudDialog: false }, () => {
+                        this.selectedNodes = [];
+                    });
+                }}
+            />
+        );
+    };
+
+    SelectContactDialog = () => {
+        const { chatRoom } = this.props;
+        const excludedContacts = chatRoom.getParticipantsExceptMe().filter(userHandle => userHandle in M.u);
+
+        return (
+            <ModalDialogsUI.SelectContactDialog
+                chatRoom={chatRoom}
+                exclude={excludedContacts}
+                onSelectClicked={selected =>
+                    this.setState({ sendContactDialog: false }, () => chatRoom.attachContacts(selected))
+                }
+                onClose={() => this.setState({ sendContactDialog: false })}
+            />
+        );
+    };
+
+    DescriptionDialog = () => {
+        const { chatRoom } = this.props;
+        const dialogName = 'scheduled-description-dialog';
+
+        return (
+            <ModalDialogsUI.ModalDialog
+                className={dialogName}
+                meeting={chatRoom.scheduledMeeting}
+                popupDidMount={() => M.safeShowDialog(dialogName, () => $(`.${dialogName}`))}
+                popupWillUnmount={() => $.dialog === dialogName && closeDialog()}
+                onClose={() => this.setState({ descriptionDialog: false })}>
+                <header>
+                    <h3>{l.schedule_desc_dlg_title /* `Meeting description` */}</h3>
+                </header>
+                <section className="content">
+                    <PerfectScrollbar className="description-scroller">
+                        <ParsedHTML
+                            content={
+                                megaChat.html(chatRoom.scheduledMeeting.description).replace(/\n/g, '<br>') ||
+                                l.schedule_no_desc /* `The description has been removed` */
+                            }
+                        />
+                    </PerfectScrollbar>
+                </section>
+            </ModalDialogsUI.ModalDialog>
+        );
+    };
+
+    PushSettingsDialog = () => {
+        const { chatRoom } = this.props;
+        const { pushSettingsValue } = this.state;
+        const state = { pushSettingsDialog: false, pushSettingsValue: null };
+
+        return (
+            <PushSettingsDialog
+                room={chatRoom}
+                pushSettingsValue={pushSettingsValue}
+                onClose={() =>
+                    this.setState(
+                        { ...state, pushSettingsValue },
+                        () => $.dialog === 'push-settings-dialog' && closeDialog()
+                    )
+                }
+                onConfirm={pushSettingsValue =>
+                    this.setState({ ...state, pushSettingsValue }, () =>
+                        pushNotificationSettings.setDnd(
+                            chatRoom.chatId,
+                            pushSettingsValue === Infinity ? 0 : unixtime() + pushSettingsValue * 60
+                        )
+                    )
+                }
+            />
+        );
+    };
+
     componentDidMount() {
         super.componentDidMount();
         const { chatRoom } = this.props;
@@ -1551,10 +1694,6 @@ export class ConversationPanel extends MegaRenderMixin {
 
         window.addEventListener('keydown', this.handleKeyDown);
 
-        chatRoom.rebind('call-ended.jspHistory call-declined.jspHistory', () => {
-            this.callJustEnded = true;
-        });
-
         chatRoom.rebind('onSendMessage.scrollToBottom', () => {
             chatRoom.scrolledToBottom = true;
             if (this.messagesListScrollable) {
@@ -1562,15 +1701,13 @@ export class ConversationPanel extends MegaRenderMixin {
             }
         });
 
-        chatRoom.rebind('openSendFilesDialog.cpanel', () => {
-            this.setState({ attachCloudDialog: true });
-        });
+        chatRoom.rebind('openSendFilesDialog.cpanel', () => this.setState({ attachCloudDialog: true }));
 
         chatRoom.rebind('showGetChatLinkDialog.ui', () => {
             createTimeoutPromise(() => chatRoom.topic && chatRoom.state === ChatRoom.STATE.READY, 350, 15000)
                 .always(() => {
                     return chatRoom.isCurrentlyActive ?
-                        this.setState({ chatLinkDialog: true }, () => affiliateUI.registeredDialog.show()) :
+                        this.setState({ chatLinkDialog: true }) :
                         chatRoom.updatePublicHandle(false, true);
                 });
         });
@@ -1605,7 +1742,7 @@ export class ConversationPanel extends MegaRenderMixin {
         }
         chatRoom._uiIsMounted = true;
         chatRoom.$rConversationPanel = this;
-        chatRoom.trigger('onComponentDidMount');
+        onIdle(() => this.isMounted() && chatRoom.trigger('onComponentDidMount'));
 
         ChatdIntegration._waitForProtocolHandler(chatRoom, () => {
             if (this.isMounted()) {
@@ -1613,8 +1750,6 @@ export class ConversationPanel extends MegaRenderMixin {
                 this.setState({ hasInvalidKeys, invalidKeysBanner: hasInvalidKeys }, () => this.safeForceUpdate());
             }
         });
-
-        this.eventuallyInit();
 
         // --
 
@@ -1636,6 +1771,15 @@ export class ConversationPanel extends MegaRenderMixin {
             }
             if (megaChat.initialChatId || is_eplusplus) {
                 this.setState({ callUserLimit: true });
+            }
+        });
+
+        chatRoom.rebind(`onHistTimeoutChange.${this.getUniqueId()}`, () => {
+            if (this.state.historyTimeOutBanner === DISMISS_TRANSITIONS.NOT_SHOWN && chatRoom.historyTimedOut) {
+                this.setState({ historyTimeOutBanner: DISMISS_TRANSITIONS.SHOWN });
+            }
+            else if (this.state.historyTimeOutBanner && !chatRoom.historyTimedOut) {
+                this.setState({ historyTimeOutBanner: DISMISS_TRANSITIONS.NOT_SHOWN });
             }
         });
 
@@ -1669,34 +1813,6 @@ export class ConversationPanel extends MegaRenderMixin {
         );
     }
 
-    eventuallyInit() {
-        var self = this;
-
-        // because..JSP would hijack some DOM elements, we need to wait with this...
-        if (self.initialised) {
-            return;
-        }
-        var $container = $(self.findDOMNode());
-
-        if ($container.length > 0) {
-            self.initialised = true;
-        }
-        else {
-            return;
-        }
-
-        var room = self.props.chatRoom;
-
-        // collapse on ESC pressed (exited fullscreen)
-        $(document)
-            .rebind("fullscreenchange.megaChat_" + room.roomId, function() {
-                if (self.isComponentEventuallyVisible()) {
-                    self.setState({isFullscreenModeEnabled: !!$(document).fullScreen()});
-                    self.forceUpdate();
-                }
-            });
-    }
-
     componentWillUnmount() {
         super.componentWillUnmount();
         var self = this;
@@ -1714,42 +1830,26 @@ export class ConversationPanel extends MegaRenderMixin {
 
         mBroadcaster.removeListener(this.pageChangeListener);
 
-        this.props.chatRoom.unbind("openAttachCloudDialog." + this.getUniqueId());
-        this.props.chatRoom.unbind("openSendContactDialog." + this.getUniqueId());
-        this.props.chatRoom.unbind(`openSchedDescDialog.${this.getUniqueId()}`);
+        this.props.chatRoom.unbind(`openAttachCloudDialog.${this.getUniqueId()}`);
+        this.props.chatRoom.unbind(`openSendContactDialog.${this.getUniqueId()}`);
+        this.props.chatRoom.unbind(`openDescriptionDialog.${this.getUniqueId()}`);
         window.removeEventListener('keydown', self.handleKeyDown);
-        $(document).off("fullscreenchange.megaChat_" + chatRoom.roomId);
-        $(document).off('keydown.keyboardScroll_' + chatRoom.roomId);
+        $(document).off(`fullscreenchange.megaChat_${chatRoom.roomId}`);
+        $(document).off(`keydown.keyboardScroll_${chatRoom.roomId}`);
         this.props.chatRoom.unbind(`wrOnJoinNotAllowed.${this.getUniqueId()}`);
         this.props.chatRoom.unbind(`wrOnJoinAllowed.${this.getUniqueId()}`);
         megaChat.unbind(`onIncomingCall.${this.getUniqueId()}`);
+        this.props.chatRoom.unbind(`onHistTimeoutChange.${this.getUniqueId()}`);
     }
 
     componentDidUpdate(prevProps, prevState) {
         var self = this;
         var room = this.props.chatRoom;
 
-        self.eventuallyInit(false);
-
         room.megaChat.updateSectionUnreadCount();
 
-        var domNode = self.findDOMNode();
-
-        if (prevState.messagesToggledInCall !== self.state.messagesToggledInCall || self.callJustEnded) {
-            if (self.callJustEnded) {
-                self.callJustEnded = false;
-            }
-            self.$messages.trigger('forceResize', [
-                true,
-                1
-            ]);
-            Soon(function() {
-                self.messagesListScrollable.scrollToBottom(true);
-            });
-        }
-
         if (prevProps.isActive === false && self.props.isActive === true) {
-            var $typeArea = $('.messages-textarea:visible:first', domNode);
+            const $typeArea = $('.messages-textarea:visible:first', this.$container);
             if ($typeArea.length === 1) {
                 $typeArea.trigger("focus");
                 moveCursortoToEnd($typeArea[0]);
@@ -1767,7 +1867,6 @@ export class ConversationPanel extends MegaRenderMixin {
         }
 
 
-
         if (self.$messages && self.isComponentEventuallyVisible()) {
             $(window).rebind('pastedimage.chatRoom', function(e, blob, fileName) {
                 if (self.$messages && self.isComponentEventuallyVisible()) {
@@ -1783,6 +1882,10 @@ export class ConversationPanel extends MegaRenderMixin {
         return document.hasFocus() && this.$messages && this.$messages.is(":visible");
     }
 
+    updateTypingAreaText = (value) => {
+        this.setState({typingAreaText: value});
+    };
+
     @timing(0.7, 9)
     render() {
         var self = this;
@@ -1795,42 +1898,6 @@ export class ConversationPanel extends MegaRenderMixin {
         var contacts = room.getParticipantsExceptMe();
         var contactHandle;
         var contact;
-
-        var conversationPanelClasses = "conversation-panel " + (room.type === "public" ? "group-chat " : "") +
-            room.type + "-chat";
-
-        if (!room.isCurrentlyActive || megaChat._joinDialogIsShown) {
-            conversationPanelClasses += " hidden";
-        }
-
-        var topicBlockClass = "chat-topic-block";
-        if (room.type !== "public") {
-            topicBlockClass += " privateChat";
-        }
-
-
-        var attachCloudDialog = null;
-        if (self.state.attachCloudDialog === true) {
-            var selected = [];
-            attachCloudDialog = <CloudBrowserModalDialog.CloudBrowserDialog
-                allowAttachFolders={true}
-                room={room}
-                onClose={() => {
-                    self.setState({'attachCloudDialog': false});
-                    selected = [];
-                }}
-                onSelected={(nodes) => {
-                    selected = nodes;
-                }}
-                onAttachClicked={() => {
-                    self.setState({'attachCloudDialog': false});
-
-                    self.props.chatRoom.scrolledToBottom = true;
-
-                    room.attachNodes(selected).catch(dump);
-                }}
-            />;
-        }
 
         var nonLoggedInJoinChatDialog = null;
         if (self.state.nonLoggedInJoinChatDialog === true) {
@@ -1896,16 +1963,6 @@ export class ConversationPanel extends MegaRenderMixin {
                 </ModalDialogsUI.ModalDialog>;
         }
 
-        var chatLinkDialog;
-        if (self.state.chatLinkDialog === true) {
-            chatLinkDialog = <ChatlinkDialog
-                chatRoom={self.props.chatRoom}
-                onClose={() => {
-                    self.setState({'chatLinkDialog': false});
-                }}
-            />
-        }
-
         let privateChatDialog;
         if (self.state.privateChatDialog === true) {
             const onClose = () => this.setState({ privateChatDialog: false });
@@ -1943,34 +2000,6 @@ export class ConversationPanel extends MegaRenderMixin {
                     </footer>
                 </ModalDialogsUI.ModalDialog>
             );
-        }
-
-        var sendContactDialog = null;
-        if (self.state.sendContactDialog === true) {
-            var excludedContacts = [];
-            if (room.type == "private") {
-                room.getParticipantsExceptMe().forEach(function(userHandle) {
-                    if (userHandle in M.u) {
-                        excludedContacts.push(
-                            M.u[userHandle].u
-                        );
-                    }
-                });
-            }
-
-            sendContactDialog = <ModalDialogsUI.SelectContactDialog
-                chatRoom={room}
-                exclude={excludedContacts}
-                onClose={() => {
-                    self.setState({'sendContactDialog': false});
-                    selected = [];
-                }}
-                onSelectClicked={(selected) => {
-                    self.setState({'sendContactDialog': false});
-
-                    room.attachContacts(selected);
-                }}
-            />
         }
 
         var confirmDeleteDialog = null;
@@ -2118,28 +2147,6 @@ export class ConversationPanel extends MegaRenderMixin {
         // Push notification settings
         // ----------------------------------------------------------------------
 
-        let pushSettingsDialog = null;
-        if (self.state.pushSettingsDialog === true) {
-            const state = { pushSettingsDialog: false, pushSettingsValue: null };
-            pushSettingsDialog = (
-                <PushSettingsDialog
-                    room={room}
-                    pushSettingsValue={this.state.pushSettingsValue}
-                    onClose={() =>
-                        this.setState({ ...state, pushSettingsValue: this.state.pushSettingsValue })
-                    }
-                    onConfirm={pushSettingsValue =>
-                        self.setState({ ...state, pushSettingsValue }, () =>
-                            pushNotificationSettings.setDnd(
-                                room.chatId,
-                                pushSettingsValue === Infinity ? 0 : unixtime() + pushSettingsValue * 60
-                            )
-                        )
-                    }
-                />
-            );
-        }
-
         var confirmTruncateDialog = null;
         if (self.state.truncateDialog === true) {
             confirmDeleteDialog = <ModalDialogsUI.ConfirmDialog
@@ -2179,7 +2186,7 @@ export class ConversationPanel extends MegaRenderMixin {
                     ? l.meeting_archive_dlg_text /* `Are you sure you want to archive this meeting?` */
                     : l[19069] /* `Are you sure you want to archive this chat?` */}
                 icon="sprite-fm-uni icon-question"
-                name="archive-conversation"
+                name="archive-conversation-dialog"
                 pref="4"
                 onClose={() => {
                     self.setState({'archiveDialog': false});
@@ -2205,7 +2212,7 @@ export class ConversationPanel extends MegaRenderMixin {
                     ? l.meeting_unarchive_dlg_text /* `Are you sure you want to unarchive this meeting?` */
                     : l[19064] /* `Are you sure you want to unarchive this conversation?` */}
                 icon="sprite-fm-uni icon-question"
-                name="unarchive-conversation"
+                name="unarchive-conversation-dialog"
                 pref="5"
                 onClose={() => {
                     self.setState({'unarchiveDialog': false});
@@ -2221,101 +2228,6 @@ export class ConversationPanel extends MegaRenderMixin {
                 }}
             />;
         }
-        if (self.state.renameDialog === true) {
-            var onEditSubmit = function(e) {
-                if (self.props.chatRoom.setRoomTitle(self.state.renameDialogValue)) {
-                    self.setState({'renameDialog': false, 'renameDialogValue': undefined});
-                }
-                e.preventDefault();
-                e.stopPropagation();
-            };
-            var renameDialogValue = typeof(self.state.renameDialogValue) !== 'undefined' ?
-                self.state.renameDialogValue :
-                self.props.chatRoom.getRoomTitle();
-
-            confirmDeleteDialog = <ModalDialogsUI.ModalDialog
-                chatRoom={room}
-                title={room.isMeeting
-                    ? l.rename_meeting /* `Rename Meeting` */
-                    : l[9080] /* `Rename Group` */}
-                name="rename-group"
-                className="chat-rename-dialog dialog-template-main"
-                onClose={() => {
-                    self.setState({'renameDialog': false, 'renameDialogValue': undefined});
-                }}
-                buttons={[
-                    {
-                        "label": l[1686],
-                        "key": "cancel",
-                        "onClick": function(e) {
-                            self.setState({'renameDialog': false, 'renameDialogValue': undefined});
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }
-                    },
-                    {
-                        "label": l[61],
-                        "key": "rename",
-                        "className": (
-                            $.trim(self.state.renameDialogValue).length === 0 ||
-                            self.state.renameDialogValue === self.props.chatRoom.getRoomTitle() ?
-                                "positive disabled" : "positive"
-                        ),
-                        "onClick": function(e) {
-                            onEditSubmit(e);
-                        }
-                    },
-                ]}>
-                <section className="content">
-                    <div className="content-block">
-                        <div className="dialog secondary-header">
-                            <div className="rename-input-bl">
-                                <input
-                                    type="text"
-                                    className="chat-rename-group-dialog"
-                                    name="newTopic"
-                                    value={renameDialogValue}
-                                    maxLength={ChatRoom.TOPIC_MAX_LENGTH}
-                                    onChange={(e) => {
-                                        self.setState({
-                                            'renameDialogValue': e.target.value.substr(0, 30)
-                                        });
-                                    }}
-                                    onKeyUp={(e) => {
-                                        if (e.which === 13) {
-                                            onEditSubmit(e);
-                                        }
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </ModalDialogsUI.ModalDialog>
-        }
-
-        let { descriptionDialog } = this.state;
-        descriptionDialog = descriptionDialog ? <ModalDialogsUI.ModalDialog
-            className="scheduled-description-dialog"
-            meeting={room.scheduledMeeting}
-            onClose={() => {
-                this.setState({ descriptionDialog: false });
-            }}>
-            <header>
-                <h3>{l.schedule_desc_dlg_title /* `Meeting description` */}</h3>
-            </header>
-            <section className="content">
-                <PerfectScrollbar className="description-scroller">
-                    <ParsedHTML>
-                        {
-                            megaChat.html(room.scheduledMeeting.description).replace(/\n/g, '<br>')
-                            || l.schedule_no_desc /* `The description has been removed` */
-                        }
-                    </ParsedHTML>
-
-                </PerfectScrollbar>
-            </section>
-        </ModalDialogsUI.ModalDialog> : null;
 
         var additionalClass = "";
 
@@ -2356,15 +2268,23 @@ export class ConversationPanel extends MegaRenderMixin {
         }
         else {
             contactHandle = contacts[0];
-            contact = M.u[contactHandle];
+            contact = M.u[contactHandle || u_handle];
 
-            topicInfo = <ContactCard
-                className="short"
-                chatRoom={room}
-                noContextButton="true"
-                contact={contact}
-                showLastGreen={true}
-                key={contact.u} />;
+            topicInfo = megaChat.WITH_SELF_NOTE && room.isNote ?
+                <div className="note-chat-topic">
+                    <div className="note-chat-signifier">
+                        <i className="sprite-fm-mono icon-file-text-thin-outline note-chat-icon" />
+                    </div>
+                    <span className="note-chat-label">{l.note_label}</span>
+                </div> :
+                <ContactCard
+                    key={contact.u}
+                    className="short"
+                    chatRoom={room}
+                    contact={contact}
+                    noContextButton={true}
+                    showLastGreen={true}
+                />;
         }
         let historyRetentionDialog = null;
         if (self.state.showHistoryRetentionDialog === true) {
@@ -2427,7 +2347,13 @@ export class ConversationPanel extends MegaRenderMixin {
 
         return (
             <div
-                className={conversationPanelClasses}
+                ref={this.domRef}
+                className={`
+                    conversation-panel
+                    ${room.type === 'public' ? 'group-chat ' : ''}
+                    ${room.type}-chat
+                    ${!room.isCurrentlyActive || megaChat._joinDialogIsShown ? 'hidden' : ''}
+                `}
                 onMouseMove={() => self.onMouseMove()}
                 data-room-id={self.props.chatRoom.chatId}>
                 {room.meetingsLoading && <Loading chatRoom={room} title={room.meetingsLoading.title} />}
@@ -2437,6 +2363,7 @@ export class ConversationPanel extends MegaRenderMixin {
                         peers={room.call.peers}
                         call={room.call}
                         minimized={this.state.callMinimized}
+                        typingAreaText={this.state.typingAreaText}
                         onCallMinimize={() => {
                             return this.state.callMinimized ?
                                 null :
@@ -2470,6 +2397,7 @@ export class ConversationPanel extends MegaRenderMixin {
                         }
                         onCallEnd={() => this.safeForceUpdate()}
                         onDeleteMessage={msg => this.handleDeleteDialog(msg)}
+                        onTypingAreaChanged={this.updateTypingAreaText}
                         parent={this}
                     />
                 )}
@@ -2542,125 +2470,107 @@ export class ConversationPanel extends MegaRenderMixin {
                         }}
                     />
                 }
-                <div className={"chat-content-block " + (!room.megaChat.chatUIFlags['convPanelCollapse'] ?
-                    "with-pane" : "no-pane")}>
-                    {!room.megaChat.chatUIFlags['convPanelCollapse'] ? <ConversationRightArea
-                        isVisible={this.props.chatRoom.isCurrentlyActive}
-                        chatRoom={this.props.chatRoom}
-                        roomFlags={this.props.chatRoom.flags}
-                        members={this.props.chatRoom.membersSetFromApi}
-                        messagesBuff={room.messagesBuff}
-                        pushSettingsValue={pushNotificationSettings.getDnd(this.props.chatRoom.chatId)}
-                        occurrencesLoading={this.state.occurrencesLoading}
-                        onStartCall={(mode) =>
-                            inProgressAlert(room.haveActiveCall(), room)
-                                .then(() => this.startCall(mode))
-                                .catch(() => d && console.warn('Already in a call.'))
-                        }
-                        onAttachFromComputerClicked={function() {
-                            self.props.chatRoom.uploadFromComputer();
-                        }}
-                        onTruncateClicked={function() {
-                            self.setState({'truncateDialog': true});
-                        }}
-                        onArchiveClicked={function() {
-                            self.setState({'archiveDialog': true});
-                        }}
-                        onUnarchiveClicked={function() {
-                            self.setState({'unarchiveDialog': true});
-                        }}
-                        onRenameClicked={function() {
-                            self.setState({
-                                'renameDialog': true,
-                                'renameDialogValue': self.props.chatRoom.getRoomTitle()
-                            });
-                        }}
-                        onGetManageChatLinkClicked={function() {
-                            self.setState({
-                                'chatLinkDialog': true
-                            });
-                        }}
-                        onMakePrivateClicked={function() {
-                            self.setState({'privateChatDialog': true});
-                        }}
-                        onCloseClicked={function() {
-                            room.destroy();
-                        }}
-                        onJoinViaPublicLinkClicked={function() {
-                            room.joinViaPublicHandle();
-                        }}
-                        onSwitchOffPublicMode = {function(topic) {
-                            room.switchOffPublicMode(topic);
-                        }}
-                        onAttachFromCloudClicked={function() {
-                            self.setState({'attachCloudDialog': true});
-                        }}
-                        onPushSettingsClicked={function() {
-                            self.setState({ 'pushSettingsDialog': true });
-                        }}
-                        onPushSettingsToggled={function() {
-                            return room.dnd || room.dnd === 0 ?
-                                self.setState({ pushSettingsValue: null }, () =>
-                                    pushNotificationSettings.disableDnd(room.chatId)
-                                ) :
-                                pushNotificationSettings.setDnd(room.chatId, 0);
-                        }}
-                        onHistoryRetentionConfig={function() {
-                            self.setState({showHistoryRetentionDialog: true});
-                        }}
-                        onAddParticipantSelected={contactHashes => {
-                            room.scrolledToBottom = true;
+                <div
+                    className={`
+                        chat-content-block
+                        ${room.megaChat.chatUIFlags.convPanelCollapse ? 'no-pane' : 'with-pane'}
+                    `}>
+                    {room.megaChat.chatUIFlags.convPanelCollapse ?
+                        null :
+                        <ConversationRightArea
+                            isVisible={this.props.chatRoom.isCurrentlyActive}
+                            chatRoom={this.props.chatRoom}
+                            roomFlags={this.props.chatRoom.flags}
+                            members={this.props.chatRoom.membersSetFromApi}
+                            messagesBuff={room.messagesBuff}
+                            pushSettingsValue={pushNotificationSettings.getDnd(this.props.chatRoom.chatId)}
+                            occurrencesLoading={this.state.occurrencesLoading}
+                            onStartCall={(mode) =>
+                                inProgressAlert(room.haveActiveCall(), room)
+                                    .then(() => this.startCall(mode))
+                                    .catch(() => d && console.warn('Already in a call.'))
+                            }
+                            onAttachFromComputerClicked={() => this.props.chatRoom.uploadFromComputer()}
+                            onTruncateClicked={() => this.setState({ truncateDialog: true })}
+                            onArchiveClicked={() => this.setState({ archiveDialog: true })}
+                            onUnarchiveClicked={() => this.setState({ unarchiveDialog: true })}
+                            onRenameClicked={() => {
+                                this.setState({
+                                    renameDialog: true,
+                                    renameDialogValue: this.props.chatRoom.getRoomTitle()
+                                });
+                            }}
+                            onGetManageChatLinkClicked={() => this.setState({ chatLinkDialog: true })}
+                            onMakePrivateClicked={() => this.setState({ privateChatDialog: true })}
+                            onCloseClicked={() => room.destroy()}
+                            onJoinViaPublicLinkClicked={() => room.joinViaPublicHandle()}
+                            onSwitchOffPublicMode={topic => room.switchOffPublicMode(topic)}
+                            onAttachFromCloudClicked={() => this.setState({ attachCloudDialog: true })}
+                            onPushSettingsClicked={() =>
+                                M.safeShowDialog(
+                                    'push-settings-dialog',
+                                    () => this.setState({ pushSettingsDialog: true })
+                                )
+                            }
+                            onPushSettingsToggled={() => {
+                                return room.dnd || room.dnd === 0 ?
+                                    this.setState({ pushSettingsValue: null }, () =>
+                                        pushNotificationSettings.disableDnd(room.chatId)
+                                    ) :
+                                    pushNotificationSettings.setDnd(room.chatId, 0);
+                            }}
+                            onHistoryRetentionConfig={() => this.setState({ showHistoryRetentionDialog: true })}
+                            onAddParticipantSelected={contactHashes => {
+                                room.scrolledToBottom = true;
 
-                            if (room.type === 'group' || room.type === 'public') {
-                                // Waiting rooms -- allow the invited peer to join the call immediately without having
-                                // them go through the waiting room list.
-                                if (room.options.w && room.call) {
-                                    room.call.sfuClient?.wrAllowJoin(contactHashes);
+                                if (room.type === 'group' || room.type === 'public') {
+                                    // Waiting rooms -- allow the invited peer to join the call immediately without
+                                    // having them go through the waiting room list.
+                                    if (room.options.w && room.call) {
+                                        room.call.sfuClient?.wrAllowJoin(contactHashes);
+                                    }
+                                    return room.trigger('onAddUserRequest', [contactHashes]);
                                 }
-                                return room.trigger('onAddUserRequest', [contactHashes]);
-                            }
 
-                            loadingDialog.show();
-                            megaChat.trigger(
-                                'onNewGroupChatRequest',
-                                [
-                                    [...room.getParticipantsExceptMe(), ...contactHashes],
-                                    { keyRotation: false, topic: '' }
-                                ]
-                            );
-                        }}
-                        onShowScheduledDescription={() => {
-                            if (room.scheduledMeeting) {
-                                this.setState({ descriptionDialog: true });
+                                loadingDialog.show();
+                                megaChat.trigger(
+                                    'onNewGroupChatRequest',
+                                    [
+                                        [...room.getParticipantsExceptMe(), ...contactHashes],
+                                        { keyRotation: false, topic: '' }
+                                    ]
+                                );
+                            }}
+                            onShowScheduledDescription={
+                                room.scheduledMeeting ? () => this.setState({ descriptionDialog: true }) : null
                             }
-                        }}
-                    /> : null}
+                        />
+                    }
+
+                    {this.state.attachCloudDialog && <this.CloudBrowserDialog/>}
+                    {this.state.sendContactDialog && <this.SelectContactDialog/>}
+                    {this.state.descriptionDialog && <this.DescriptionDialog/>}
+                    {this.state.pushSettingsDialog && <this.PushSettingsDialog/>}
 
                     {privateChatDialog}
-                    {chatLinkDialog}
                     {nonLoggedInJoinChatDialog}
-                    {attachCloudDialog}
-                    {sendContactDialog}
                     {confirmDeleteDialog}
                     {historyRetentionDialog}
                     {confirmTruncateDialog}
-                    {pushSettingsDialog}
-                    {descriptionDialog}
 
+                    {this.state.renameDialog && <this.RenameDialog />}
 
-                    <div className="dropdown body dropdown-arrow down-arrow tooltip not-sent-notification hidden">
-                        <i className="dropdown-white-arrow"></i>
-                        <div className="dropdown notification-text">
-                            <i className="small-icon conversations"></i>
-                            {l[8882]}
-                        </div>
-                    </div>
-
+                    {this.state.chatLinkDialog &&
+                        <ChatlinkDialog
+                            chatRoom={this.props.chatRoom}
+                            onClose={() => this.setState({ chatLinkDialog: false })}
+                        />
+                    }
 
                     <div
                         className={`
                             chat-topic-block
-                            ${topicBlockClass}
+                            ${room.isNote ? 'is-note' : ''}
                         `}>
                         <div className="chat-topic-buttons">
                             {room.type === 'public' && room.isMeeting &&
@@ -2676,60 +2586,69 @@ export class ConversationPanel extends MegaRenderMixin {
                                 icon="sprite-fm-mono icon-info-filled"
                                 onClick={() => room.megaChat.toggleUIFlag('convPanelCollapse')}
                             />
-                            <div
-                                data-simpletip={
-                                    /* `Your browser doesn't support video calls. Try a different browser.` */
-                                    l.unsupported_browser_video
-                                }
-                                data-simpletipposition="top"
-                                data-simpletipoffset="5"
-                                className={`
-                                    ${!megaChat.hasSupportForCalls ? 'simpletip' : ''}
-                                    right
-                                    ${startCallDisabled ? 'disabled' : ''}
-                                `}>
-                                <Button
-                                    icon="sprite-fm-mono icon-video-call-filled"
-                                    onClick={() =>
-                                        startCallDisabled ?
-                                            false :
-                                            inProgressAlert(room.haveActiveCall(), room)
-                                                .then(() => this.startCall(TYPE.VIDEO))
-                                                .catch(() => d && console.warn('Already in a call.'))
-                                                .then(() => room.isMeeting ? eventlog(500289) : eventlog(500290))
-                                    }
-                                />
-                            </div>
-                            <div
-                                data-simpletip={
-                                    /* `Your browser doesn't support audio calls. Try a different browser.` */
-                                    l.unsupported_browser_audio
-                                }
-                                data-simpletipposition="top"
-                                data-simpletipoffset="5"
-                                className={`
-                                    ${!megaChat.hasSupportForCalls ? 'simpletip' : ''}
-                                    right
-                                    ${startCallDisabled ? 'disabled' : ''}
-                                `}>
-                                <Button
-                                    icon="sprite-fm-mono icon-phone"
-                                    onClick={() =>
-                                        startCallDisabled ?
-                                            false :
-                                            inProgressAlert(room.haveActiveCall(), room)
-                                                .then(() => this.startCall(TYPE.AUDIO))
-                                                .catch(() => d && console.warn('Already in a call.'))
-                                                .then(() => room.isMeeting ? eventlog(500291) : eventlog(500292))
-                                    }
-                                />
-                            </div>
+                            {room.isNote ?
+                                null :
+                                <>
+                                    <div
+                                        data-simpletip={
+                                            /* `Your browser doesn't support video calls. Try a different browser.` */
+                                            l.unsupported_browser_video
+                                        }
+                                        data-simpletipposition="top"
+                                        data-simpletipoffset="5"
+                                        className={`
+                                            ${!megaChat.hasSupportForCalls ? 'simpletip' : ''}
+                                            right
+                                            ${startCallDisabled ? 'disabled' : ''}
+                                        `}>
+                                        <Button
+                                            icon="sprite-fm-mono icon-video-call-filled"
+                                            onClick={() =>
+                                                startCallDisabled ?
+                                                    false :
+                                                    inProgressAlert(room.haveActiveCall(), room)
+                                                        .then(() => this.startCall(TYPE.VIDEO))
+                                                        .catch(() => d && console.warn('Already in a call.'))
+                                                        .then(() =>
+                                                            room.isMeeting ? eventlog(500289) : eventlog(500290)
+                                                        )
+                                            }
+                                        />
+                                    </div>
+                                    <div
+                                        data-simpletip={
+                                            /* `Your browser doesn't support audio calls. Try a different browser.` */
+                                            l.unsupported_browser_audio
+                                        }
+                                        data-simpletipposition="top"
+                                        data-simpletipoffset="5"
+                                        className={`
+                                            ${!megaChat.hasSupportForCalls ? 'simpletip' : ''}
+                                            right
+                                            ${startCallDisabled ? 'disabled' : ''}
+                                        `}>
+                                        <Button
+                                            icon="sprite-fm-mono icon-phone"
+                                            onClick={() =>
+                                                startCallDisabled ?
+                                                    false :
+                                                    inProgressAlert(room.haveActiveCall(), room)
+                                                        .then(() => this.startCall(TYPE.AUDIO))
+                                                        .catch(() => d && console.warn('Already in a call.'))
+                                                        .then(() =>
+                                                            room.isMeeting ? eventlog(500291) : eventlog(500292)
+                                                        )
+                                            }
+                                        />
+                                    </div>
+                                </>
+                            }
                         </div>
                         {topicInfo}
                     </div>
 
                     <div
-                        ref={this.containerRef}
+                        ref={this.messagesBlockRef}
                         className={`
                             messages-block
                             ${additionalClass}
@@ -2756,6 +2675,25 @@ export class ConversationPanel extends MegaRenderMixin {
                                     </>
                                 }
                                 onClose={() => this.setState({ invalidKeysBanner: false })}
+                            />
+                        )}
+
+                        {this.state.historyTimeOutBanner === DISMISS_TRANSITIONS.SHOWN && (
+                            <Alert
+                                type={Alert.TYPE.ERROR}
+                                className={`
+                                    ${megaChat.chatUIFlags.convPanelCollapse ? 'full-span' : ''}
+                                    ${this.props.offset === ALERTS_BASE_OFFSET ? 'single_alert' : ''}
+                                    history-timeout-banner
+                                `}
+                                offset={this.props.offset === ALERTS_BASE_OFFSET ? 0 : this.props.offset}
+                                content={
+                                    <>
+                                        {l.chat_timeout_banner}
+                                        <a onClick={() => location.reload()}>{l[85]}</a>
+                                    </>
+                                }
+                                onClose={() => this.setState({ historyTimeOutBanner: DISMISS_TRANSITIONS.DISMISSED })}
                             />
                         )}
 
@@ -2845,7 +2783,13 @@ export class ConversationPanel extends MegaRenderMixin {
                                     {l[20597] /* `Join Group` */}
                                 </div>
                             </div> :
-                            <ComposedTextArea chatRoom={room} parent={this} containerRef={this.containerRef}/>
+                            <ComposedTextArea
+                                chatRoom={room}
+                                parent={this}
+                                containerRef={this.messagesBlockRef}
+                                typingAreaText={this.state.typingAreaText}
+                                onTypingAreaChanged={this.updateTypingAreaText}
+                            />
                         }
                     </div>
                 </div>
@@ -2855,6 +2799,8 @@ export class ConversationPanel extends MegaRenderMixin {
 }
 
 export class ConversationPanels extends MegaRenderMixin {
+    domRef = React.createRef();
+
     notificationListener = 'meetings:notificationPermissions';
     notificationGranted = undefined;
     notificationHelpURL =
@@ -3016,8 +2962,10 @@ export class ConversationPanels extends MegaRenderMixin {
         const now = Date.now();
 
         return (
-            <div className="conversation-panels">
-                {routingSection === 'contacts' ?
+            <div
+                ref={this.domRef}
+                className="conversation-panels">
+                {routingSection === 'contacts' || is_chatlink ?
                     null :
                     window.Notification && notificationsPermissions !== 'granted' &&
                     <>
@@ -3028,7 +2976,7 @@ export class ConversationPanels extends MegaRenderMixin {
 
                 {routingSection === 'contacts' ?
                     null :
-                    supportAlert && !mega.config.get('nocallsup') && !notificationsPermissions &&
+                    supportAlert && !mega.config.get('nocallsup') &&
                         <Alert
                             type={Alert.TYPE.MEDIUM}
                             className={`
@@ -3072,21 +3020,17 @@ export class ConversationPanels extends MegaRenderMixin {
     }
 }
 
-export class EmptyConvPanel extends MegaRenderMixin {
+export class EmptyConvPanel extends React.Component {
+    domRef = React.createRef();
 
     state = {
         linkData: '',
     };
 
     componentDidMount() {
-        super.componentDidMount();
-        (
-            M.account && M.account.contactLink ?
-                Promise.resolve(M.account.contactLink) :
-                api.send('clc')
-        )
+        (M.account && M.account.contactLink ? Promise.resolve(M.account.contactLink) : api.send('clc'))
             .then(res => {
-                if (this.isMounted() && typeof res === 'string') {
+                if (this.domRef?.current && typeof res === 'string') {
                     const prefix = res.startsWith('C!') ? '' : 'C!';
                     this.setState({ linkData: `${getBaseUrl()}/${prefix}${res}` });
                 }
@@ -3120,8 +3064,11 @@ export class EmptyConvPanel extends MegaRenderMixin {
     render() {
         const { isMeeting, onNewChat, onStartMeeting, onScheduleMeeting } = this.props;
         const { linkData } = this.state;
+
         return (
-            <div className="conversations-empty">
+            <div
+                ref={this.domRef}
+                className="conversations-empty">
                 <div className="conversations-empty-header">
                     <h1>{
                         isMeeting ?

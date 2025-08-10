@@ -1,16 +1,16 @@
 mega.ui.pm = {
 
-    initUI() {
+    async initUI() {
         'use strict';
 
         if (!mega.pm.casRan) {
             mega.pm.casRan = true;
-            mega.pm.checkActiveSubscription().catch(tell);
+            await mega.pm.checkActiveSubscription().catch(tell);
 
             mBroadcaster.addListener('pagechange', page => {
-                if (page === 'fm/pwm' && !(u_attr.features && u_attr.features.length) && 'plan' in mega.pm) {
-                    if (mega.pm.plan.trial) {
-                        this.subscription.freeTrial();
+                if (page === 'fm/pwm' && !mega.pm.pwmFeature && !u_attr.b && !u_attr.pf) {
+                    if (mega.pm.plan && mega.pm.plan.trial) {
+                        this.subscription.freeTrial(mega.pm.plan.trial.days);
                     }
                     else {
                         this.subscription.featurePlan();
@@ -27,14 +27,81 @@ mega.ui.pm = {
             fmholder.classList.add('pmholder');
         }
 
-        this.list.show();
-
-        if (nodeID){
-            this.comm.saveLastSelected(nodeID);
+        if (pmlayout) {
+            // Manually close some old elements after layout update, deprecate this after merging
+            pmlayout.querySelector('.section.conversations').classList.add('hidden');
+            pmlayout.querySelector('.js-fm-left-panel').classList.add('hidden');
         }
 
-        if (pmlayout) {
-            pmlayout.classList.remove('hidden');
+        queueMicrotask(() => {
+            mBroadcaster.sendMessage('pwm-initialized');
+        });
+
+        // Business and flexi user has read only access to password manager even it is expired
+        if (!mega.pm.pwmFeature && !u_attr.b && !u_attr.pf) {
+            return;
+        }
+
+        if (nodeID === 'account') {
+            this.list.hide();
+            mega.ui.pm.settings.initUI();
+        }
+        else {
+            mega.ui.pm.settings.closeUI();
+
+            if (nodeID !== 'pwm') {
+                this.comm.saveLastSelected(nodeID);
+            }
+
+            this.list.show().then(() => {
+                if (window.pwmredir) {
+                    const [type, action, target] = window.pwmredir;
+                    delete window.pwmredir;
+
+                    if (action === 'add') {
+                        mega.ui.topnav.domNode.componentSelector('.add-btn').trigger('click');
+
+                        if (type === 'pwd') {
+                            eventlog(500874);
+                            this.menu.domNode.componentSelector('.pwd-item').trigger('click');
+                        }
+                        else if (type === 'cc') {
+                            eventlog(500875);
+                            this.menu.domNode.componentSelector('.cc-item').trigger('click');
+                        }
+                    }
+                    else if (action === 'edit' && M.d[target]) {
+                        const item = this.list.passwordList.componentSelector(`#${CSS.escape(target)}`);
+                        if (item) {
+                            const result = item.trigger('click.selectItem');
+                            const triggerEdit = () => {
+                                this.contextMenu.domNode.componentSelector('.edit-item').trigger('click');
+                            };
+                            if (result instanceof Promise) {
+                                result.then(triggerEdit);
+                            }
+                            else if (
+                                result === true &&
+                                !(
+                                    mega.ui.pm.overlay.visible &&
+                                    mega.ui.passform &&
+                                    mega.ui.passform.formType === 'update'
+                                )
+                            ) {
+                                triggerEdit();
+                            }
+
+                            if (type === 'pwd') {
+                                eventlog(500876);
+                            }
+                            else if (type === 'cc') {
+                                eventlog(500877);
+                            }
+                        }
+                    }
+                }
+            })
+                .catch(tell);
         }
 
         if (navigator.onLine) {
@@ -47,40 +114,66 @@ mega.ui.pm = {
         window.addEventListener('online', this._online);
         window.addEventListener('offline', this._offline);
 
+        document.body.classList.add('pwm-ui');
+
         if (d) {
             console.info('PWM Initialized.');
+        }
+
+        // if user visit pwm page, we treated they are finished promotion and update their flags
+        mega.ui.onboarding.flagStorage.setSync(OBV4_FLAGS.CLOUD_DRIVE_MP_BUBBLE,1);
+
+        // Change to PWM logo
+        mega.ui.topmenu.megaLink.icon = 'sprite-fm-uni icon-pwm';
+
+        // Remove chat padding hack for rtl
+        mega.ui.header.domNode.style.paddingInlineEnd = '';
+
+        // Check if the info panel exists and close it if it is open
+        if (mega.ui.mInfoPanel) {
+            mega.ui.mInfoPanel.hide();
         }
     },
 
     closeUI() {
         'use strict';
 
-        if (pmlayout) {
-            pmlayout.classList.add('hidden');
-        }
+        document.body.classList.remove('pwm-ui');
 
-        if (fmholder) {
-            fmholder.classList.remove('pmholder');
+        if (!mega.pm.pwmFeature && !u_attr.b && !u_attr.pf) {
+            return;
         }
 
         if (this.list) {
             this.list.removeResizeListener();
+            this.list.hide();
         }
+
+        mega.ui.pm.settings.closeUI();
 
         window.removeEventListener('online', this._online);
         window.removeEventListener('offline', this._offline);
+
+        // Change to Mega logo
+        mega.ui.topmenu.megaLink.icon = 'sprite-fm-uni icon-mega-logo';
     },
 
     _online() {
         'use strict';
 
         mega.ui.alerts.hideSlots();
+
+        const nodeID = M.currentdirid === 'pwm' ? 'pwm' : M.currentCustomView.nodeID;
+        mega.ui.pm.settings.utils.handleImportFlow(nodeID, false);
     },
 
     _offline() {
         'use strict';
 
         mega.ui.banner.show('', l.no_internet, '', 'error', false, true, true);
+
+        const nodeID = M.currentdirid === 'pwm' ? 'pwm' : M.currentCustomView.nodeID;
+        mega.ui.pm.settings.utils.handleImportFlow(nodeID, true);
     },
 
     comm: {
@@ -137,14 +230,13 @@ mega.ui.pm = {
     ]),
     subscription: {
         freeTrialFlag: 0,
-        daysLeft: 14,
         freeTrialContainer: null,
         featurePlanContainer: null,
-        freeTrial() {
+        freeTrial(daysLeft) {
             'use strict';
 
             if (!this.freeTrialContainer) {
-                const startDate = time2date(Date.now() / 1000 + this.daysLeft * 24 * 60 * 60, 2);
+                const startDate = time2date(Date.now() / 1000 + daysLeft * 24 * 60 * 60, 2);
 
                 const timelineData = [
                     {
@@ -153,13 +245,13 @@ mega.ui.pm = {
                         description: l.free_trial_today_desc
                     },
                     {
-                        icon: 'sprite-mobile-fm-mono icon-bell-thin',
-                        day: mega.icu.format(l.on_day_n, 10),
+                        icon: 'sprite-fm-mono icon-bell-thin-outline',
+                        day: mega.icu.format(l.on_day_n, daysLeft - 4),
                         description: l.email_before_trial_end
                     },
                     {
                         icon: 'sprite-fm-mono icon-star-thin-outline',
-                        day: mega.icu.format(l.on_day_n, 14),
+                        day: mega.icu.format(l.on_day_n, daysLeft),
                         description: l.free_trial_end_desc.replace('%1', startDate)
                     }
                 ];
@@ -209,7 +301,7 @@ mega.ui.pm = {
             }
 
             this.freeTrialFlag = 1;
-            this.initDialog(this.freeTrialContainer);
+            this.initDialog(this.freeTrialContainer, daysLeft);
         },
 
         featurePlan() {
@@ -258,7 +350,7 @@ mega.ui.pm = {
             this.initDialog(this.featurePlanContainer);
         },
 
-        initDialog(content) {
+        initDialog(content, daysLeft) {
             'use strict';
 
             let name = 'feature-plan-dialog';
@@ -269,7 +361,7 @@ mega.ui.pm = {
 
             if (this.freeTrialFlag) {
                 name = 'free-trial-dialog';
-                title = l.try_mega_pass;
+                title = escapeHTML(l.try_mega_pass).replace('%1', daysLeft);
                 classList = ['free-trial'];
                 ctaText = l.start_free_trial;
                 eventId = 500564;
@@ -328,3 +420,23 @@ mega.ui.pm = {
         }
     }
 };
+
+(mega => {
+    "use strict";
+
+    lazy(mega.ui.pm, 'overlay', () => new MegaOverlay({
+        parentNode: mega.ui.pm.list.domNode,
+        componentClassname: 'mega-overlay pm-overlay',
+        wrapperClassname: 'overlay',
+        scrollOverlay: true,
+    }));
+
+    lazy(mega.ui.pm, 'menu', () => new MegaPMMenu({
+        parentNode: document.body,
+        componentClassname: 'menu-container context-menu',
+        wrapperClassname: 'menu'
+    }));
+
+    lazy(mega.ui.pm, 'contextMenu', () => new MegaContextMenu());
+
+})(window.mega);

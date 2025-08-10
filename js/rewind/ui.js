@@ -78,7 +78,7 @@ lazy(mega, 'rewindUi', () => {
 
             /** @property RewindSidebar.template */
             lazy(this, 'template', () => {
-                const res = getTemplate(pages.rewind ? 'rewind' : 'rewind_html');
+                const res = getTemplate('rewind');
                 delete pages.rewind;
                 return res;
             });
@@ -176,19 +176,17 @@ lazy(mega, 'rewindUi', () => {
             this.$upgradeButton = $('.upgrade-purchase-button', this.sidebar);
             this.$restoreButton = $('.js-rewind', this.sidebar);
             this.$contextMenu = $('.dropdown.body.context', document.body);
-            this.$infoButton = $('.dropdown-item.properties-item-rewind', this.$contextMenu);
-            this.$openFolderButton = $('.dropdown-item.open-item-rewind', this.$contextMenu);
             this.$fmHeaderButtons = $('.fm-header-buttons', '.fm-right-files-block');
 
 
             this.beforePageChangeListener = null;
             this.$rewindProgressSection = $('.fm-rewind-progress-section', '.fm-right-files-block');
-            this.$rewindProgressTopBar = $('.js-dropdown-rewind-progress', '.topbar-links');
+            this.$rewindProgressTopBar = $('.js-dropdown-rewind-progress', '.topbar-links, .mega-header');
             this.$onboardingControlPanel = $('.onboarding-control-panel', '.fm-right-files-block.visible-notification');
             if (this.$onboardingControlPanel.hasClass('hidden')) {
                 this.$onboardingControlPanel = false;
             }
-            this.$loader = $('.fmdb-loader', '.topbar');
+            this.$loader = $(mega.ui.header.loader);
 
             this.$contentEmpty.addClass('hidden');
             this.$contentTreeCacheEmpty.addClass('hidden');
@@ -418,6 +416,9 @@ lazy(mega, 'rewindUi', () => {
             this.$contentRewindDescription.safeHTML(rewindDescriptionData.description);
             if (upgradeSectionData) {
                 this.$contentUpgradeDescription.safeHTML(upgradeSectionData);
+            }
+            else {
+                this.$contentUpgradeDescription.addClass('hidden');
             }
             this.$contentUpgradePurchaseButton.addClass('hidden');
 
@@ -981,63 +982,6 @@ lazy(mega, 'rewindUi', () => {
             this.$contentFolder.on('click.rewind', '.toggle-section', this.onClickListToggleSection.bind(this));
             this.$restoreButton.rebind('click.rewind', this.onClickRestore.bind(this));
 
-            this.$infoButton.rebind('click.rewind', () => {
-                const selectedNodeRawHandle = $.selected[0];
-                const currentHandle = this.selectionMap[selectedNodeRawHandle];
-                if (!currentHandle) {
-                    logger.error('Current handle not mapped, aborting..');
-                    return;
-                }
-
-                mega.rewind.injectNodes(currentHandle, selectedNodeRawHandle, async() => {
-                    const promise = new Promise((resolve) => {
-                        let hasResolved = false;
-                        const eventResolveListener = () => {
-                            if (!hasResolved) {
-                                resolve();
-                                hasResolved = true;
-                                if (currentHandle) {
-                                    delete this.selectionMap[selectedNodeRawHandle];
-                                }
-                            }
-                        };
-
-                        mBroadcaster.once('properties:finish', eventResolveListener);
-                        later(() => {
-                            if (!hasResolved) {
-                                mBroadcaster.removeListener('properties:finish', eventResolveListener);
-                                resolve();
-                                hasResolved = true;
-                            }
-                        });
-                    });
-                    await propertiesDialog();
-                    const infoBlock = document.querySelector('.properties-breadcrumb .fm-breadcrumbs-wrapper');
-                    if (infoBlock) {
-                        infoBlock.classList.add('rewind');
-                    }
-                    return promise;
-                }, this.currentHandle, this.selectedType, this.selectedDateString);
-            });
-
-            this.$openFolderButton.rebind('click.rewind', () => {
-                const selectedHandle = $.selected && $.selected[0] || '';
-                const currentHandle = this.selectionMap[selectedHandle];
-                if (!currentHandle) {
-                    logger.error('Open Folder: Current handle not mapped, aborting..', selectedHandle);
-                    return;
-                }
-
-                mega.rewind.openSidebar(null, currentHandle, true)
-                    .then(() => {
-                        const eventData = mega.rewind.getOpenSidebarEventData(selectedHandle, 0, 1);
-                        if (eventData) {
-                            eventlog(500001, eventData);
-                        }
-                    })
-                    .catch(tell);
-            });
-
             $(DATEPICKER_SELECTOR, document).rebind('click.rewind', '.rewind-datepicker-upgrade', () => {
                 this.getDatepickerInstance().hide();
 
@@ -1059,6 +1003,63 @@ lazy(mega, 'rewindUi', () => {
 
             mBroadcaster.removeListener(progressKey);
             mBroadcaster.addListener(progressKey, this.progressListener.bind(this));
+        }
+
+        contextOpenItem() {
+            const selectedHandle = $.selected && $.selected[0] || '';
+            const currentHandle = this.selectionMap[selectedHandle];
+            if (!currentHandle) {
+                logger.error('Open Folder: Current handle not mapped, aborting..', selectedHandle);
+                return;
+            }
+
+            mega.rewind.openSidebar(null, currentHandle, true)
+                .then(() => {
+                    const eventData = mega.rewind.getOpenSidebarEventData(selectedHandle, 0, 1);
+                    if (eventData) {
+                        eventlog(500001, eventData);
+                    }
+                })
+                .catch(tell);
+        }
+
+        contextInfoItem() {
+            const selectedNodeRawHandle = $.selected[0];
+            const currentHandle = this.selectionMap[selectedNodeRawHandle];
+            if (!currentHandle) {
+                logger.error('Current handle not mapped, aborting..');
+                return;
+            }
+
+            mega.rewind.injectNodes(currentHandle, selectedNodeRawHandle, async() => {
+                const promise = new Promise((resolve) => {
+                    let hasResolved = false;
+                    const eventResolveListener = () => {
+                        if (!hasResolved) {
+                            resolve();
+                            hasResolved = true;
+                            if (currentHandle) {
+                                delete this.selectionMap[selectedNodeRawHandle];
+                            }
+                        }
+                    };
+
+                    mBroadcaster.once('properties:finish', eventResolveListener);
+                    later(() => {
+                        if (!hasResolved) {
+                            mBroadcaster.removeListener('properties:finish', eventResolveListener);
+                            resolve();
+                            hasResolved = true;
+                        }
+                    });
+                });
+                await propertiesDialog();
+                const infoBlock = document.querySelector('.properties-breadcrumb .fm-breadcrumbs-wrapper');
+                if (infoBlock) {
+                    infoBlock.classList.add('rewind');
+                }
+                return promise;
+            }, this.currentHandle, this.selectedType, this.selectedDateString);
         }
 
         updateFilterLabel(date, totalFiles, isDefault) {
@@ -2009,7 +2010,7 @@ lazy(mega, 'rewindUi', () => {
         }
 
         addDialogProgEventListeners() {
-            this.$loader = $('.fmdb-loader', '.topbar');
+            this.$loader = $(mega.ui.header.loader);
             this.$loader.addClass('pointer-c');
             this.$loader.rebind('click.rewind', () => {
                 this.$rewindProgressTopBar.removeClass('hidden');

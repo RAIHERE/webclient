@@ -1,10 +1,9 @@
 import React from 'react';
-import { MegaRenderMixin } from '../../../mixins';
 import { stringToDate } from './helpers.jsx';
 import Datepicker from './datepicker.jsx';
 import Select from './select.jsx';
 
-export class DateTime extends MegaRenderMixin {
+export class DateTime extends React.Component {
     state = {
         datepickerRef: undefined,
         manualDateInput: '',
@@ -64,6 +63,7 @@ export class DateTime extends MegaRenderMixin {
                 <Datepicker
                     name={`${Datepicker.NAMESPACE}-${name}`}
                     className={isLoading ? 'disabled' : ''}
+                    isLoading={isLoading}
                     startDate={startDate}
                     altField={`${Select.NAMESPACE}-${altField}`}
                     value={value}
@@ -82,6 +82,7 @@ export class DateTime extends MegaRenderMixin {
                 <Select
                     name={`${Select.NAMESPACE}-${altField}`}
                     className={isLoading ? 'disabled' : ''}
+                    isLoading={isLoading}
                     typeable
                     options={filteredTimeIntervals}
                     value={(() => typeof value === 'number' ? value : this.state.datepickerRef.currentDate.getTime())()}

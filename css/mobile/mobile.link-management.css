@@ -1,6 +1,8 @@
 .link-mgmt-container {
     display: flex;
     flex-direction: column;
+    margin-left: 24px;
+    margin-right: 24px;
 }
 
 .link-mgmt-container .selected-node {
@@ -14,7 +16,6 @@
     display: flex;
     flex-direction: column;
     margin-inline-start: 16px;
-    -webkit-margin-start: 16px;
 }
 
 .link-mgmt-container .selected-node .node-details .num-files {
@@ -36,7 +37,6 @@
 
 .link-mgmt-container .toggle-container .mega-input.with-icon i:not(.alert) {
     order: 1;
-    -webkit-margin-end: 8px;
     margin-inline-end: 8px;
 }
 
@@ -54,7 +54,8 @@
     position: relative;
 }
 
-.link-mgmt-container .toggle-container.decryption-key .decryption-key-message {
+.link-mgmt-container .toggle-container.decryption-key .decryption-key-message,
+.sensitive-onboarding-txt {
     font: var(--mobile-font-link-small-regular);
     color: var(--mobile-text-secondary);
 }

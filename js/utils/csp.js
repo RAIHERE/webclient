@@ -19,6 +19,14 @@ lazy(self, 'csp', () => {
         cs: {s: CS_ESSENT, r: CS_PREFER, n: CS_ANALYT, d: CS_ADVERT, h: CS_THIRDP, e: CS_SETADS},
     };
 
+    // "Reject All" option visibility to be shown to EU/UK only
+    const RA_CC = array.to.object(
+        [
+            'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI',
+            'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU',
+            'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB'
+        ]);
+
     const sgValue = async(newValue, byUser) => {
         const u_handle = mega.user;
 
@@ -257,6 +265,7 @@ lazy(self, 'csp', () => {
                         mega.ui.overlay.show({
                             name: 'cookie-settings-overlay',
                             showClose: false,
+                            classList: ['cookie-settings-sheet'],
                             contents: [dialog],
                         });
                         return;
@@ -442,6 +451,14 @@ lazy(self, 'csp', () => {
                 forEachCell((type, toggle) => updateMegaSwitch(toggle, true));
                 return save(ev);
             });
+            if (csp.shouldShowRejectAll()) {
+                const $rejectAll = $('.reject-all', $banner);
+                $rejectAll.removeClass('hidden');
+                $rejectAll.rebind('click.ac', (ev) => {
+                    forEachCell((type, toggle) => updateMegaSwitch(toggle, false));
+                    return save(ev);
+                });
+            }
             $('.cookie-settings', $banner).rebind('click.ac', () => showBlock('step2'));
 
             // $('.fm-dialog-overlay').rebind('click.csp', save);
@@ -486,6 +503,10 @@ lazy(self, 'csp', () => {
                 }
             }
             console.groupEnd();
+        },
+
+        shouldShowRejectAll() {
+            return !!RA_CC[mega.ipcc];
         }
     });
 });

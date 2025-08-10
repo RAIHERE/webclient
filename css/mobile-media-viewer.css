@@ -166,12 +166,7 @@
 }
 
 .mobile .media-viewer .video-block video {
-    width: 100%;
     height: 100%;
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    border-radius: 3px;
     max-height: 100vh;
 }
 
@@ -279,6 +274,8 @@
 .mobile .media-viewer .content-info .fm-breadcrumbs-wrapper.info span {
     font: var(--mobile-font-caption-large-regular);
     color: var(--mobile-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .mobile .media-viewer .content-info .fm-breadcrumbs {

@@ -78,7 +78,7 @@
         '<div class="fm-breadcrumbs-wrapper info">' +
             '<div class="crumb-overflow-link dropdown">' +
                 '<a class="breadcrumb-dropdown-link info-dlg">' +
-                    '<i class="menu-icon sprite-fm-mono icon-options icon24"></i>' +
+                    '<i class="menu-icon sprite-fm-mono icon-options icon16"></i>' +
                 '</a>' +
                 '<i class="sprite-fm-mono icon-arrow-right icon16"></i>' +
             '</div>' +
@@ -195,7 +195,10 @@
             if (isBreadcrumb) {
                 $node.addClass('breadcrumb-tip theme-dark-forced');
                 $textContainer.replaceWith($breadcrumbs);
-                M.renderPathBreadcrumbs($this.parent().parent().get(0).id, false, true);
+                M.renderPathBreadcrumbs(
+                    $this.parent().parent().get(0).id,
+                    document.querySelector('.simpletip-tooltip .fm-breadcrumbs-wrapper')
+                );
             }
 
             $currentNode = $node;

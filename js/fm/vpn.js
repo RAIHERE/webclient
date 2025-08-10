@@ -6,9 +6,9 @@ class VpnCredsManager {
 
     static getLocations() {
 
-        return api.req({a: 'vpnr'})
+        return api.req({a: 'vpnr', v: 5})
             .then(({result}) => {
-                assert(Array.isArray(result));
+                assert(typeof result === 'object');
 
                 return result;
             })
@@ -37,7 +37,7 @@ class VpnCredsManager {
     static async createCredential() {
         const keypair = nacl.box.keyPair();
 
-        return api.req({a: 'vpnp', k: ab_to_base64(keypair.publicKey)})
+        return api.req({a: 'vpnp', k: ab_to_base64(keypair.publicKey), v: 5})
             .then(({result}) => {
                 assert(typeof result === 'object');
 
@@ -82,22 +82,17 @@ class VpnCredsManager {
             });
     }
 
-    static generateIniConfig(cred, locationIndex = 0) {
-        // assemble endpoint
-        let endpoint = `${cred.locations[locationIndex]}.vpn`;
-        if (cred.vpnSubclusterId > 1) {
-            endpoint += cred.vpnSubclusterId;
-        }
-        endpoint += '.mega.nz:51820';
+    static generateIniConfig(cred, locationId) {
+        const subcluster = cred.locations[locationId].c[cred.vpnSubclusterId];
 
         let config = '[Interface]\n';
         config += `PrivateKey = ${btoa(ab_to_str(cred.keypair.secretKey))}\n`;
         config += `Address = ${cred.interfaceV4Address}/32, ${cred.interfaceV6Address}/128\n`;
-        config += 'DNS = 8.8.8.8, 2001:4860:4860::8888\n\n';
+        config += `DNS = ${subcluster.dns.join(', ')}\n\n`;
         config += '[Peer]\n';
         config += `PublicKey = ${btoa(base64urldecode(cred.peerPublicKey))}\n`;
         config += 'AllowedIPs = 0.0.0.0/0, ::/0\n';
-        config += `Endpoint = ${endpoint}\n`;
+        config += `Endpoint = ${subcluster.h}:51820\n`;
         return config;
     }
 }
@@ -110,7 +105,6 @@ class VpnPage {
         this.credTpl = this.page.querySelector('template#cred-slot-tpl');
         this.createCredBtn = this.page.querySelector('.js-create-cred');
         this.postCreateSection = this.page.querySelector('.post-create-section');
-        this.emailSupport = this.page.querySelector('.email-support');
         this.downloadConfigBtn = this.postCreateSection.querySelector('.js-download-config');
         this.configQr = this.postCreateSection.querySelector('.config-qr .qr-img');
         this.configDiv = this.postCreateSection.querySelector('.config-output');
@@ -119,22 +113,6 @@ class VpnPage {
         this.knownSlotCount = 5;
 
         this._initLocationDropdown();
-
-        const planName = pro.getProPlanName(u_attr.p);
-
-        const mailtoBody = `${l.support_email_prefill_write_feedback}
-
-
-
-                            ${l.support_email_prefill_user_app_info}
-                            ${l.support_email_prefill_user_app_name} ${l.pr_vpn}
-
-                            ${l.support_email_prefill_user_information}
-                            ${l[670]}: ${lang}
-                            ${l.support_email_prefill_user_timezone} ${mega.ipcc}
-                            ${l.support_email_prefill_user_account} ${u_attr.email} (${planName})`;
-
-        this.emailSupport.href = `${this.emailSupport.href}&body=${encodeURIComponent(mailtoBody)}`;
 
         this.createCred = this.createCred.bind(this);
         this.removeCred = this.removeCred.bind(this);
@@ -199,40 +177,24 @@ class VpnPage {
     }
 
     async _initLocationDropdown() {
-        const knownNames = {
-            'CA-EAST': l.vpn_location_ca_east,
-            'CA-WEST': l.vpn_location_ca_west,
-            'US-EAST': l.vpn_location_us_east,
-            'US-WEST': l.vpn_location_us_west,
-            'GB-LONDON': l.vpn_location_gb_london,
-        };
-
         const options = { };
         const locations = await VpnCredsManager.getLocations();
         const countries = M.getCountries();
+        const ccs = Object.values(locations).map(location => location.cc);
 
-        for (const location of locations) {
-            // Check for specific known names first
-            if (knownNames[location]) {
-                options[location] = knownNames[location];
-                continue;
+        for (const [id, location] of Object.entries(locations)) {
+            options[id] = countries[location.cc] || location.cn;
+
+            if (ccs.filter(cc => cc === location.cc).length > 1) {
+                if (location.rn && location.tn) {
+                    options[id] = l.vpn_location_three
+                        .replace('%1', options[id]).replace('%2', location.tn).replace('%3', location.rn);
+                }
+                else if (location.rn || location.tn) {
+                    options[id] = l.vpn_location_two
+                        .replace('%1', options[id]).replace('%2', location.rn || location.tn);
+                }
             }
-
-            // Else try by assuming a country code
-            if (countries[location]) {
-                options[location] = countries[location];
-                continue;
-            }
-
-            // Still unaccounted for? Try splitting the location - 1st half is probably a country code
-            const country = location.split('-', 1);
-            if (countries[country[0] || '']) {
-                options[location] = `${countries[country]} ${location}`;
-                continue;
-            }
-
-            // Options exhausted; just use the location code as the option label.
-            options[location] = location;
         }
 
         this.$locationDropdown = $('.location-dropdown', this.page);
@@ -240,12 +202,21 @@ class VpnPage {
         const sortedOptions = Object.fromEntries(Object.entries(options)
             .sort((code, location) => code[1].localeCompare(location[1])));
 
+        // Any server location with a matching CC is sufficient for preselection...
+        const localLocationId = Object.keys(locations).find(key => locations[key].cc === u_attr.ipcc);
+        const selectedOption = localLocationId
+            ? Object.entries(sortedOptions).find(([key]) => key === localLocationId)
+            : Object.entries(sortedOptions)[0];
+
         createDropdown(this.$locationDropdown, {
-            placeholder: options[0],
+            placeholder: selectedOption[1],
             items: sortedOptions,
-            selected: locations[0],
+            selected: localLocationId,
         });
         bindDropdownEvents(this.$locationDropdown);
+
+        this.createCredBtn.classList.toggle('disabled', !getDropdownValue(this.$locationDropdown));
+        this.createCredBtn.disabled = !getDropdownValue(this.$locationDropdown);
 
         this.$locationDropdown.rebind('change.vpn', () => {
             this.reset();
@@ -294,6 +265,11 @@ class VpnPage {
     }
 
     async createCred() {
+        const locationId = getDropdownValue(this.$locationDropdown);
+        if (!locationId) {
+            return;
+        }
+
         this.reset();
 
         loadingDialog.show('vpn-create');
@@ -323,7 +299,7 @@ class VpnPage {
             return; // TODO
         }
         this._onCredCreated();
-        this.showStep2(cred);
+        this.showStep2(cred, locationId);
     }
 
     async removeCred(credNum) {
@@ -341,10 +317,8 @@ class VpnPage {
         );
     }
 
-    showStep2(cred) {
-        const location = getDropdownValue(this.$locationDropdown);
-        const locationIndex = cred.locations.indexOf(location) || 0;
-        const config = VpnCredsManager.generateIniConfig(cred, locationIndex);
+    showStep2(cred, locationId) {
+        const config = VpnCredsManager.generateIniConfig(cred, locationId);
 
         this.downloadConfigBtn.dataset.credNum = cred.credNum;
         this.downloadConfigBtn.href = URL.createObjectURL(new Blob([config], { type: 'text/plain' }));
@@ -374,6 +348,8 @@ class VpnPage {
         delete this.downloadConfigBtn.dataset.credNum;
         this.configDiv.classList.add('hidden');
         this.configText.textContent = '';
+        this.createCredBtn.classList.toggle('disabled', !getDropdownValue(this.$locationDropdown));
+        this.createCredBtn.disabled = !getDropdownValue(this.$locationDropdown);
     }
 
     _addSlotElement() {

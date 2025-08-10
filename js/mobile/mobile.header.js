@@ -11,6 +11,10 @@ class MegaMobileHeader extends MegaComponent {
         this.topBlock.className = 'block top-block';
         targetNode.appendChild(this.topBlock);
 
+        this.bannerHolder = document.createElement('div');
+        this.bannerHolder.className = 'block banner-block';
+        targetNode.appendChild(this.bannerHolder);
+
         targetNode = this.topBlock;
         let subNode = document.createElement('div');
         subNode.className = 'nav-navigation';
@@ -35,49 +39,10 @@ class MegaMobileHeader extends MegaComponent {
         actionsNode.className = 'nav-actions';
         targetNode.appendChild(actionsNode);
 
-        const _renderLoggedIn = replace => {
-            const avatarButton = new MegaLink({
-                parentNode: actionsNode,
-                type: 'normal',
-                componentClassname: 'avatar'
-            });
-
-            useravatar.loadAvatar(u_handle).finally(() => {
-
-                const avatarMeta = generateAvatarMeta(u_handle);
-
-                const shortNameEl = mCreateElement('span');
-                shortNameEl.textContent = avatarMeta.shortName;
-
-                const avatar = avatarMeta.avatarUrl
-                    ? mCreateElement('img', {src: avatarMeta.avatarUrl})
-                    : mCreateElement('div', {class: `color${avatarMeta.color}`},[shortNameEl]);
-
-                avatarButton.domNode.appendChild(avatar);
-
-                avatarButton.on('tap.account', () => {
-
-                    if (!is_fm() || pfid) {
-                        return mobile.settings.account.init();
-                    }
-
-                    loadSubPage('fm/account');
-
-                    if (mega.ui.topmenu.visible) {
-                        mega.ui.topmenu.hide();
-                    }
-                });
-            });
-
-            if (replace) {
-
-                replace.domNode.replaceWith(avatarButton.domNode);
-                replace.destroy();
-            }
-        };
+        this.avatarButtonType = options.avatarButtonType || MegaLink;
 
         if (u_attr) {
-            _renderLoggedIn();
+            this.renderLoggedIn();
         }
         else {
             const loginLink = new MegaLink({
@@ -94,7 +59,7 @@ class MegaMobileHeader extends MegaComponent {
             });
 
             mBroadcaster.once('login2', () => {
-                _renderLoggedIn(loginLink);
+                this.renderLoggedIn(loginLink);
             });
         }
 
@@ -157,7 +122,7 @@ class MegaMobileHeader extends MegaComponent {
         backLink.on('tap.back', () => {
 
             if (!M.currentdirid || M.currentrootid === 'out-shares' || M.currentrootid === 'public-links'
-                    || M.currentdirid.startsWith('account/') || M.currentdirid.startsWith('refer')) {
+                    || M.currentdirid.startsWith('account/')) {
 
                 if (typeof mobile.settingsHelper.currentPage !== 'undefined'){
                     mobile.settingsHelper.currentPage.hide();
@@ -268,8 +233,11 @@ class MegaMobileHeader extends MegaComponent {
             });
         }
 
-        mBroadcaster.addListener('mega:openfolder', this.update.bind(this));
-        window.addEventListener('resize', this.resetBottomBlock.bind(this));
+        const _throttledUpdate = SoonFc(100, this.update.bind(this));
+
+        mBroadcaster.addListener('mega:openfolder', _throttledUpdate);
+        mBroadcaster.addListener('pagechange', _throttledUpdate);
+        window.addEventListener('resize', () => this.resetBottomBlock());
     }
 
     // Options: setter
@@ -303,7 +271,12 @@ class MegaMobileHeader extends MegaComponent {
                     }
 
                     if (element === this.bottomBlock) {
-                        this.resetBottomBlock();
+                        if (pfcol && M.v.length) {
+                            element.classList.add('hidden');
+                        }
+                        else {
+                            this.resetBottomBlock();
+                        }
                     }
                 }
             }
@@ -386,6 +359,55 @@ class MegaMobileHeader extends MegaComponent {
         });
     }
 
+    renderLoggedIn(replace) {
+
+        const actionsNode = this.domNode.querySelector('.top-block .nav-actions');
+
+        this.avatarButton = new this.avatarButtonType({
+            parentNode: actionsNode,
+            type: 'normal',
+            componentClassname: 'avatar'
+        });
+
+        useravatar.loadAvatar(u_handle).catch(dump).finally(() => {
+
+            const avatarMeta = generateAvatarMeta(u_handle);
+
+            const shortNameEl = mCreateElement('span');
+            shortNameEl.textContent = avatarMeta.shortName;
+
+            const avatar = mCreateElement('div', {class: `${u_handle} avatar-wrapper`}, [
+                avatarMeta.avatarUrl ? mCreateElement('img', {src: avatarMeta.avatarUrl})
+                    : mCreateElement(
+                        'div',
+                        {class: `color${avatarMeta.color} avatar-wrapper ${u_handle} small-rounded-avatar`},
+                        [shortNameEl]
+                    )
+            ]);
+
+            this.avatarButton.domNode.appendChild(avatar);
+
+            this.avatarButton.on('tap.account', () => {
+
+                if (!is_fm() || pfid) {
+                    return mobile.settings.account.init();
+                }
+
+                loadSubPage('fm/account');
+
+                if (mega.ui.topmenu.visible) {
+                    mega.ui.topmenu.hide();
+                }
+            });
+        });
+
+        if (replace) {
+
+            replace.domNode.replaceWith(this.avatarButton.domNode);
+            replace.destroy();
+        }
+    }
+
     static init(update) {
         MegaMobileTopMenu.init();
 
@@ -453,7 +475,7 @@ class MegaMobileHeader extends MegaComponent {
             // show view options if the page is not a shared items page
             if (!['shares','out-shares','public-links'].includes(M.currentdirid)) {
                 targetNode = document.createElement('div');
-                targetNode.className = 'filter';
+                targetNode.className = 'filter px-6';
                 subNode = document.createElement('h3');
                 subNode.textContent = l.filter_view;
                 targetNode.appendChild(subNode);
@@ -463,13 +485,13 @@ class MegaMobileHeader extends MegaComponent {
                         parentNode: targetNode,
                         label: l.filter_view_list,
                         value: 'list',
-                        checked: M.viewmode === 0
+                        checked: !M.onIconView // temporary fallback for cover album and compact list view
                     },
                     {
                         parentNode: targetNode,
                         label: l.filter_view_grid,
                         value: 'grid',
-                        checked: M.viewmode === 1
+                        checked: M.onIconView
                     },
                 ];
 
@@ -483,7 +505,7 @@ class MegaMobileHeader extends MegaComponent {
             }
 
             targetNode = document.createElement('div');
-            targetNode.className = 'filter';
+            targetNode.className = 'filter px-6';
             subNode = document.createElement('h3');
             subNode.textContent = l[6170];
             targetNode.appendChild(subNode);
@@ -594,21 +616,29 @@ class MegaMobileHeader extends MegaComponent {
                 align: 'right',
                 onChange: function() {
                     if (orderArrow) {
-                        this.domNode.appendChild(orderArrow.domNode);
-                        orderArrow.value = 1;
-                        orderArrow.icon = `sprite-mobile-fm-mono icon-arrow-up-thin-outline`;
+                        const labelWrapper = this.domNode.querySelector('.label-wrapper');
+                        if (labelWrapper) {
+                            labelWrapper.appendChild(orderArrow.domNode);
+                            orderArrow.value = 1;
+                            orderArrow.icon = `sprite-mobile-fm-mono icon-arrow-up-thin-outline`;
+                        }
                     }
                 }
             });
 
             mega.ui.sheet.addContent(targetNode);
 
-            const selectedRadio = sortByGroup.children[sortByGroup.value || 'name'];
+            const selectedRadio = sortByGroup.getChild(sortByGroup.value || 'name');
+
+            let orderArrowParent;
+            if (selectedRadio && selectedRadio.domNode) {
+                orderArrowParent = selectedRadio.domNode.querySelector('.label-wrapper');
+            }
 
             orderArrow = new MegaButton({
-                parentNode: selectedRadio.domNode,
+                parentNode: orderArrowParent,
                 type: 'icon',
-                icon: `sprite-mobile-fm-mono icon-arrow-${d < 0 ? 'down' : 'up'}-thin-outline`,
+                icon: `sprite-fm-mono icon-arrow-${d < 0 ? 'down' : 'up'}-thin-outline`,
                 iconSize: 24,
                 componentClassname: 'text-icon sort-arrow no-active',
             });
@@ -617,7 +647,7 @@ class MegaMobileHeader extends MegaComponent {
 
             orderArrow.on('tap.sortDirection', function() {
                 this.value *= -1;
-                this.icon = `sprite-mobile-fm-mono icon-arrow-${this.value < 0 ? 'down' : 'up'}-thin-outline`;
+                this.icon = `sprite-fm-mono icon-arrow-${this.value < 0 ? 'down' : 'up'}-thin-outline`;
             });
 
             const applyButton = new MegaButton({
@@ -632,10 +662,10 @@ class MegaMobileHeader extends MegaComponent {
                 const fileManagerBlock = document.querySelector('.mobile.file-manager-block');
 
                 // skip if only the sorting or ordering is changed
-                if (viewGroup && viewGroup.value === 'grid' && M.viewmode !== 1) {
+                if (viewGroup && viewGroup.value === 'grid' && !M.onIconView) {
                     mobile.cloud.enableGridView(fileManagerBlock);
                 }
-                else if (viewGroup && viewGroup.value === 'list' && M.viewmode !== 0) {
+                else if (viewGroup && viewGroup.value === 'list' && !M.onListView) {
                     mobile.cloud.enableListView(fileManagerBlock);
                 }
 
@@ -644,6 +674,9 @@ class MegaMobileHeader extends MegaComponent {
 
                 mega.ui.sheet.hide();
             });
+
+            mega.ui.sheet.name = 'mobile-header-filters';
+            mega.ui.sheet.safeShow = true;
 
             mega.ui.sheet.show();
         });
@@ -756,7 +789,7 @@ class MegaMobileHeader extends MegaComponent {
         if (page === 'fm/account' || page === 'keybackup') {
             iType = 2;
         }
-        if (page.startsWith('fm/account/') || page.startsWith('fm/refer') || page === 'support') {
+        if (page.startsWith('fm/account/') || page === 'support') {
             iType = 3;
         }
         if (is_mobile && mobile.nodeSelector.active) {
@@ -768,7 +801,11 @@ class MegaMobileHeader extends MegaComponent {
 
     static getHeading() {
 
-        let heading = MegaMobileHeader.headings[MegaMobileHeader.getPage()];
+        if (!M.currentdirid) {
+            return;
+        }
+
+        let heading = this.headings[this.getPage()];
 
         if (!heading) {
 
@@ -815,11 +852,6 @@ lazy(MegaMobileHeader, 'headings', () => {
         'fm/account/plan': l[16166],
         'fm/account/notifications': l[862],
         'fm/two-factor-confirmation': l[19194],
-        'fm/refer': l[22682],
-        'fm/refer/guide': l[22683],
-        'fm/refer/history': l[22808],
-        'fm/refer/distribution': l[22709],
-        'fm/refer/redeem': l[23403],
         'fm/account/security': l.mobile_settings_privacy_security_title,
         'fm/account/security/backup-key': l[8839],
         'fm/account/security/lost-auth-device': l.lost_auth_device,

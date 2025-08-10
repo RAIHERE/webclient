@@ -44,6 +44,32 @@
         }
     };
 
+    const decode = (h, max, tag) => {
+        const res = [];
+        if (h.length === 8 || h.length === 11) {
+            res.push(1, base64urldecode(h));
+        }
+        else if (h.length > 0x1f) {
+            const v = base64urldecode(h);
+            if (base64urlencode(v) === h) {
+                res.push(1, v);
+            }
+            else if (self.d && h.length < max) {
+                logger.info(`Storing unexpectedly long ${tag}-value as-is...`, h);
+            }
+        }
+        if (!res.length) {
+            res.push(0, h);
+        }
+        if (!(res[1].length && res[1].length < max)) {
+            if (self.d) {
+                logger.warn(`Ignoring unexpected ${tag}-value...`, h);
+            }
+            res[1] = false;
+        }
+        return res;
+    };
+
     // shrink suitable fmconfig settings
     const shrink = (cfg) => {
         if (d) {
@@ -95,10 +121,7 @@
             delete cfg.treenodes;
         }
 
-        if (cfg.viewmodes) {
-            cfg.xvm = shrink.views(cfg.viewmodes);
-            delete cfg.viewmodes;
-        }
+        shrink.views(cfg);
         shrink.sorta(cfg);
         shrink.cleanup(cfg);
 
@@ -113,10 +136,10 @@
         v04: ['rvonbrddl', 'rvonbrdfd', 'rvonbrdas'],
         xb1: [
             // do NOT change the order, add new entries at the tail UP TO 31, and 8 per row.
-            'cws', 'ctt', 'viewmode', 'dbDropOnLogout', 'dlThroughMEGAsync', 'sdss', 'tpp', 'ulddd',
+            'cws', 'ctt', 'rsv0', 'dbDropOnLogout', 'dlThroughMEGAsync', 'sdss', 'tpp', 'ulddd',
             'cbvm', 'mgvm', 'uiviewmode', 'uisorting', 'uidateformat', 'skipsmsbanner', 'skipDelWarning', 'rsv0',
             'nowarnpl', 'zip64n', 'callemptytout', 'callinout', 'showHideChat', 'showRecents', 'nocallsup', 'cslrem',
-            'rsv2', 'noSubfolderMd', 'rwReinstate'
+            'showSen', 'noSubfolderMd', 'rwReinstate', 'rsv2', 'rsv3', 'dcPause', 'skiptritwarn'
         ]
     });
     shrink.zero = new Set([...Object.keys(shrink.bitdef), 'xs1', 'xs2', 'xs3', 'xs4', 'xs5']);
@@ -147,20 +170,23 @@
         return v;
     };
 
-    shrink.views = (nodes) => {
-        let r = '';
-        const v = parse(nodes);
+    shrink.views = (config) => {
+        let r = String.fromCharCode(config.viewmode | 0);
+        const v = parse(config.viewmodes);
         const s = Object.keys(v || {});
 
         for (let i = 0; i < s.length; ++i) {
             const h = s[i];
-            const n = (h.length === 8 || h.length === 11) | 0;
-            const j = n ? base64urldecode(h) : h;
+            const [n, j] = decode(h, 0xff, 'vm');
 
-            r += String.fromCharCode(j.length << 2 | (v[h] & 1) << 1 | n) + j;
+            if (j.length) {
+                r += String.fromCharCode((v[h] & 7) << 1 | n) + String.fromCharCode(j.length) + j;
+            }
         }
 
-        return r;
+        config.xvm2 = r;
+        delete config.viewmode;
+        delete config.viewmodes;
     };
 
     shrink.sorta = (config) => {
@@ -176,15 +202,16 @@
             // eslint-disable-next-line guard-for-in
             for (let h in sm) {
                 const v = sm[h];
-                const n = (h.length === 8 || h.length === 11) | 0;
-                const p = n ? base64urldecode(h) : h;
 
                 if (!rules.includes(v.n)) {
                     logger.warn(`Invalid sort-mode for ${h} %o`, v);
                     continue;
                 }
+                const [n, p] = decode(h, 0x80, 'sm');
 
-                res += store(shift(v)) + store(p.length << 1 | n) + p;
+                if (p.length) {
+                    res += store(shift(v)) + store(p.length << 1 | n) + p;
+                }
             }
         }
 
@@ -245,6 +272,11 @@
             delete config.xvm;
         }
 
+        if (config.xvm2) {
+            config.viewmodes = {...config.viewmodes, ...stretch.views2(config)};
+            delete config.xvm2;
+        }
+
         if (config.xsm) {
             stretch.sorta(config);
         }
@@ -278,6 +310,23 @@
             i += ++l;
         }
         return v;
+    };
+
+    stretch.views2 = (config) => {
+        const v = config.xvm2;
+        const r = Object.create(null);
+
+        for (let i = 1; i < v.length;) {
+            const b = v.charCodeAt(i);
+            const l = v.charCodeAt(++i);
+            const h = v.substr(++i, l);
+
+            r[b & 1 ? base64urlencode(h) : h] = b >> 1 & 7;
+
+            i += l;
+        }
+        config.viewmode = v.charCodeAt(0);
+        return r;
     };
 
     stretch.sorta = (config) => {
@@ -557,6 +606,8 @@
             M.recentsRender.checkStatusChange();
         }
 
+        const sensitivesUpdated = mega.sensitives.onConfigChange(mega.config.get('showSen'));
+
         if (fmconfig.webtheme !== undefined) {
             mega.ui.setTheme(fmconfig.webtheme);
         }
@@ -579,18 +630,16 @@
         const sort = Object(fmconfig.sortmodes)[M.currentdirid];
 
         if (view !== undefined && M.viewmode !== view
+            || sensitivesUpdated
             || sort !== undefined && (sort.n !== M.sortmode.n || sort.d !== M.sortmode.d)) {
 
             M.openFolder(M.currentdirid, true);
         }
 
-        if (M.currentrootid === M.RootID) {
-            const tree = Object(fmconfig.treenodes);
+        if (sensitivesUpdated
+            || M.currentrootid === M.RootID && stringify(fmconfig.treenodes) !== M.treenodes) {
 
-            if (stringify(tree) !== M.treenodes) {
-
-                M.renderTree();
-            }
+            M.renderTree();
         }
     };
 
@@ -886,6 +935,14 @@
         })();
 
         setup(cfg);
+    });
+
+    Object.defineProperty(window, 'fmconfig', {
+        get() {
+            console.error('fmconfig is not initialized...');
+            return Object.create(null);
+        },
+        configurable: true
     });
 
     if (is_karma) {

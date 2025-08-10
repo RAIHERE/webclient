@@ -163,7 +163,7 @@ body.tl .dropdown.body.popup.contacts-search {
     padding: 4px 12px;
 }
 .contacts-search-list .contacts-info .user-card-data {
-    max-width: 80%;
+    width: 90%;
     padding-inline-start: 10px;
 }
 .rtl .invite-meeting-contacts .contacts-search-list .contacts-info .user-card-data,
@@ -272,8 +272,6 @@ body.tl .dropdown.body.popup.contacts-search {
     width: 36px;
     height: 36px;
     line-height: 35px;
-    -moz-border-radius: 8px;
-    -webkit-border-radius: 8px;
     border-radius: 8px;
 }
 .horizontal-contacts-list .selected-contact-block .small-rounded-avatar img {
@@ -352,9 +350,9 @@ body.tl .dropdown.body.popup.contacts-search {
     display: flex;
     padding: 48px 48px 24px 48px;
     align-items: center;
-    justify-content: space-between;
 }
 .contacts-search-buttons .button-wrapper {
+    margin: 0 18px 0 0;
     text-align: center;
 }
 .contacts-search-buttons .button-wrapper .new-meeting {
@@ -425,6 +423,13 @@ body.tl .dropdown.body.popup.contacts-search {
 }
 .contacts-search-list {
     padding: 7px 0 0 0;
+}
+.contacts-search-list .note-chat-signifier {
+    width: 26px;
+    height: 24px;
+}
+.contacts-search-list .note-chat-signifier i {
+    --icon-size: 16px;
 }
 .add-participant-selector .contacts-search-header {
     margin: 0 48px;
@@ -557,7 +562,7 @@ body.tl .dropdown.body.popup.contacts-search {
     opacity: 1;
 }
 .dark-direct-tooltip.simpletip-tooltip i {
-    --mask-color: var(--stroke-grey-1-inverted);
+    --mask-color: var(--mobile-background-inverse);
     --icon-size: 24px;
     height: 16px;
     overflow: hidden;
@@ -589,4 +594,8 @@ body.tl .dropdown.body.popup.contacts-search {
     position: relative;
     top: 2px;
     width: 16px;
+}
+.dark-direct-tooltip.simpletip-tooltip.propay {
+    max-width: 206px;
+    text-align: start;
 }

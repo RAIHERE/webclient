@@ -1,12 +1,11 @@
 import React from 'react';
-import { MegaRenderMixin } from '../../../mixins';
 import { Avatar } from '../../contacts.jsx';
 import ModalDialogsUI from '../../../../ui/modalDialogs.jsx';
 import Button from '../button.jsx';
 import Call from '../call.jsx';
 import { Emoji } from '../../../../ui/utils.jsx';
 
-export default class Incoming extends MegaRenderMixin {
+export default class Incoming extends React.Component {
     static NAMESPACE = 'incoming-dialog';
 
     state = {
@@ -19,17 +18,15 @@ export default class Incoming extends MegaRenderMixin {
     constructor(props) {
         super(props);
         this.state.unsupported = !megaChat.hasSupportForCalls;
-        this.state.hideOverlay = document.body.classList.contains('overlayed');
+        this.state.hideOverlay = document.body.classList.contains('overlayed') && !$.msgDialog;
     }
 
     componentDidMount() {
-        super.componentDidMount();
         this._old$dialog = $.dialog;
         $.dialog = "chat-incoming-call";
     }
 
     componentWillUnmount() {
-        super.componentWillUnmount();
         $.dialog = this._old$dialog;
     }
 
@@ -142,11 +139,10 @@ export default class Incoming extends MegaRenderMixin {
                                     large
                                     round
                                     negative
-                                    ${unsupported ? 'disabled' : ''}
                                 `}
                                 icon="icon-end-call"
-                                simpletip={unsupported ? null : { position: 'top', label: rejectLabel }}
-                                onClick={unsupported ? null : onReject}>
+                                simpletip={{ position: 'top', label: rejectLabel }}
+                                onClick={onReject}>
                                 <span>{rejectLabel}</span>
                             </Button>
                             {CALL_IN_PROGRESS ? this.renderSwitchControls() : this.renderAnswerControls()}

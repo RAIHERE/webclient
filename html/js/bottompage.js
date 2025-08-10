@@ -171,14 +171,6 @@ var bottompage = {
 
         var $pagesMenu = $('.pages-menu.body', $content);
 
-        // Show/Hide Affiliate program link in bottom menu
-        if (mega.flags.refpr) {
-            $('a.link.affiliate', bottompage.$footer).removeClass('hidden');
-        }
-        else {
-            $('a.link.affiliate', bottompage.$footer).addClass('hidden');
-        }
-
         // Hide Pricing link for current Business or Pro Flexi accounts
         if ((u_attr && u_attr.b && u_attr.b.s !== pro.ACCOUNT_STATUS_EXPIRED) ||
             (u_attr && u_attr.pf && u_attr.pf.s !== pro.ACCOUNT_STATUS_EXPIRED)) {
@@ -287,7 +279,9 @@ var bottompage = {
         var $body = $('body');
 
         $('#startholder').rebind('scroll.bottompage', function() {
-            sessionStorage.setItem('scrpos' + MurmurHash3(page).toString(16), $(this).scrollTop() | 0);
+            tryCatch(() => {
+                sessionStorage.setItem(`scrpos${MurmurHash3(page).toString(16)}`, $(this).scrollTop() | 0);
+            })();
             if (page === 'download') {
                 $(window).unbind('resize.download-bar');
             }

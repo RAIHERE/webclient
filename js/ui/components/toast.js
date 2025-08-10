@@ -97,6 +97,10 @@ class MegaToast extends MegaComponent {
 
         if (typeof value === 'string') {
             value = document.createTextNode(value);
+            this.bodyNode.style.display = 'block';
+        }
+        else {
+            this.bodyNode.style.display = 'flex';
         }
 
         this.bodyNode.append(value);
@@ -119,7 +123,13 @@ class MegaToast extends MegaComponent {
      * @returns void
      */
     set actionButtonText(message) {
-        this.actionButton.text = message || "";
+        message = message || '';
+        this.actionButton.text = message;
+        if (!message) {
+            this.actionButton.hide();
+            return;
+        }
+        this.actionButton.show();
     }
 
     /**

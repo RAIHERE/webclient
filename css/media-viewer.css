@@ -186,7 +186,6 @@
                 box-sizing: content-box;
                 height: 16px;
                 margin: 0;
-                -webkit-margin-start: -8px;
                 margin-inline-start: -8px;
                 top: -7px;
                 width: 16px;
@@ -376,7 +375,8 @@
         .mouse-idle {
             cursor: none !important;
         }
-        .vad.mouse-idle .viewer-vad-control {
+        .vad.mouse-idle .viewer-vad-control,
+        .vad.mouse-idle .viewer-vad-info {
             bottom: 16px;
         }
 

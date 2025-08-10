@@ -16,22 +16,13 @@ var extensions = {
     'keynote': [['key'], 'Apple Keynote'],
     'mega': [['megaignore'], 'Mega Ignore'],
     'numbers': [['numbers'], 'Apple Numbers'],
-    'openoffice': [['sxw', 'stw', 'sxc', 'stc', 'sxi', 'sti', 'sxd', 'std', 'sxm'], 'OpenOffice'],
+    'open-office': [['sxw', 'stw', 'sxc', 'stc', 'sxi', 'sti', 'sxd', 'std', 'sxm'], 'OpenOffice'],
     'pages': [['pages'], 'Apple Pages'],
     'pdf': [['pdf'], 'PDF'],
     'photoshop': [['abr', 'psb', 'psd'], 'Adobe Photoshop'],
     'powerpoint': [['pps', 'ppt', 'pptx'], 'Powerpoint'],
     'premiere': [['prproj', 'ppj'], 'Adobe Premiere'],
     'experiencedesign': [['xd'], 'Adobe XD'],
-    'raw': [
-        Object.keys(is_image.raw)
-            .map(function(e) {
-                'use strict';
-                return e.toLowerCase();
-            }),
-        l[20240] || 'RAW Image'
-    ],
-    'sketch': [['sketch'], 'Sketch'],
     'spreadsheet': [['ods', 'ots', 'gsheet', 'nb', 'xlr'], 'Spreadsheet'],
     'torrent': [['torrent'], 'Torrent'],
     'text': [['txt', 'ans', 'ascii', 'log', 'wpd', 'json', 'md', 'org'], 'Text', 'pages'],
@@ -583,6 +574,11 @@ mBroadcaster.once('boot_done', () => {
         'swift': l[22677]
     };
 
+    extensions.raw = [
+        Object.keys(is_image.raw).map((e) => e.toLowerCase()),
+        l[20240] || 'RAW Image'
+    ];
+
     for (const idx in freeze(extensions)) {
         const type = extensions[idx][0];
         const desc = extensions[idx][1];
@@ -632,6 +628,10 @@ function filetype(n, getFullType, ik) {
         return ext[fext][1];
     }
 
+    if (n && n.typeText) {
+        return n.typeText;
+    }
+
     return fext.length ? l[20366].replace('%1', fext.toUpperCase()) : l[18055];
 }
 
@@ -648,7 +648,7 @@ function deviceIcon(name, type) {
         'Android': 'mobile-android',
         'iPhone': 'mobile-ios',
         'Apple': 'pc-mac',
-        'Windows': 'pc-win',
+        'Windows': 'pc-windows',
         'Linux': 'pc-linux'
     });
 
@@ -673,6 +673,11 @@ function deviceIcon(name, type) {
 function folderIcon(node, root) {
     'use strict';
 
+    // Device of device folder
+    if (M.onDeviceCenter && (M.dcd[node.h] || node.isDeviceFolder)) {
+        return node.icon;
+    }
+
     let folderIcon = '';
     root = root || M.getNodeRoot(node.h);
 
@@ -686,11 +691,11 @@ function folderIcon(node, root) {
             return `${folderIcon}bucket-share`;
         }
 
-        return `${folderIcon}folder-outgoing`;
+        return `${folderIcon}folder-users`;
     }
     // Incoming share
     else if (node.su) {
-        return `${folderIcon}folder-incoming`;
+        return `${folderIcon}folder-users`;
     }
     // My chat files
     else if (node.h === M.cf.h) {
@@ -705,25 +710,14 @@ function folderIcon(node, root) {
         return `${folderIcon}bucket`;
     }
     // File request folder
-    else if (mega.fileRequest.publicFolderExists(node.h)) {
+    else if (mega.fileRequest && mega.fileRequest.publicFolderExists(node.h)) {
         return `${folderIcon}folder-public`;
     }
 
-    // Backups
-    if (root === M.InboxID) {
-
-        // Backed up device icon
-        if (node.devid) {
-
-            // Get OS icon
-            return deviceIcon(node.name);
-        }
-        // Backed up external device icon
-        if (node.drvid) {
-
-            // Ignore rubbish bin suffix
-            return 'ex-device';
-        }
+    // Backup folder
+    const parent = M.d[node.p];
+    if (parent && parent.devid) {
+        return 'folder-backup';
     }
 
     return `${folderIcon}folder`;
@@ -749,7 +743,7 @@ function fileIcon(node) {
         rubPrefix = 'rubbish-';
     }
 
-    if (node.t) {
+    if (node.t || M.dcd[node.h] || node.isDeviceFolder) {
         return folderIcon(node, root);
     }
     else if ((icon = ext[fileext(node.name, 0, 1)]) && icon[0] !== 'mega') {

@@ -95,10 +95,7 @@ class MegaMobileFooter extends MegaComponent {
 
                         if (nh) {
 
-                            const msg = escapeHTML(
-                                M.currentdirid === M.RootID ? l.mobile_save_as_toast_cloud : l.mobile_save_as_toast
-                            ).replace('%1', nn).replace('%2', M.d[M.currentdirid].name);
-
+                            const msg = escapeHTML(l.new_text_file_created);
                             mega.ui.viewerOverlay.show(nh);
                             mega.ui.toast.show(msg, 4);
                         }
@@ -110,9 +107,9 @@ class MegaMobileFooter extends MegaComponent {
                 }
             },
         ];
-        if (mega.flags.ab_ads) {
+        // if (mega.flags.ab_ads) {
             mega.commercials.init();
-        }
+        // }
     }
 
     static init() {
@@ -147,7 +144,7 @@ class MegaMobileFooter extends MegaComponent {
             mega.ui.sheet.showClose = true;
 
             const menuNode = document.createElement('div');
-            menuNode.className = 'general-actions';
+            menuNode.className = 'general-actions px-6';
             mega.ui.sheet.addContent(menuNode);
 
             const buildItem = (item) => {
@@ -167,6 +164,9 @@ class MegaMobileFooter extends MegaComponent {
             for (const item of this.menuItems) {
                 buildItem(item);
             }
+
+            mega.ui.sheet.name = 'mobile-footer-actions';
+            mega.ui.sheet.safeShow = true;
 
             mega.ui.sheet.show();
         });

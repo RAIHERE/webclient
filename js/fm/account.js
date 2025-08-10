@@ -16,7 +16,7 @@ function accountUI() {
         return false;
     }
 
-    var $fmContainer = $('.fm-main', '.fmholder');
+    var $fmContainer = $('.pm-main', '.fmholder');
     var $settingsMenu = $('.content-panel.account', $fmContainer);
 
     accountUI.$contentBlock = $('.fm-right-account-block', $fmContainer);
@@ -26,8 +26,6 @@ function accountUI() {
     $('.fm-account-sections', accountUI.$contentBlock).addClass('hidden');
     $('.fm-right-files-block, .section.conversations, .fm-right-block.dashboard',  $fmContainer)
         .addClass('hidden');
-    $('.nw-fm-left-icon', $fmContainer).removeClass('active');
-    $('.nw-fm-left-icon.settings', $fmContainer).addClass('active');
     $('.account.data-block.storage-data', accountUI.$contentBlock).removeClass('exceeded');
     $('.fm-account-save', accountUI.$contentBlock).removeClass('disabled');
     accountUI.$contentBlock.removeClass('hidden');
@@ -55,6 +53,16 @@ function accountUI() {
         // the previous logic to work.
         delay('settings:scrollbarinit', accountUI.initAccountScroll, 300);
     }, 1);
+    accountUI.prev = M.previousdirid === 'account' ? accountUI.prev : M.previousdirid;
+    mBroadcaster.addListener('pagechange', () => {
+        if (!String(page).startsWith('fm/account')) {
+            delete accountUI.prev;
+            return 0xDEAD;
+        }
+    });
+    $('.settings-back', $settingsMenu).rebind('click.accui', () => {
+        loadSubPage(accountUI.prev || 'start');
+    });
 }
 
 accountUI.initAccountScroll = function() {
@@ -221,10 +229,6 @@ accountUI.renderAccountPage = function(account) {
             accountUI.calls.init();
             break;
         case '/fm/account/vpn':
-            if (u_attr.b) {
-                loadSubPage('fm/account');
-                return false;
-            }
             $('.fm-account-vpn', accountUI.$contentBlock).removeClass('hidden');
             sectionClass = 'vpn';
 
@@ -255,7 +259,6 @@ accountUI.renderAccountPage = function(account) {
     accountUI.leftPane.init(sectionClass);
 
     mBroadcaster.sendMessage('settingPageReady');
-    fmLeftMenuUI();
 
     if (subSectionId) {
         $(`.settings-button.${sectionClass} .sub-title[data-scrollto='${subSectionId}']`).trigger('click');
@@ -306,20 +309,8 @@ accountUI.general = {
             }
         });
 
-        $('.download-sync', accountUI.$contentBlock).rebind('click', function() {
-
-            eventlog(500489);
-
-            var pf = navigator.platform.toUpperCase();
-
-            // If this is Linux send them to desktop page to select linux type
-            if (pf.indexOf('LINUX') > -1) {
-                mega.redirect('mega.io', 'desktop', false, false, false);
-            }
-            // else directly give link of the file.
-            else {
-                window.location = megasync.getMegaSyncUrl();
-            }
+        $('.download-sync', accountUI.$contentBlock).rebind('click.download', () => {
+            megasync.downloadApp(500489);
         });
     },
 
@@ -337,7 +328,7 @@ accountUI.general = {
             'use strict';
 
             /* Settings and Dasboard ccontent blocks */
-            this.$contentBlock = $('.fm-right-block.dashboard, .fm-right-account-block', '.fm-main');
+            this.$contentBlock = $('.fm-right-block.dashboard, .fm-right-account-block', '.pm-main');
 
             this.bandwidthChart(account);
             this.usedStorageChart(account);
@@ -509,7 +500,7 @@ accountUI.general = {
     userUIUpdate: function() {
         'use strict';
 
-        var $fmContent = $('.fm-main', '.fmholder');
+        var $fmContent = $('.pm-main', '.fmholder');
         var $dashboardPane = $('.content-panel.dashboard', $fmContent);
 
         // Show Membership plan
@@ -760,7 +751,7 @@ accountUI.leftPane = {
 
         'use strict';
 
-        var $settingsPane = $('.content-panel.account', '.fm-main');
+        var $settingsPane = $('.content-panel.account', '.pm-main');
         var $menuItems = $('.settings-button', $settingsPane);
         var $currentMenuItem = $menuItems.filter('.' + sectionClass);
 
@@ -773,12 +764,6 @@ accountUI.leftPane = {
         if (u_attr.s4) {
             // Show s4 button on naviation
             $menuItems.filter('.s4').removeClass('hidden');
-        }
-
-        // Show VPN settings
-        if (u_attr.b) {
-            // hide VPN button on naviation
-            $menuItems.filter('.vpn').addClass('hidden');
         }
 
         if (accountUI.plan.paymentCard.validateUser(M.account)) {
@@ -833,7 +818,7 @@ accountUI.leftPane = {
 
         'use strict';
 
-        var $settingsPane = $('.content-panel.account', '.fm-main');
+        var $settingsPane = $('.content-panel.account', '.pm-main');
 
         $('.settings-button', $settingsPane).rebind('click', function() {
 
@@ -894,7 +879,7 @@ accountUI.account = {
 
         'use strict';
 
-        var $settingsPane = $('.content-panel.account', '.fm-main');
+        var $settingsPane = $('.content-panel.account', '.pm-main');
         var $profileContent = $('.settings-sub-section.profile', accountUI.$contentBlock);
 
         // Profile
@@ -2455,6 +2440,9 @@ accountUI.fileManagement = {
         // Hide Recents
         this.hideRecents.render();
 
+        // Show sensitive nodes
+        this.showSen.render();
+
         // Drag and Drop
         this.dragAndDrop.render();
 
@@ -2475,6 +2463,9 @@ accountUI.fileManagement = {
 
         // Rewind
         this.rewind.render();
+
+        // Device Centre pause sync/backup folders
+        this.deviceCentrePause.render();
     },
 
     versioning: {
@@ -2776,6 +2767,29 @@ accountUI.fileManagement = {
         }
     },
 
+    showSen: {
+        render() {
+            'use strict';
+
+            if (mega.sensitives.featureEnabled) {
+                $('#show-hidden', accountUI.$contentBlock).parent().removeClass('hidden');
+                accountUI.inputs.switch.init(
+                    '#show-hidden',
+                    $('#show-hidden', accountUI.$contentBlock).parent(),
+                    mega.config.get('showSen'),
+                    (val) => {
+                        val = val && 1 || undefined;
+
+                        mega.config.setn('showSen', val);
+                        mega.sensitives.onConfigChange(val);
+                    });
+            }
+            else {
+                $('#show-hidden', accountUI.$contentBlock).parent().addClass('hidden');
+            }
+        }
+    },
+
     dragAndDrop: {
 
         render: function() {
@@ -2896,6 +2910,21 @@ accountUI.fileManagement = {
                 $(showRewindConfirmId, accountUI.$contentBlock).parent(),
                 !mega.config.get('rwReinstate'),
                 val => mega.config.setn('rwReinstate', val ^ 1)
+            );
+        }
+    },
+
+    deviceCentrePause: {
+        render() {
+            'use strict';
+
+            var showPauseConfirmId = '#dcPause';
+
+            accountUI.inputs.switch.init(
+                showPauseConfirmId,
+                $(showPauseConfirmId, accountUI.$contentBlock).parent(),
+                !mega.config.get('dcPause'),
+                val => mega.config.setn('dcPause', val ^ 1)
             );
         }
     }
@@ -3032,7 +3061,7 @@ accountUI.transfers = {
                 var $uploadSettings = $('.upload-settings', accountUI.$contentBlock);
 
                 accountUI.transfers.uploadAndDownload.setSlider($uploadSettings, '#slider-range-max', {
-                    min: 1, max: 8, range: "min", value: fmconfig.ul_maxSlots || 4,
+                    min: 1, max: 8, range: "min", value: fmconfig.ul_maxSlots || ulmanager.ulDefConcurrency || 4,
                     change: function(e, ui) {
                         if (M.currentdirid === 'account/transfers' && ui.value !== fmconfig.ul_maxSlots) {
                             mega.config.setn('ul_maxSlots', ui.value);
@@ -3904,6 +3933,7 @@ accountUI.s4 = {
                         loadingDialog.show('s4optsout.s4r');
                         s4.utils.optsOut()
                             .then(() => {
+                                mega.config.remove('s4onboarded');
                                 loadSubPage('fm');
                                 location.reload();
                             })
@@ -3923,4 +3953,37 @@ accountUI.vpn = {
         this.vpnPage = this.vpnPage || new VpnPage();
         this.vpnPage.show();
     }
+};
+
+accountUI.hasMobileSessions = async() => {
+    'use strict';
+
+    if (typeof M.isMobileInUse === 'boolean') {
+        return M.isMobileInUse;
+    }
+
+    if (!(M.isMobileInUse instanceof Promise)) {
+        M.isMobileInUse = new Promise((resolve) => {
+            api.req({a: 'usl', x: 1}).then(({ result: sessions }) => {
+                if (sessions && sessions.length) {
+                    for (let i = sessions.length; i--;) {
+                        const useragent = String(sessions[i][2]).toLowerCase();
+
+                        if (useragent.startsWith('megaandroid/') || useragent.startsWith('megaios/') === 0) {
+                            M.isMobileInUse = true;
+                            break;
+                        }
+                    }
+                }
+
+                M.isMobileInUse = M.isMobileInUse === true;
+
+                resolve(M.isMobileInUse);
+            });
+        });
+    }
+
+    await M.isMobileInUse;
+
+    return M.isMobileInUse;
 };

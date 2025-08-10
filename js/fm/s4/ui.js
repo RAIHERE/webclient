@@ -56,7 +56,8 @@ lazy(s4, 'ui', () => {
 
                 if (s4Type === 'container') {
                     type = 's4-object-storage';
-                    localeName = l.obj_storage;
+                    localeName = s4.utils.getContainersList().length === 1
+                        ? l.obj_storage : M.getNameByHandle(id);
                 }
                 else if (s4Type === 'bucket') {
                     type = 's4-buckets';
@@ -172,6 +173,18 @@ lazy(s4, 'ui', () => {
         }
 
         /**
+         * Show Onboarding Setup
+         * @returns {void} void
+         * @memberOf s4.ui
+         */
+        showSetupDialog() {
+            if (!mega.config.get('s4onboarded')) {
+                mega.config.set('s4onboarded', 1);
+                this.showDialog(s4.containers.dialogs.setup);
+            }
+        }
+
+        /**
          * Render Object storage section
          * Show Container content until multiple containers feature is available
          * Create Container if containers list is empty
@@ -181,9 +194,7 @@ lazy(s4, 'ui', () => {
         renderRoot() {
             const cn = s4.utils.getContainersList();
 
-            if (cn.length === 1) {
-                M.openFolder(cn[0].h, true);
-            }
+            M.openFolder(cn.length ? cn[0].h : 'fm', true);
         }
 
         /**
@@ -296,7 +307,7 @@ lazy(s4, 'ui', () => {
                 }
 
                 if ((iconNode = document.querySelector(`[id="treea_${n.h}"] .nw-fm-tree-folder`))) {
-                    iconNode.className = 'nw-fm-tree-icon-wrap sprite-fm-mono icon-bucket-filled';
+                    iconNode.className = 'nw-fm-tree-icon-wrap sprite-fm-mono icon-bucket-solid';
                 }
 
                 // Update grid element
@@ -378,8 +389,6 @@ lazy(s4, 'ui', () => {
 
             $('.files-grid-view.fm, .fm-blocks-view.fm', this.$fmBlock).addClass('active-header');
             this.$infoHeaderBlocks.removeClass('hidden');
-            const $bucketHeader = $('.s4-info-header-bucket', this.$infoHeaderBlocks)
-                .removeClass('hidden');
             const $notification = $('.bucket-access-warning', this.$infoHeaderBlocks)
                 .removeClass('hidden');
             const publicAccess = s4.kernel.getPublicAccessLevel(this.bucket);
@@ -393,13 +402,6 @@ lazy(s4, 'ui', () => {
             else {
                 $notification.safeHTML(l.s4_bkt_access_origin_tip);
             }
-
-            $('.bucket-details-name', $bucketHeader).text(this.bucket.name);
-            $('.bucket-domain', $bucketHeader)
-                .text(s4.kernel.bucket.getHostDomain(this.bucket.h));
-
-            $('.bkt-settings-btn', this.$fmBlock)
-                .rebind('click.bucket-settings', () => this.showDialog(s4.buckets.dialogs.settings, this.bucket));
 
             $('a', $notification).rebind('click.openHelpCenter', () => {
                 window.open(
@@ -434,6 +436,9 @@ lazy(s4, 'ui', () => {
             if (M.dyh !== dyh) {
                 M.dyh = dyh;
             }
+
+            // Show setup dialog if user opens S4 section first time
+            this.showSetupDialog();
 
             if (!this.beforePageChangeListener) {
                 this.beforePageChangeListener = mBroadcaster.addListener('beforepagechange', tpage => {
@@ -470,7 +475,7 @@ lazy(s4, 'ui', () => {
                 if (M.v.length === 0 && M.currentLabelFilter) {
                     $('.fm-empty-filter', '.fm-right-files-block').removeClass('hidden');
                 }
-                else if (M.v.length === 0 && (!mega.ui.mNodeFilter || !mega.ui.mNodeFilter.selectedFilters)) {
+                else if (M.v.length === 0 && (!mega.ui.mNodeFilter || !mega.ui.mNodeFilter.selectedFilters.value)) {
                     $(`.fm-empty-s4-${subType}`, '.fm-right-files-block').removeClass('hidden');
                     this.$contentBlocks.addClass('hidden');
                 }
@@ -485,7 +490,7 @@ lazy(s4, 'ui', () => {
                     await this.renderSelected();
                 }
                 else {
-                    const $emptyBlock = $(`div[class*=fm-empty-s4-${subType}]`, '.fm-main');
+                    const $emptyBlock = $(`div[class*=fm-empty-s4-${subType}]`, '.pm-main');
                     this.$pageBlock = $(`.s4-${subType}-management-scroll`, this.$contentBlocks);
 
                     if (!this.lists[subType]) {
@@ -514,18 +519,23 @@ lazy(s4, 'ui', () => {
             }
             $('.js-s4-settings', this.$fmBlock).rebind('click.open-settings', () => {
                 loadSubPage('fm/account/s4');
+                eventlog(500744);
             });
             $('.js-s4-new-bucket', this.$fmBlock).rebind('click.create-bucket', () => {
                 this.showDialog(s4.buckets.dialogs.create);
+                eventlog(500743);
             });
             $('.fm-s4-new-group', this.$fmBlock).rebind('click.create-group', () => {
                 this.showDialog(s4.groups.dialogs.create);
+                eventlog(500747);
             });
             $('.fm-s4-new-user', this.$fmBlock).rebind('click.create-user', () => {
                 this.showDialog(s4.users.dialogs.create);
+                eventlog(500748);
             });
             $('.fm-s4-new-key', this.$fmBlock).rebind('click.create-key', () => {
                 this.showDialog(s4.keys.dialogs.create);
+                eventlog(500746);
             });
         }
 
@@ -793,10 +803,8 @@ lazy(s4, 'ui', () => {
                     return acc + val.init || val.min;
                 }, 0);
 
-                const minWidthToResize = colsWidth +
-                    this.containerSidesPadding +
-                    $.leftPaneResizable.element.outerWidth() +
-                    s4.utils.getNodeWidth(document.querySelector('.nw-fm-left-icons-panel'));
+                const leftPaneWidth = $.leftPaneResizable && $.leftPaneResizable.element.outerWidth() || 0;
+                const minWidthToResize = colsWidth + this.containerSidesPadding + leftPaneWidth;
 
                 let headerWidth = s4.utils.getNodeWidth(header);
 

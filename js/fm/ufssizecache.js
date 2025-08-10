@@ -182,7 +182,7 @@ UFSSizeCache.prototype.save = async function(rootNode) {
         }
     }
     this.cache = null;
-    this.versions = null;
+    this.versions.clear();
 };
 
 // Add node to indexedDB
@@ -199,12 +199,16 @@ UFSSizeCache.prototype.addToDB = function(n) {
             fa: n.fa || '',
             d: n
         });
+
+        if (mega.infinity && self.currsn) {
+            delay('inf(fmdb:flush)', () => !self.pfid && setsn(self.currsn));
+        }
     }
 
     if (n.t) {
         this.addTreeNode(n);
 
-        if (fminitialized) {
+        if (self.fminitialized) {
             // onFolderSizeChangeUIUpdate will quit if not correct path
             M.onFolderSizeChangeUIUpdate(n);
         }
@@ -241,6 +245,7 @@ UFSSizeCache.prototype.addTreeNode = function(n, ignoreDB) {
     }
     else {
         if (n.fav)                                                   tmp.t |= M.IS_FAV;
+        if (n.sen)                                                   tmp.t |= M.IS_SEN;
         if (M.su.EXP && M.su.EXP[n.h])                               tmp.t |= M.IS_LINKED;
         if (M.getNodeShareUsers(n, 'EXP').length || M.ps[n.h])       tmp.t |= M.IS_SHARED;
         if (M.getNodeShare(n).down === 1)                            tmp.t |= M.IS_TAKENDOWN;

@@ -39,6 +39,51 @@ Object.defineProperties(window, {
     }
 });
 
+// @see {@link fm_fullreload}
+Object.defineProperty(mega, 'halt', {
+    async value(reason) {
+        'use strict';
+
+        if (self.fminitialized) {
+
+            if (window.loadingDialog) {
+                // 1141: 'Please be patient.'
+                loadingInitDialog.hide('force');
+                loadingDialog.show(reason, l[1141]);
+                loadingDialog.show = loadingDialog.hide = nop;
+            }
+
+            mBroadcaster.crossTab.leave();
+            watchdog.notify(`halt(${reason})`);
+
+            // stop further SC processing
+            window.execsc = nop;
+
+            // and error reporting, if any
+            window.onerror = null;
+
+            // nuke w/sc connection
+            getsc.stop(-1, reason);
+
+            window.getsc = nop;
+            window.waitsc = nop;
+
+            getsc.stop = nop;
+            getsc.validate = nop;
+
+            // shutdown chat..
+            if (self.megaChatIsReady) {
+                megaChat.destroy(true);
+            }
+
+            // abort any scheduled task
+            if (self.delay) {
+                delay.abort();
+            }
+        }
+    }
+});
+
 /** @property mega.shouldApplyNetworkBackPressure */
 lazy(mega, 'shouldApplyNetworkBackPressure', () => {
     'use strict';
@@ -82,7 +127,7 @@ lazy(mega, 'is', () => {
 lazy(self, 'mLoadingSpinner', () => {
     'use strict';
     const callers = new Map();
-    const domNode = document.querySelector('.fmdb-loader');
+    const domNode = mega.ui.header && mega.ui.header.loader;
 
     const hideToast = (id) => {
         if (id) {
@@ -114,7 +159,7 @@ lazy(self, 'mLoadingSpinner', () => {
                     timeout: 0,
                     content: title,
                     classes: ['loading-toast'],
-                    icons: ['sprite-fm-theme icon-loading-spinner rotating-animation']
+                    icons: ['sprite-fm-theme icon-loading-spinner rotating-animation step-12']
                 });
             }
             callers.set(id, store);
@@ -335,6 +380,9 @@ if (typeof loadingInitDialog === 'undefined') {
     };
     loadingInitDialog.step2 = function(progress) {
         'use strict';
+        if (self.d > 0 && !(progress % 20)) {
+            console.info('loadingInitDialog.step2(%s)...', progress, !!this.progress, this.active);
+        }
         if (!this.active) {
             return;
         }
@@ -364,6 +412,9 @@ if (typeof loadingInitDialog === 'undefined') {
     loadingInitDialog.step3 = function(progress, delayStep) {
         'use strict';
 
+        if (self.d > 0) {
+            console.info('loadingInitDialog.step3(%s, %s)...', progress, delayStep, this.progress, this.active);
+        }
         if (this.progress) {
 
             // Don't show step 3 loading if on mobile
@@ -522,11 +573,15 @@ async function sc_fetcher() {
     if (d) {
         console.info('Retrieving from DB nodes required to parse action-packets...', handles);
     }
+
+    // Set local-only mode, in case we're running under Infinity.
+    const options = freeze({localOnly: true});
+
     // console.time('sc:fetcher');
 
     while (handles.length) {
         const bunch = handles.splice(0, 8192);
-        await dbfetch.geta(bunch).catch(dump);
+        await dbfetch.geta(bunch, options).catch(dump);
 
         // Retrieve all needed subtrees and file versions if any, and then finish the batch processing
         const subtree = new Set();
@@ -549,7 +604,7 @@ async function sc_fetcher() {
         }
 
         if (subtree.size) {
-            await dbfetch.tree([...subtree]).catch(dump);
+            await dbfetch.tree([...subtree], options).catch(dump);
         }
 
         for (let i = bunch.length; i--;) {
@@ -581,7 +636,7 @@ function startNodesFetching(scni) {
 
         if (scloadtnodes && scq[scni] && scq[scni][0] && sc_fqueuet(scni)) {
             // fetch required nodes from db
-            delay('scq:fetcher.dsp', sc_fetcher, 90);
+            queueMicrotask(sc_fetcher);
         }
         else {
             // resume processing, if appropriate and needed
@@ -635,7 +690,7 @@ function sc_packet(a) {
                 break;
         }
 
-        delay('scq:fetcher.dsp', sc_fetcher, 90);
+        queueMicrotask(sc_fetcher);
     }
 
     if ((a.a === 's' || a.a === 's2') && a.k && !self.secureKeyMgr) {
@@ -1103,12 +1158,18 @@ scparser.$add('t', function(a, scnodes) {
         const targetid = rootNode.p;
         const pnodes = [];
 
+        let ver = false;
         for (i = 0; i < scnodes.length; i++) {
-            if (scnodes[i] && scnodes[i].p === targetid) {
-                pnodes.push({
-                    h: scnodes[i].h,
-                    t: scnodes[i].t
-                });
+            if (scnodes[i]) {
+                if (!ver && rootNode.t === 0 && scnodes[i].p === rootNode.h) {
+                    ver = true;
+                }
+                if (scnodes[i].p === targetid) {
+                    pnodes.push({
+                        h: scnodes[i].h,
+                        t: scnodes[i].t
+                    });
+                }
             }
         }
 
@@ -1116,7 +1177,8 @@ scparser.$add('t', function(a, scnodes) {
             a: a.ou ? 'put' : 'puu',
             n: targetid,
             u: a.ou,
-            f: pnodes
+            f: pnodes,
+            ver
         });
     }
 
@@ -1201,7 +1263,9 @@ scparser.$add('ipc', {
 
 scparser.$add('ph', (a) => {
     'use strict';
-
+    if (folderlink) {
+        return;
+    }
     // exported link
     processPH([a]);
 
@@ -1464,6 +1528,9 @@ scparser.$add('u', function(a) {
                 if (oldattr.fav !== n.fav) {
                     M.favouriteDomUpdate(n, n.fav);
                 }
+                if (oldattr.sen !== n.sen) {
+                    mega.sensitives.updateDom(n, n.sen);
+                }
                 if (oldattr.name !== n.name) {
                     M.onRenameUIUpdate(n.h, n.name);
                 }
@@ -1484,7 +1551,7 @@ scparser.$add('u', function(a) {
 scparser.$add('d', function(a) {
     var fileDeletion = (M.d[a.n] && !M.d[a.n].t);
     var topVersion = null;
-    if (fileDeletion) {
+    if (fminitialized && fileDeletion) {
         topVersion = fileversioning.getTopNodeSync(a.n);
     }
 
@@ -1513,32 +1580,38 @@ scparser.$add('d', function(a) {
     // node deletion
     M.delNode(a.n, false, !!a.m);
 
-    // was selected, now clear the selected array.
-    if ($.selected && ($.selected[0] === a.n)) {
-        $.selected = [];
-    }
     if (!pfid && a.ou) {
         scparser.$notify(a);
     }
-    if (!is_mobile) {
-        if (fileDeletion && !a.v) {// this is a deletion of file.
-            if (M.d[topVersion]) {
-                fileversioning.updateFileVersioningDialog(topVersion);
+
+    if (fminitialized) {
+
+        // was selected, now clear the selected array.
+        if ($.selected) {
+            if (typeof selectionManager === 'undefined') {
+                const idx = $.selected.indexOf(a.n);
+                if (idx > -1) {
+                    $.selected.splice(idx, 1);
+                }
             }
             else {
-                fileversioning.closeFileVersioningDialog(a.n);
+                selectionManager.remove_from_selection(a.n);
             }
         }
-    }
 
-    // Remove all upload in queue that target deleted node
-    if (fminitialized && ul_queue.length > 0) {
-        ulmanager.ulClearTargetDeleted(a.n);
-    }
+        if (fileDeletion && !a.v && !is_mobile) {
+            fileversioning.updateFileVersioningDialog(M.d[topVersion] ? topVersion : a.n);
+        }
 
-    if (!a.m && fminitialized && !pfid && !is_mobile) {
-        M.storageQuotaCache = null;
-        delay('checkLeftStorageBlock', () => M.checkLeftStorageBlock().catch(dump));
+        // Remove all upload in queue that target deleted node
+        if (ul_queue.length > 0) {
+            ulmanager.ulClearTargetDeleted(a.n);
+        }
+
+        if (!a.m && !pfid && !is_mobile) {
+            M.storageQuotaCache = null;
+            delay('checkStorageBlock', () => MegaStorageBlock.checkUpdate());
+        }
     }
 });
 
@@ -1568,6 +1641,8 @@ scparser.$bulkAdd(['psts', 'psts_v2'], function(a) {
     if (fminitialized && !pfid) {
         pro.processPaymentReceived(a);
     }
+    M.delPersistentData('payfail-last').catch(nop);
+    M.delPersistentData('planexp-last').catch(nop);
 
     this.sqac(a);
 });
@@ -1626,8 +1701,14 @@ scparser.$add('sqac', (a) => {
                         }
 
                         if (mega.pm) {
-                            mega.pm.clearPlan();
+                            mega.pm.hideSubsDialog();
                         }
+
+                        if (page === 'fm/s4') {
+                            s4.main.render().catch(reportError);
+                        }
+
+                        mega.sensitives.onPlanUpgrade();
                     });
                 }
             }
@@ -1636,13 +1717,8 @@ scparser.$add('sqac', (a) => {
             }
             M.storageQuotaCache = null;
 
-            if ($.topMenu) {
-
-                topMenu();
-            }
-            else if (!pfid) {
-
-                M.checkLeftStorageBlock();
+            if (!pfid && !is_mobile) {
+                MegaStorageBlock.checkUpdate();
             }
 
             M.checkStorageQuota(2e3);
@@ -1655,19 +1731,7 @@ scparser.$add('pses', function(a) {
     'use strict';
     if (!folderlink) {
         notify.notifyFromActionPacket(a).catch(dump);
-    }
-});
-
-// Payment card status
-scparser.$add('cce', () => {
-    'use strict';
-
-    // assuming that this AP will come only to PRO/Business accounts.
-    if (fminitialized && !folderlink) {
-
-        delay('cce-action-packet', () => {
-            M.updatePaymentCardState().catch(dump);
-        }, 2000);
+        M.showPlanExpiringBanner({ expiry: a.ts }).catch(dump);
     }
 });
 
@@ -1780,7 +1844,7 @@ scparser.$add('_sn', function(a) {
     if (d) {
         console.info(` --- New SN: ${a.sn}`);
     }
-    onIdle(() => setsn(a.sn));
+    setsn(a.sn);
 
     // rewrite accumulated RSA keys to AES to save CPU & bandwidth & space
     crypto_node_rsa2aes();
@@ -1817,7 +1881,7 @@ scparser.$add('ub', function() {
 // Pro Flexi account change which requires reload (such as payment against expired account)
 scparser.$add('upf', () => {
     "use strict";
-    if (!folderlink) {
+    if (!folderlink && !addressDialog.paymentInProcess) {
         fm_fullreload(null, 'upf-proflexi').catch(dump);
     }
 });
@@ -1921,7 +1985,7 @@ scparser.$finalize = async() => {
 
     // Update Info panel UI
     if (!is_mobile) {
-        delay('infoPanel', mega.ui.mInfoPanel.reRenderIfVisible.bind(mega.ui.mInfoPanel, $.selected));
+        mega.ui.mInfoPanel.smartEventuallyUpdate();
     }
 
     if (scsharesuiupd) {
@@ -1939,8 +2003,13 @@ scparser.$finalize = async() => {
             }
 
             if ($.dialog === 'share') {
-                // Re-render the content of access list in share dialog
-                renderShareDialogAccessList();
+                // Re-render the content of the Access list in the Share dialog
+                mega.ui.mShareDialog.renderAccessList();
+            }
+
+            if ($.dialog === 'share-access-contacts-dialog') {
+                // Re-render the contents of the Share Collaborators dialog and its Access list
+                mega.ui.mShareCollaboratorsDialog.render();
             }
         });
 
@@ -2048,6 +2117,14 @@ function execsc() {
                         api.webLockSummary();
                         console.info(`Awaiting API response for SC command '${a.a}..${a.st}..${a.i}'`);
                     }
+                    if (execsc.trk !== scqtail) {
+
+                        execsc.trk = scqtail;
+                    }
+                    else if (scqhead > scqtail << 3) {
+
+                        eventlog(99620, JSON.stringify([2, buildVersion.website, scqtail, scqhead, a.a, a.st]), true);
+                    }
                     return;
                 case 5:
                     a.i = requesti;
@@ -2077,7 +2154,7 @@ function execsc() {
     if (d) {
         console.log(`Processed ${tickcount} SC commands in the past 200 ms`);
     }
-    onIdle(execsc);
+    queueMicrotask(execsc);
 }
 
 // a node was updated significantly: write to DB and redraw
@@ -2092,7 +2169,13 @@ function fm_updated(n) {
         if (M.megaRender) {
             M.megaRender.revokeDOMNode(n.h, true);
         }
-        delay('ui:fm.updated', () => M.updFileManagerUI().catch(dump), 30);
+        if (!fm_updated.tick) {
+            fm_updated.tick = 1;
+            queueMicrotask(() => {
+                M.updFileManagerUI().catch(dump);
+                fm_updated.tick = 0;
+            });
+        }
     }
 }
 
@@ -2112,6 +2195,7 @@ function initworkerpool() {
     const workerStateData = {
         d,
         u_k,
+        seqno,
         u_privk,
         u_handle,
         secureKeyMgr,
@@ -2161,29 +2245,10 @@ async function fm_fullreload(light, logMsg) {
             localStorage.force = 1;
             delete sessionStorage.lightTreeReload;
         }
-
     }
-
-    if (window.loadingDialog) {
-        // 1141: 'Please be patient.'
-        loadingInitDialog.hide('force');
-        loadingDialog.show('full-reload', l[1141]);
-        loadingDialog.show = loadingDialog.hide = nop;
-    }
-
-    // stop further SC processing
-    window.execsc = nop;
-
-    // and error reporting, if any
-    window.onerror = null;
-
-    // nuke w/sc connection
-    getsc.stop(-1, 'full-reload');
-    window.getsc = nop;
-    getsc.stop = nop;
-    getsc.validate = nop;
 
     return Promise.allSettled([
+        mega.halt('full-reload'),
         fmdb && fmdb.invalidate(),
         logMsg && eventlog(99624, logMsg)
     ]).then(() => location.reload(true));
@@ -2273,7 +2338,7 @@ function emplacenode(node, noc) {
         M.d[node.h] = node;
     }
     else {
-        M.d[node.h] = Object.setPrototypeOf(node, MegaNode.prototype);
+        M.d[node.h] = node instanceof MegaNode ? node : Object.setPrototypeOf(node, MegaNode.prototype);
     }
 }
 
@@ -2340,6 +2405,10 @@ function tree_residue(data) {
     // store the residual f response for perusal once all workers signal that they're done
     this.residual.push(...data);
 
+    if (self.d > 0) {
+        this.logger.log('tree_residue()...', decWorkerPool.ok, this.residual);
+    }
+
     // request an "I am done" confirmation ({}) from all workers
     if (decWorkerPool.ok) {
         dumpsremaining = decWorkerPool.length;
@@ -2398,21 +2467,31 @@ function worker_procmsg(ev) {
                 }
             }
             const ok = fmdb && !fmdb.crashed;
-            const emplace = mega.nobp || !ok || fminitialized || fmdb && fmdb.memoize || M.isInRoot(ev.data, true);
 
             // If `ufsc.cache` is not set, `ufsc.save()` was already called,
             // only in such a case we need to explicitly add new nodes to DB.
             // Under Infinity, this will ensure (M)tree[] nodes do consistently
             // remain in memory, which is a strong requirement for S4 (lhp)...
-            if (ufsc.cache && ev.data.p) {
-                ufsc.feednode(ev.data);
-            }
-            else {
-                ufsc.addToDB(ev.data);
-            }
+            const feed = ufsc.cache && ev.data.p;
+
+            // Additionally, in case we're under Infinity and incrementally loading nodes in the background,
+            // don't emplace anything into memory otherwise crawling nodes back to root won't work properly.
+            // @todo way to expunge nodes from memory, we've an overhead having to decrypt nodes out of FMDB next.
+            const inc = mega.infinity && !ufsc.cache && ok;
+
+            const emplace = !inc
+                && (mega.nobp || !ok || fminitialized || fmdb && fmdb.memoize || M.isInRoot(ev.data, true));
 
             if (emplace) {
                 emplacenode(ev.data);
+            }
+
+            if (!feed || !emplace) {
+                ufsc.addToDB(ev.data);
+            }
+
+            if (feed) {
+                ufsc.feednode(ev.data);
             }
         }
     }
@@ -2459,7 +2538,9 @@ function worker_procmsg(ev) {
 
             if (decWorkerPool.inflight) {
                 for (const api of decWorkerPool.inflight) {
-
+                    if (self.d > 0) {
+                        api.logger.log('residual acquired, resuming operations...', api.residual);
+                    }
                     if (api.residual[0]) {
                         api.residual[0].resolve();
                     }
@@ -2468,6 +2549,9 @@ function worker_procmsg(ev) {
                     }
                 }
                 decWorkerPool.inflight = null;
+            }
+            else if (self.d) {
+                console.info('decWorkerPool completed, but nothing pending inflight...');
             }
         }
     }
@@ -2480,6 +2564,9 @@ function loadfm(force) {
     "use strict";
     assert(!is_chatlink);
 
+    if (self.d > 0) {
+        console.log(`[${new Date().toISOString()}] begin loadfm() setup...`, is_fm(), loadfm.loaded, loadfm.loading);
+    }
     if (force) {
         localStorage.force = true;
         loadfm.loaded = false;
@@ -2537,11 +2624,15 @@ function loadfm(force) {
                     // channel 1: non-transactional (maintained by IndexedDBKVStorage)
                 }, {});
 
+                const ident = `get-tree(f:db)`;
                 if (d) {
-                    console.time(`get-tree(f:db)`);
+                    console.time(ident);
                 }
+                api.webLockSummary();
 
-                fmdb.init(localStorage.force)
+                // Initialize FMDB and/or retrieve account data ('f' cmd) behind a mutex,
+                // thus effectively preventing multiple tabs from concurrently doing so.
+                mutex.lock(ident).then((unlock) => fmdb.init(localStorage.force)
                     .catch(dump)
                     .then(fetchfm)
                     .catch((ex) => {
@@ -2551,9 +2642,10 @@ function loadfm(force) {
                     .finally(() => {
                         if (d) {
                             api.webLockSummary();
-                            console.timeEnd(`get-tree(f:db)`);
+                            console.timeEnd(ident);
                         }
-                    });
+                        unlock();
+                    }));
             }
         }
     }
@@ -2561,6 +2653,10 @@ function loadfm(force) {
 
 async function fetchfm(sn) {
     "use strict";
+
+    if (self.d > 0) {
+        console.log(`[${new Date().toISOString()}] begin fetchfm()...`, sn, pfid);
+    }
 
     // we always intially fetch historical actionpactions
     // before showing the filemanager
@@ -2665,7 +2761,7 @@ async function fetchfm(sn) {
                 }
             }
             loadfm.fromapi = true;
-            return dbfetchfm(result);
+            return loadfm_callback(result);
         });
 }
 
@@ -2713,8 +2809,6 @@ function dbfetchfm(residual) {
         return function(r) {
             if (tables[t] === 1) {
                 if (r.length > 0) {
-                    // only set chatmcf is there is anything returned
-                    // if not, this would force the chat to do a 'mcf' call
                     loadfm.chatmcf = r;
                 }
                 else {
@@ -2737,11 +2831,17 @@ function dbfetchfm(residual) {
         mega.loadReport[key] = now - mega.loadReport.stepTimeStamp;
         mega.loadReport.stepTimeStamp = now;
     };
-    const finish = () => {
+    const finish = async() => {
 
         if (isFromAPI) {
             window.loadingInitDialog.step3(1, 20);
-            return tSleep(0.3, residual || false).then(loadfm_callback);
+        }
+
+        if (ufsc.cache) {
+            if (self.d) {
+                console.warn('Saving unhandled ufs-cache...', $.len(ufsc.cache), mega.infinity);
+            }
+            await ufsc.save().catch(dump);
         }
 
         return getsc(true);
@@ -2755,6 +2855,8 @@ function dbfetchfm(residual) {
     if (isFromAPI) {
         // Tree nodes are already in memory.
         delete tables.tree;
+        delete tables.mcf;
+        delete tables.mcsm;
     }
 
     if (d) {
@@ -3212,45 +3314,39 @@ function processOPC(a, ignoreDB) {
  */
 function processPH(publicHandles) {
     'use strict';
-    var nodeId;
-    var publicHandleId;
+    const promises = [];
     var UiExportLink = fminitialized && !is_mobile && new mega.UI.Share.ExportLink();
 
     for (var i = publicHandles.length; i--; ) {
-        var value = publicHandles[i];
-
-        nodeId = value.h;
-        if (!M.d[nodeId]) continue;
+        const share = {...publicHandles[i]};
+        const {h, d, down, p} = share;
 
         if (fmdb) {
-            if (value.d) {
-                fmdb.del('ph', nodeId);
+            if (d) {
+                fmdb.del('ph', h);
             }
             else {
-                fmdb.add('ph', { h : nodeId });
+                fmdb.add('ph', {h});
             }
         }
 
-        publicHandleId = value.ph;
-
         // remove exported link, down: 1
-        if (value.d) {
-            M.delNodeShare(nodeId, 'EXP');
+        if (d) {
+            promises.push(M.delNodeShare(h, 'EXP'));
 
             if (fminitialized && M.currentdirid === 'public-links') {
-                removeUInode(nodeId, value.p);
+                removeUInode(h, p);
 
                 if (typeof selectionManager !== 'undefined') {
-                    selectionManager.remove_from_selection(nodeId);
+                    selectionManager.remove_from_selection(h);
                 }
             }
 
             if (UiExportLink) {
-                UiExportLink.removeExportLinkIcon(nodeId);
+                UiExportLink.removeExportLinkIcon(h);
             }
         }
         else {
-            var share = clone(value);
             delete share.a;
             delete share.i;
             delete share.n;
@@ -3259,30 +3355,27 @@ function processPH(publicHandles) {
             share.u = 'EXP';
             share.r = 0;
 
-            if (M.d[nodeId].ph !== publicHandleId) {
-                M.d[nodeId].ph = publicHandleId;
-                M.nodeUpdated(M.d[nodeId]);
-            }
-
-            M.nodeShare(share.h, share);
+            promises.push(M.nodeShare(h, share));
 
             if (UiExportLink) {
-                UiExportLink.addExportLinkIcon(nodeId);
+                UiExportLink.addExportLinkIcon(h);
             }
         }
 
         if (is_mobile) {
-            mobile.cloud.updateLinkIcon(nodeId);
+            mobile.cloud.updateLinkIcon(h);
         }
 
-        if (UiExportLink && (value.down !== undefined)) {
-            UiExportLink.updateTakenDownItem(nodeId, value.down);
+        if (UiExportLink && down !== undefined) {
+            UiExportLink.updateTakenDownItem(h, down);
         }
 
         if (fminitialized && M.recentsRender) {
-            M.recentsRender.nodeChanged(nodeId);
+            M.recentsRender.nodeChanged(h);
         }
     }
+
+    return Promise.all(promises);
 }
 
 /**
@@ -3726,6 +3819,9 @@ function init_chat(action) {
 function loadfm_callback(res) {
     'use strict';
 
+    if (self.d > 0) {
+        console.log(`[${new Date().toISOString()}] stepping into loadfm() completion...`, is_fm(), loadfm.fromapi, res);
+    }
     if ((parseInt(res) | 0) < 0 || res === undefined) {
         window.loadingInitDialog.hide();
 
@@ -3760,8 +3856,6 @@ function loadfm_callback(res) {
 
             return mKeyDialog(pfid, true, true).catch(() => loadSubPage('start'));
         }
-
-        M.affiliate.storeAffiliate(folderlink, 2);
     }
 
     if (res.noc) {
@@ -3774,23 +3868,13 @@ function loadfm_callback(res) {
         // this is a legacy cached tree without an ok0 element
         process_ok(res.ok);
     }
-    if (res.u) {
-        process_u(res.u);
-    }
-    if (res.opc) {
-        processOPC(res.opc);
-    }
+
     if (res.suba) {
         if (!is_mobile) {
             process_suba(res.suba);
         }
     }
-    if (res.ipc) {
-        processIPC(res.ipc);
-    }
-    if (res.ps) {
-        processPS(res.ps);
-    }
+
     if (res.mcf) {
         // save the response to be processed later once chat files were loaded
         loadfm.chatmcf = res.mcf.c || res.mcf;
@@ -3843,47 +3927,6 @@ function loadfm_callback(res) {
         eventlog(99695);
     }
 
-    if (res.f) {
-        process_f(res.f);
-    }
-
-    // If we have shares, and if a share is for this node, record it on the nodes share list
-    if (res.s) {
-        if (d) {
-            console.info(`[f.s(${res.s.length})] %s`, res.s.map(n => `${n.h}*${n.u}`).sort());
-        }
-        for (let i = res.s.length; i--;) {
-            M.nodeShare(res.s[i].h, res.s[i]);
-        }
-    }
-
-    // Handle public/export links. Why here? Make sure that M.d already exists
-    if (res.ph) {
-        processPH(res.ph);
-    }
-
-    // Handle versioning nodes
-    if (res.f2) {
-        process_f(res.f2, true);
-    }
-
-    // This package is sent on hard refresh if owner have enabled or disabled PUF
-    if (res.uph) {
-        mega.fileRequest.processUploadedPuHandles(res.uph).dump('processUPH');
-    }
-
-    // decrypt hitherto undecrypted nodes
-    crypto_fixmissingkeys(missingkeys);
-
-    if (res.cr) {
-        crypto_procmcr(res.cr);
-    }
-
-    if (res.sr) {
-        crypto_procsr(res.sr);
-    }
-    setsn(currsn = res.sn);
-
     mega.loadReport.procNodeCount = Object.keys(M.d || {}).length;
     mega.loadReport.procNodes = Date.now() - mega.loadReport.stepTimeStamp;
     mega.loadReport.stepTimeStamp = Date.now();
@@ -3893,12 +3936,58 @@ function loadfm_callback(res) {
     // Time to save the ufs-size-cache, from which M.tree nodes will be created and being
     // those dependent on in-memory-nodes from the initial load to set flags such as SHARED.
     return (async() => ufsc.save())().catch(dump)
-        .finally(() => {
+        .then(() => {
+            const pending = [];
+
+            window.loadingInitDialog.step3(35, 40);
+
+            // since v5.36 we're preventing sending the same nodes twice to FMDB, thus it
+            // requires handling the residual gettree response upon ufsc.save() completes
+
+            if (res.u) {
+                process_u(res.u);
+            }
+            if (res.opc) {
+                processOPC(res.opc);
+            }
+            if (res.ipc) {
+                processIPC(res.ipc);
+            }
+            if (res.ps) {
+                processPS(res.ps);
+            }
+            if (res.f) {
+                process_f(res.f);
+            }
+            if (res.f2) {
+                process_f(res.f2, true);
+            }
+
+            if (res.s) {
+                if (d) {
+                    console.info(`[f.s(${res.s.length})] %s`, res.s.map(n => `${n.h}*${n.u}`).sort());
+                }
+                for (let i = res.s.length; i--;) {
+                    pending.push(M.nodeShare(res.s[i].h, res.s[i]));
+                }
+            }
+
+            // Handle public/export links. Why here? Make sure that M.d already exists
+            if (res.ph) {
+                pending.push(processPH(res.ph));
+            }
+
+            // This package is sent on hard refresh if owner have enabled or disabled PUF
+            if (res.uph) {
+                mega.fileRequest.processUploadedPuHandles(res.uph).dump('processUPH');
+            }
+
+            // decrypt hitherto undecrypted nodes
+            crypto_fixmissingkeys(missingkeys);
+
             // commit transaction and set sn
             setsn(res.sn);
             currsn = res.sn;
-
-            window.loadingInitDialog.step3(35, 40);
 
             if (window.pfcol) {
                 return loadfm_done(-0x800e0fff);
@@ -3906,7 +3995,8 @@ function loadfm_callback(res) {
 
             // retrieve the initial batch of action packets, if any,
             // we'll then complete the process using loadfm_done()
-            getsc(true);
+            // (going through dbfetchfm() -> getsc() to do so)
+            return Promise.all(pending).catch(reportError).then(dbfetchfm);
         });
 }
 
@@ -3918,15 +4008,14 @@ function loadfm_done(mDBload) {
 
     window.loadingInitDialog.step3(56, 85);
 
+    if (self.d > 0) {
+        console.log(`[${new Date().toISOString()}] completing loadfm() setup...`, is_fm(), loadfm.fromapi, mDBload);
+    }
     mDBload = mDBload || !loadfm.fromapi;
 
     loadfm.loaded = Date.now();
     loadfm.loading = false;
     loadfm.fromapi = false;
-
-    if (d > 1) {
-        console.warn('loadfm_done called.', is_fm());
-    }
 
     mega.loadReport.procAPs       = Date.now() - mega.loadReport.stepTimeStamp;
     mega.loadReport.stepTimeStamp = Date.now();
@@ -3967,6 +4056,13 @@ function loadfm_done(mDBload) {
 
         // load/initialise the authentication system
         authring.initAuthenticationSystem();
+
+        tryCatch(() => {
+            // Initialise the Back to MEGA button (only shown if in MEGA Lite mode)
+            if (mega.lite.inLiteMode) {
+                mega.lite.initBackToMegaButton();
+            }
+        })();
     }
 
     // This function is invoked once the M.openFolder()'s promise (through renderfm()) is fulfilled.
@@ -4006,7 +4102,7 @@ function loadfm_done(mDBload) {
         }
 
         // Check Business (or Pro Flexi) account is expired on initial phase in desktop web
-        if (!is_mobile && u_attr && (u_attr.b || u_attr.pf)) {
+        if (!pfid && !is_mobile && u_attr && (u_attr.b || u_attr.pf)) {
 
             M.require('businessAcc_js', 'businessAccUI_js').done(() => {
 
@@ -4128,7 +4224,7 @@ function loadfm_done(mDBload) {
             mega.loadReport.stepTimeStamp = Date.now();
 
             // are we actually on an #fm/* page?
-            if (page !== 'start' && is_fm() || $('.fm-main.default').is(":visible")) {
+            if (page !== 'start' && is_fm() || $('.pm-main').is(":visible")) {
                 promise = M.initFileManager();
 
                 mega.loadReport.renderfm = Date.now() - mega.loadReport.stepTimeStamp;
@@ -4227,15 +4323,34 @@ function fmviewmode(id, e)
     var viewmodes = {};
     if (typeof fmconfig.viewmodes !== 'undefined')
         viewmodes = fmconfig.viewmodes;
-    if (e === 2) {
-        viewmodes[id] = 2;
-    }
-    else if (e)
-        viewmodes[id] = 1;
-    else
-        viewmodes[id] = 0;
+
+    viewmodes[id] = e | 0;
+
     mega.config.set('viewmodes', viewmodes);
 }
+
+/**
+ * Returns the viewmode for the given id or 0 as default
+ * @param {String} id - id to get viewmode for
+ * @returns {Number | undefined} viewmode for the given id or 0 as default
+ */
+function getFmViewMode(id) {
+    'use strict';
+
+    if (getFmViewMode.lv[M.currentdirid] || getFmViewMode.lv[M.currentCustomView.subType]) {
+        M.overrideViewMode = 0;
+        return 0;
+    }
+
+    if (self.fmconfig && fmconfig.uiviewmode | 0) {
+        return fmconfig.viewmode;
+    }
+
+    return self.fmconfig && fmconfig.viewmodes && fmconfig.viewmodes[id];
+}
+Object.defineProperty(getFmViewMode, 'lv', {
+    value: freeze({'shares': 1, 'out-shares': 1, 'file-requests': 1, 'container': 1})
+});
 
 /** @property window.thumbnails */
 lazy(self, 'thumbnails', () => {
@@ -4258,7 +4373,7 @@ function fm_thumbnails(mode, nodeList, callback)
 
     const pwd = M.currentdirid;
     const exclude = fm_thumbnails.exclude[pwd];
-    if ((M.gallery || M.chat || M.albums) && mode !== 'standalone' || exclude > 6) {
+    if ((M.gallery || M.chat || (M.albums && !pfid)) && mode !== 'standalone' || exclude > 6) {
         return;
     }
     nodeList = (mode === 'standalone' ? nodeList : false) || M.v;
@@ -4269,7 +4384,7 @@ function fm_thumbnails(mode, nodeList, callback)
     const treq = [];
 
     const onTheFly =
-        !is_mobile && M.viewmode && mode !== 'standalone' && !exclude
+        !is_mobile && M.onIconView && mode !== 'standalone' && !exclude
         && !mega.config.get('noflytn') ? Object.create(null) : false;
 
     // check if the node is rendered within/near the view-port.
@@ -4537,6 +4652,7 @@ mBroadcaster.once('boot_done', function() {
     });
 });
 
+
 mega.commercials = Object.create(null);
 mega.commercials.init = nop;
 mega.commercials.createMobileBottomBarSlots = nop;
@@ -4549,3 +4665,4 @@ mega.commercials.addCommsToBottomBar = (node) => {
     'use strict';
     return node;
 };
+

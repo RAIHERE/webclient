@@ -32,7 +32,7 @@ mobile.appearance = {
                     'checked': curVal === 2
                 }
             ];
-            this.themeGroup = new MegaMobileRadioGroup({
+            mobile.appearance.themeGroup = new MegaMobileRadioGroup({
                 name: 'theme',
                 radios: themes,
                 align: 'right',
@@ -41,6 +41,9 @@ mobile.appearance = {
                     return false;
                 }
             });
+
+            mega.ui.sheet.name = 'mobile-settings-appearance';
+            mega.ui.sheet.safeShow = true;
 
             mega.ui.sheet.show();
         });

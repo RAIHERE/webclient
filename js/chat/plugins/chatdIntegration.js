@@ -217,13 +217,9 @@ ChatdIntegration.decryptMessageHelper = async function(message, chatRoom) {
 };
 
 ChatdIntegration.prototype.requiresUpdate = function(source) {
-    if (window.location.toString().indexOf("/chat")) {
-        $('.nw-fm-left-icon.cloud-drive').triggerHandler('click');
-    }
 
     megaChat.destroy();
     megaChatIsDisabled = true;
-    $('.nw-fm-left-icon.conversations').hide();
 
     // because msgDialog would be closed on location.hash change... we need to do this a bit later....
     Soon(function() {
@@ -413,9 +409,6 @@ ChatdIntegration.prototype._finalizeMcurlResponseHandling = function(ret, chatIn
         if (chatRoom && chatRoom.publicChatHandle) {
             chatRoom.onPublicChatRoomInitialized();
         }
-
-        // This chatlink is valid to be affilaited
-        M.affiliate.storeAffiliate(publicChatHandle, 3);
     }
     else {
         chatInfo.url = ret;
@@ -591,7 +584,7 @@ ChatdIntegration.prototype.openChat = promisify(function(resolve, reject, chatIn
         // try to find the chat room again, it may had been opened while waiting for the mcurl api call...
         chatRoom = self.megaChat.getChatById(chatId);
         if (!chatRoom) {
-            var setAsActive = megaChat._chatsAwaitingAps[chatInfo.i];
+            var setAsActive = !$.cpdGroupChat && megaChat._chatsAwaitingAps[chatInfo.i];
             delete megaChat._chatsAwaitingAps[chatInfo.i];
             const mcoFlags = {};
             for (const flag of Object.values(MCO_FLAGS)) {
@@ -819,7 +812,6 @@ ChatdIntegration.prototype.openChat = promisify(function(resolve, reject, chatIn
                 if (chatRoom.type !== roomType) {
                     chatRoom.type = roomType;
                     if (chatInfo.m === 0 && megaChat.currentlyOpenedChat === chatRoom.chatId) {
-                        $('.section.conversations').addClass('privatechat');
                         // url should be now /g/ instead of /c/
                         var roomUrl = chatRoom.getRoomUrl().replace("fm/", "");
                         M.openFolder(roomUrl);
@@ -1713,19 +1705,10 @@ ChatdIntegration.prototype.sendMessage = async function(chatRoom, messageObject)
     const messageContents = messageObject.textContents || messageObject.message || "";
 
     var promises = [];
-    if (chatRoom.type !== "public") {
-        var participants = chatRoom.getParticipantsExceptMe();
-        if (participants.length === 0 && chatRoom.type === "private") {
-            return;
-        }
-
-        promises.push(
-            ChatdIntegration._ensureKeysAreLoaded(undefined, participants)
-        );
+    if (chatRoom.type !== 'public') {
+        const participants = chatRoom.getParticipantsExceptMe();
+        promises.push(ChatdIntegration._ensureKeysAreLoaded(undefined, participants));
     }
-
-    // chatRoom.logger.warn('sendMessage', promises.length, !chatRoom.protocolHandler, messageObject);
-
     await Promise.all([...promises, ChatdIntegration._waitForProtocolHandler(chatRoom)]);
 
     var refs = this.chatd.msgreferencelist(base64urldecode(chatRoom.chatId));
@@ -1769,7 +1752,6 @@ ChatdIntegration.prototype.sendMessage = async function(chatRoom, messageObject)
 };
 
 ChatdIntegration.prototype.updateMessage = function(chatRoom, msgnum, newMessage) {
-    // a msgupd is only possible up to 1hour after the indicated (client-supplied) UTC timestamp.
     var cipher;
 
     var self = this;
@@ -1835,6 +1817,9 @@ ChatdIntegration.prototype.updateMessage = function(chatRoom, msgnum, newMessage
     if (!foundMsg) {
         console.error("Update message failed, because message  was not found", msgnum);
         return false;
+    }
+    if (foundMsg.getState() === Message.STATE.NOT_SENT && newMessage === "") {
+        return self.chatd.discard(msg[Chatd.MsgField.MSGID], rawChatId);
     }
     cipher = chatRoom.protocolHandler.encryptWithKeyId(newMessage, keyId, foundMsg.references, foundMsg.msgIdentity);
 

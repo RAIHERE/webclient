@@ -170,7 +170,7 @@ mega.fileTextEditor = new function FileTextEditor() {
         nFile.target = fileNode.p;
         nFile.id = ++__ul_id;
         nFile.path = '';
-        nFile.isCreateFile = true;
+        nFile.ulSilent = true;
         nFile._replaces = handle;
         nFile.promiseToInvoke = operationPromise;
 
@@ -232,7 +232,7 @@ mega.fileTextEditor = new function FileTextEditor() {
             nFile.target = directory;
             nFile.id = ++__ul_id;
             nFile.path = '';
-            nFile.isCreateFile = true;
+            nFile.ulSilent = true;
             (nFile.promiseToInvoke = mega.promise)
                 .then((nHandle) => {
                     storeFileData(nHandle, content);
@@ -257,6 +257,23 @@ mega.fileTextEditor = new function FileTextEditor() {
             filesDataMap[handle] = null;
             delete filesDataMap[handle];
         }
+    };
+
+    this.openTextHandle = (nodeHandle) => {
+        if ($.dialog === 'properties') {
+            propertiesDialog(true);
+        }
+
+        loadingDialog.show('common', l[23130]);
+
+        this.getFile(nodeHandle)
+            .then((data) => {
+                return mega.textEditorUI.setupEditor(M.getNameByHandle(nodeHandle), data, nodeHandle);
+            })
+            .catch(tell)
+            .finally(() => {
+                loadingDialog.hide();
+            });
     };
 };
 

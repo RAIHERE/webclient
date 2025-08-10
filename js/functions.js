@@ -259,10 +259,7 @@ function megatitle(nperc) {
         nperc = '';
     }
 
-    let a = document.querySelector('.js-notification-num');
-    a = (a = a && parseInt(a.textContent)) > 0 ? `(${a}) ` : '';
-
-    document.title = a + mega_title + nperc;
+    document.title = mega_title + nperc;
 }
 
 function countrydetails(isocode) {
@@ -302,12 +299,12 @@ function numOfBytes(bytes, precision, isSpd) {
 function bytesToSize(bytes, precision, format) {
     'use strict'; /* jshint -W074 */
 
-    var s_b = l[20158];
-    var s_kb = l[7049];
-    var s_mb = l[20159];
-    var s_gb = l[17696];
-    var s_tb = l[20160];
-    var s_pb = l[23061];
+    var s_b = l[20158] || 'B';
+    var s_kb = l[7049] || 'KB';
+    var s_mb = l[20159] || 'MB';
+    var s_gb = l[17696] || 'GB';
+    var s_tb = l[20160] || 'TB';
+    var s_pb = l[23061] || 'PB';
 
     var kilobyte = 1024;
     var megabyte = kilobyte * 1024;
@@ -614,7 +611,7 @@ function createTimeoutPromise(validateFunction, tick, timeout, waitForPromise, n
     let _res, _rej;
     let running = true;
     let state = 'pending';
-    const debug = window.d > 2;
+    const debug = window.d > 2 || 'rad' in mega;
     const tag = (m) => `[${name}] ${m}`;
     const log = (m, ...args) => console.warn(tag(m), ...args);
 
@@ -635,6 +632,15 @@ function createTimeoutPromise(validateFunction, tick, timeout, waitForPromise, n
         assert(tick > 100, tag(`at least 100ms are expected, ${tick} provided.`));
         assert(timeout > tick && timeout < 6e5, tag(`Invalid timeout value (${timeout})`));
         validateFunction = tryCatch(validateFunction);
+
+        if (document.hidden) {
+            const tmp = Math.min(tick + (timeout >> 3), 1e4);
+
+            if (debug) {
+                log('Background tab, changing %s interval to %s...', tick, tmp);
+            }
+            tick = tmp;
+        }
 
         Promise.resolve(waitForPromise)
             .then(async() => {
@@ -664,7 +670,7 @@ function createTimeoutPromise(validateFunction, tick, timeout, waitForPromise, n
                 }
 
                 while (running) {
-                    await sleep(int);
+                    await tSleep(int);
 
                     if (debug) {
                         const now = performance.now();
@@ -966,8 +972,7 @@ async function mKeyDialog(ph, fl, keyr, selector) {
 
         $('.fm-dialog-new-folder-input', dialog).addClass('contains-error');
         $('.dlkey-err', dialog).removeClass('hidden');
-        $('.instruction-message', dialog)
-            .text((pfcol) ? l.album_decr_key_descr : l[9048]);
+        $('.instruction-message', dialog).text(l[7945]);
 
         if (pfcol) {
             $('.dlkey-err', $dialog)[0].style.textAlign = 'center';
@@ -978,8 +983,7 @@ async function mKeyDialog(ph, fl, keyr, selector) {
         }
     }
     else if (pfcol) {
-        $('.mega-dialog.dlkey-dialog .instruction-message')
-            .safeHTML(l.album_decr_key_descr);
+        $('.mega-dialog.dlkey-dialog .instruction-message').safeHTML(l[7945]);
         $input[0].placeholder = '';
         if (document.body.classList.contains('theme-dark')) {
             $('.fm-dialog-new-folder-input', $dialog)[0].style.background = "black";
@@ -987,8 +991,7 @@ async function mKeyDialog(ph, fl, keyr, selector) {
     }
     else {
         $('.mega-dialog.dlkey-dialog input').val('');
-        $('.mega-dialog.dlkey-dialog .instruction-message')
-            .safeHTML(l[7945] + '<br/>' + l[7972]);
+        $('.mega-dialog.dlkey-dialog .instruction-message').text(l[7945]);
     }
 
     if (mega.gallery.albums) {
@@ -1194,8 +1197,8 @@ function percentageDiff(initial, final, format) {
 
     let change = (difference / changeFrom) * 100;
 
-    if (format & 2) { // Round down
-        change = Math.floor(change);
+    if (format & 2) {
+        change = Math.floor(Math.round(change * 10) / 10);
     }
     return change;
 }
@@ -1549,19 +1552,23 @@ function mLogout(aCallback, force) {
                 if (window.waitsc) {
                     waitsc.stop();
                 }
-                return Promise.resolve(mega.ui.passwordReminderDialog.recheckLogoutDialog()).then(() => true);
+                return mega.ui.passwordReminderDialog.recheckLogoutDialog();
             }
             return proceed;
         })
         .then((logout) => {
+            if (logout && mega.ui.flyoutInit && mega.ui.flyout.name) {
+                mega.ui.flyout.hide();
+            }
             return logout && M.logout();
         })
         .catch((ex) => {
             if (u_type > 2 && window.waitsc) {
                 waitsc();
+                getsc(true);
             }
             if (ex) {
-                dump(ex);
+                reportError(ex);
             }
         });
 }
@@ -1576,7 +1583,7 @@ mBroadcaster.addListener('crossTab:owner', function _setup() {
     mBroadcaster.once('crossTab:leave', _exit);
 
     // The fm must be initialized before proceeding
-    if (!folderlink && fminitialized) {
+    if (self.fminitialized && !folderlink) {
         _fmready();
     }
     else {
@@ -1777,20 +1784,6 @@ mBroadcaster.addListener('crossTab:owner', function _setup() {
     };
 });
 
-// Update account UI on other tabs when cancelling subscription
-mBroadcaster.addListener('crossTab:cancelSub', () => {
-    'use strict';
-
-    // Fetch new account data
-    if (M.account) {
-        M.account.lastupdate = 0;
-    }
-
-    if (page.indexOf('fm/account') === 0) {
-        accountUI();
-    }
-});
-
 /**
  * Simple alias that will return a random number in the range of: a < b
  *
@@ -1982,37 +1975,34 @@ if (typeof sjcl !== 'undefined') {
      *
      * Add verified email addresses to folder shares.
      */
-    Share.prototype.addContactToFolderShare = function addContactToFolderShare() {
+    Share.prototype.addContactToFolderShare = function addContactToFolderShare(selectedNode) {
         let promise;
 
-        // Share button enabled
-        if ($.dialog === 'share' && !$('.done-share', '.share-dialog').is('.disabled')) {
-            const targets = [];
-            const [selectedNode] = $.selected;
+        const targets = [];
+        selectedNode = selectedNode || $.selected[0];
 
-            // Is there a new contacts planned for addition to share
-            if (Object.keys($.addContactsToShare).length > 0) {
+        // Is there a new contacts planned for addition to share
+        if (Object.keys($.addContactsToShare).length > 0) {
 
-                // Add new planned contact to list
-                for (var i in $.addContactsToShare) {
-                    const {u: userEmail, r: permissionLevel} = $.addContactsToShare[i];
+            // Add new planned contact to list
+            for (var i in $.addContactsToShare) {
+                const {u: userEmail, r: permissionLevel} = $.addContactsToShare[i];
 
-                    if (userEmail && permissionLevel !== undefined) {
-                        targets.push({u: userEmail, r: permissionLevel});
-                    }
+                if (userEmail && permissionLevel !== undefined) {
+                    targets.push({u: userEmail, r: permissionLevel});
                 }
             }
+        }
 
-            // Add new contacts to folder share
-            if (targets.length > 0) {
-                promise = doShare(selectedNode, targets, true);
-            }
+        // Add new contacts to folder share
+        if (targets.length > 0) {
+            promise = doShare(selectedNode, targets, true);
         }
 
         return promise || Promise.resolve();
     };
 
-    Share.prototype.updateNodeShares = function() {
+    Share.prototype.updateNodeShares = function(target) {
 
         loadingDialog.show();
         return this.removeContactFromShare()
@@ -2020,18 +2010,17 @@ if (typeof sjcl !== 'undefined') {
                 const promises = [];
 
                 if (Object.keys($.changedPermissions).length > 0) {
-                    promises.push(doShare($.selected[0], Object.values($.changedPermissions), true));
+                    promises.push(doShare(target, Object.values($.changedPermissions), true));
                 }
-                promises.push(this.addContactToFolderShare());
+                promises.push(this.addContactToFolderShare(target));
 
                 $('.export-links-warning').addClass('hidden');
-                console.assert($.dialog === 'share');
-                closeDialog();
 
                 return Promise.all(promises);
             })
-            .finally(() => loadingDialog.hide());
-
+            .finally(() => {
+                loadingDialog.hide();
+            });
     };
 
 
@@ -2097,10 +2086,10 @@ if (typeof sjcl !== 'undefined') {
      *
      * @returns {Promise} promise to remove contacts from share
      */
-    Share.prototype.removeSharesFromSelected = function() {
+    Share.prototype.removeSharesFromSelected = function(target) {
         'use strict';
         $.removedContactsFromShare = {};
-        const nodeHandle = String($.selected[0]);
+        const nodeHandle = target || String($.selected[0]);
         let userHandles = M.getNodeShareUsers(nodeHandle, 'EXP');
 
         if (M.ps[nodeHandle]) {
@@ -2410,6 +2399,34 @@ function getLastDayofTheMonth(dateObj) {
 }
 
 /**
+ * Function to format start and end dates of the month
+ *
+ * @param {Date} leadingDate The start date of the required month
+ * @returns {Object} {{fromDate: string, toDate: string}} The format of dates in YYYYMMDD
+ */
+function getReportDates(leadingDate) {
+    "use strict";
+
+    const today = leadingDate || new Date();
+    const todayMonth = today.getMonth() + 1;
+    let currMonth = String(todayMonth);
+    if (currMonth.length < 2) {
+        currMonth = `0${currMonth}`;
+    }
+    const currYear = String(today.getFullYear());
+
+    const startDate = `${currYear}${currMonth}01`;
+
+    const endDate = getLastDayofTheMonth(today);
+    if (!endDate) {
+        return;
+    }
+    const endDateStr = String(endDate.getFullYear()) + currMonth + String(endDate.getDate());
+
+    return { fromDate: startDate, toDate: endDateStr };
+}
+
+/**
  * Block Chrome Password manager for password field with attribute `autocomplete="new-password"`
  */
 function blockChromePasswordManager() {
@@ -2598,7 +2615,7 @@ function getTaxName(countryCode) {
         case "AU": return "GST";
         case "BO": return "IVA";
         case "BA": return "PDV";
-        case "BR": return "ICMS";
+        case "BR": return "CPF/CNPJ";
         case "CA": return "GST";
         case "CL": return "IVA";
         case "CO": return "IVA";

@@ -17,153 +17,7 @@
         </button>
     </div>
 
-    <div class="fm-import-download-buttons hidden">
-        <div class="folder-link-btns-container">
-            <div class="merge-mega-button download">
-                <button class="mega-button positive fm-download-as-zip">
-                    <span>[$58]</span>
-                </button>
-
-                <div class="download-dropdown">
-                    <button class="mega-button positive icon square">
-                        <i class="sprite-fm-mono icon-arrow-down"></i>
-                    </button>
-                    <div class="download-dropdown-content">
-                        <div>
-                            <a class="fm-download-as-zip">
-                                <i class="sprite-fm-mono icon-download"></i>
-                                <span>[$folder_link_download]</span>
-                            </a>
-                            <a class="fm-megasync-download">
-                                <i class="sprite-fm-mono icon-session-history"></i>
-                                <span>[$btn_dlwitdeskapp]</span>
-                                <i class="sprite-fm-mono icon-question-filled simpletip" data-simpletip="[$tooltip_why_desktop_app]" data-simpletip-class="large-width center-align"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <button class="mega-button fm-import-to-cloudrive">
-                <span>[$btn_imptomega]</span>
-            </button>
-        </div>
-    </div>
-
-    <div class="searcher-wrapper">
-        <div class="topbar-searcher js-topbar-searcher">
-        <!-- This div contains three dropdown sections -->
-            <div class="dropdown-search hidden">
-                <!-- EMPTY STATE - Show when recents are disabled/no recents exist -->
-                <div class="dropdown-no-recents dropdown-section hidden">
-                    <i class="dropdown-no-recents-icon sprite-fm-mono icon-clock-rotate"></i>
-                    <div class="dropdown-no-recents-content">
-                        <div class="dropdown-no-recents-content-header">
-                            [$searchbar_dropdown_recents_empty_heading]
-                        </div>
-                        <div class="dropdown-no-recents-content-text">
-                            [$searchbar_dropdown_recents_empty_body]
-                        </div>
-                    </div>
-                </div>
-                <div class="dropdown-recents dropdown-section">
-                    <!-- Recently Searched section -->
-                    <div class="dropdown-section dropdown-recently-searched-wrapper">
-                        <div class="dropdown-recently-searched dropdown-section-item">
-                            <!-- Every section has a header -->
-                            <div class="dropdown-section-header">
-                                <div class="dropdown-section-header-contents">
-                                    <div class="dropdown-section-header-text">
-                                        [$recently_searched]
-                                    </div>
-                                    <a class="dropdown-section-clear js-dropdownClearRecentlySearched">
-                                        [$clear_all]
-                                    </a>
-                                </div>
-                            </div>
-                            <!-- Every section has a body -->
-                            <div class="dropdown-section-body">
-                                <!-- Recently Searched Terms - dynamically populated -->
-                            </div>
-                            <!-- Dummy template for each item in body -->
-                            <a class="dropdown-recently-searched-item dropdown-section-body-item dropdown-recently-searched-template hidden">
-                                <div class="dropdown-recently-searched-item-text"></div>
-                                <i class="sprite-fm-mono icon-dialog-close dropdown-recent-item-delete-icon"></i>
-                            </a>
-                        </div>
-                    </div>
-                    <!-- Recently Opened section -->
-                    <div class="dropdown-section dropdown-recently-opened-wrapper hidden">
-                        <div class="dropdown-recently-opened dropdown-section-item">
-                            <!-- Every section has a header -->
-                            <div class="dropdown-section-header">
-                                <div class="dropdown-section-header-contents">
-                                    <div class="dropdown-section-header-text">
-                                        [$recently_opened_files]
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- Every section has a body -->
-                            <div class="dropdown-section-body">
-                                <!-- Recently Opened Files - dynamically populated -->
-                            </div>
-                            <!-- Dummy template for each item in body -->
-                            <a class="dropdown-recently-opened-item dropdown-section-body-item dropdown-recently-opened-template hidden">
-                                <div class="dropdown-item-file dropdown-recently-opened-file">
-                                    <div class="dropdown-recently-opened-item-file-icon">
-                                        <span class="item-type-icon file">
-                                            <img>
-                                        </span>
-                                    </div>
-                                    <div class="dropdown-recently-opened-item-filename"></div>
-                                </div>
-                                <div class="dropdown-recently-opened-item-location dropdown-item-text-medium"></div>
-                                <div class="dropdown-recently-opened-item-time dropdown-item-text-medium"></div>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-                <!-- Search Results section -->
-                <div class="dropdown-results dropdown-section hidden">
-                    <div class="dropdown-search-results dropdown-section-item">
-                        <!-- Every section has a header -->
-                        <div class="dropdown-section-header">
-                            <div class="dropdown-section-header-contents">
-                                <div class="dropdown-section-header-text">
-                                    [$searchbar_result_label]
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Every section has a body -->
-                        <div class="dropdown-section-body">
-                                <!-- Suggestion search result - dynamically populated -->
-                        </div>
-                        <!-- Template for search result item -->
-                        <a class="dropdown-search-results-item dropdown-section-body-item dropdown-search-results-item-template hidden">
-                            <div class="dropdown-item-file dropdown-search-results-file">
-                                <div class="dropdown-search-results-item-file-icon">
-                                    <span class="item-type-icon">
-                                        <img>
-                                    </span>
-                                </div>
-                                <div class="dropdown-search-results-item-filename">
-                                    <span class="prefix"></span>
-                                    <span class="txt-bold"></span>
-                                    <span class="suffix"></span>
-                                </div>
-                            </div>
-                            <div class="dropdown-search-results-item-location dropdown-item-text-medium"></div>
-                        </a>
-                    </div>
-                </div>
-                <div class="search-loader hidden"></div>
-            </div>
-            <form autocomplete="disabled" id="main-search-fake-form">
-                <i class="search-icon sprite-fm-mono icon-preview-reveal"></i>
-                <input type="text" placeholder="[$102]" autocomplete="disabled" class="js-filesearcher" spellcheck="false" />
-                <button class="js-btnclearSearch" type="button"><i class="sprite-fm-mono icon-dialog-close"></i></button>
-            </form>
-        </div>
-    </div>
+    <div class="searcher-wrapper"></div>
 
     <i class="fmdb-loader sprite-fm-uni icon-loading icon24"></i>
 
@@ -196,7 +50,7 @@
         </button>
     </div>
 
-    <div class="topbar-links">
+    <div class="topbar-links" id="header-account-states-popups">
         <button class="btn-icon js-pass-reminder js-top-buttons hidden">
             <i class="sprite-fm-uni icon-ekr"></i>
             <div class="dark-tooltip top">[$16901]</div>
@@ -342,21 +196,6 @@
                         </button>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <div class="mini-search">
-            <div class="topbar-searcher js-topbar-searcher">
-                <button class="btn-icon topbar-mini-search js-top-buttons">
-                    <i class="sprite-fm-mono icon-preview-reveal"></i>
-                </button>
-                <form autocomplete="disabled" id="mini-search-fake-form">
-                    <input type="text" placeholder="[$102]" autocomplete="disabled" class="js-filesearcher" spellcheck="false" />
-                    <button class="topbar-mini-search-close" type="button">
-                        <i class="invalid sprite-fm-mono icon-right"></i>
-                        <i class="valid sprite-fm-mono icon-dialog-close"></i>
-                    </button>
-                </form>
             </div>
         </div>
 
@@ -649,7 +488,8 @@
             <div class="top-submenu">
                 <div class="top-menu-item storage">[$footer_item_cloud_storage]</div>
                 <div class="top-menu-item objectstorage">[$footer_item_object_storage]</div>
-                <div class="top-menu-item vpn">[$pr_vpn_title]</div>
+                <div class="top-menu-item vpn">[$vpn]</div>
+                <div class="top-menu-item pass">[$password_manager]</div>
                 <div class="top-menu-item syncing">[$footer_item_sync]</div>
                 <div class="top-menu-item megabackup">[$ft_backup_tab]</div>
                 <div class="top-menu-item share">[$footer_item_share]</div>
@@ -682,7 +522,7 @@
                 <div class="top-menu-item nas">[$footer_item_cmd_for_nas]</div>
             </div>
             <!-- Plans -->
-            <div class="top-menu-item submenu-item">
+            <div class="top-menu-item submenu-item plans">
                 <i class="sprite-fm-mono icon-plan"></i>
                 <span>[$footer_heading_plans]</span>
                 <i class="sprite-fm-mono icon-arrow-right right-arrow"></i>
@@ -690,7 +530,6 @@
             <div class="top-submenu">
                 <div class="top-menu-item pro">[$1361]</div>
                 <div class="top-menu-item achievements">[$16117]</div>
-                <div class="top-menu-item refer">[$22682]</div>
             </div>
             <!-- Resources -->
             <div class="top-menu-item submenu-item">
@@ -703,8 +542,6 @@
                 <div class="top-menu-item security">[$footer_item_security_privacy]</div>
                 <div class="top-menu-item reliability">[$23064]</div>
                 <div class="top-menu-item developers">[$392]</div>
-                <div class="top-menu-item resellers">[$391]</div>
-                <div class="top-menu-item affiliate">[$menu_item_affiliate]</div>
             </div>
             <!-- Help -->
             <div class="top-menu-item submenu-item">
@@ -726,7 +563,6 @@
             </div>
             <div class="top-submenu">
                 <div class="top-menu-item about">[$396]</div>
-                <div class="top-menu-item careers">[$23063]</div>
                 <div class="top-menu-item media">[$16645]</div>
             </div>
             <!-- Legal -->
@@ -880,17 +716,17 @@
                 </div>
             </div>
             <div class="transfer-widget-footer">
-                <button class="mega-button action transfer-clear-all-icon right">
-                    <div>
-                        <i class="sprite-fm-mono icon-close-component"></i>
-                    </div>
-                    <span>[$6991]</span>
-                </button>
-                <button class="mega-button action transfer-pause-icon right">
+                <button class="mega-button action transfer-pause-icon">
                     <div>
                         <i class="sprite-fm-mono icon-pause"></i>
                     </div>
                     <span>[$6993]</span>
+                </button>
+                <button class="mega-button action transfer-clear-all-icon">
+                    <div>
+                        <i class="sprite-fm-mono icon-close-component"></i>
+                    </div>
+                    <span>[$6991]</span>
                 </button>
             </div>
         </div>

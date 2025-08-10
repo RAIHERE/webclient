@@ -19,7 +19,7 @@ const inviteAllowed = chatRoom => {
 };
 
 export default class Sidebar extends MegaRenderMixin {
-    containerRef = React.createRef();
+    domRef = React.createRef();
     historyPanel = null;
 
     renderHead = ({ title, children }) => {
@@ -40,7 +40,7 @@ export default class Sidebar extends MegaRenderMixin {
 
     renderParticipantsView = () => {
         const {
-            call, mode, peers, initialCallRinging, chatRoom, guest, recorder, raisedHandPeers, onInviteToggle,
+            call, mode, peers, initialCallRinging, chatRoom, guest, recorderCid, raisedHandPeers, onInviteToggle,
             onCallMinimize, onSpeakerChange, onModeChange
         } = this.props;
         const withInvite = inviteAllowed(chatRoom);
@@ -56,7 +56,7 @@ export default class Sidebar extends MegaRenderMixin {
                     initialCallRinging={initialCallRinging}
                     chatRoom={chatRoom}
                     guest={guest}
-                    recorder={recorder}
+                    recorderCid={recorderCid}
                     raisedHandPeers={raisedHandPeers}
                     onInviteToggle={onInviteToggle}
                     onCallMinimize={onCallMinimize}
@@ -68,7 +68,7 @@ export default class Sidebar extends MegaRenderMixin {
     };
 
     renderChatView = () => {
-        const { chatRoom, onDeleteMessage } = this.props;
+        const { chatRoom, typingAreaText, onDeleteMessage, onTypingAreaChanged } = this.props;
 
         return (
             <>
@@ -81,7 +81,13 @@ export default class Sidebar extends MegaRenderMixin {
                     className="in-call"
                     onDeleteClicked={onDeleteMessage}
                 />
-                <ComposedTextArea chatRoom={chatRoom} parent={this} containerRef={this.containerRef} />
+                <ComposedTextArea
+                    chatRoom={chatRoom}
+                    parent={this}
+                    containerRef={this.domRef}
+                    typingAreaText={typingAreaText}
+                    onTypingAreaChanged={onTypingAreaChanged}
+                />
             </>
         );
     };
@@ -96,7 +102,7 @@ export default class Sidebar extends MegaRenderMixin {
         return (
             <div className="sidebar-wrapper theme-dark-forced">
                 <div
-                    ref={this.containerRef}
+                    ref={this.domRef}
                     className={`
                         sidebar
                         ${view === VIEW.CHAT ? 'chat-opened' : 'theme-dark-forced'}

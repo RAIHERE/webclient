@@ -2,6 +2,39 @@
 lazy(mega, 'requestStatusMonitor', () => {
     'use strict';
 
+    const o2d = freeze({
+        p: 'file or folder creation'
+    });
+    const unk = 'UNKNOWN operation';
+
+    const getDescription = (u8, buffer, offset, users, ops) => {
+        let description = `User ${ab_to_base64(buffer.slice(2, 10))}`;
+
+        if (users > 1) {
+            description += ', affecting ';
+
+            for (let i = 1; i < users; i++) {
+                description += `${ab_to_base64(buffer.slice(2 + 8 * i, 10 + 8 * i))},`;
+            }
+        }
+        description += ' is executing a ';
+
+        const ob = [];
+        const oo = Object.create(null);
+
+        for (let i = 0; i < ops; i++) {
+            const d = o2d[String.fromCharCode(u8[offset + 2 + i])] || unk;
+
+            oo[d] = (oo[d] || 0) + 1;
+        }
+
+        for (const k in oo) {
+            ob.push(`${k}(${oo[k]})`);
+        }
+
+        return description + ob.join('/');
+    };
+
     return new class RequestStatusMonitor extends MEGAKeepAliveStream {
 
         constructor() {
@@ -12,6 +45,29 @@ lazy(mega, 'requestStatusMonitor', () => {
             };
             super(handlers);
             this.buffer = false;
+            this.progress = -1;
+            this.visible = false;
+        }
+
+        show() {
+            this.visible = true;
+            if (this.progress >= 0) {
+                if (loadingInitDialog.active) {
+                    loadingInitDialog.step2(this.progress);
+                }
+                else {
+                    loadingDialog.showProgress(this.progress);
+                }
+            }
+        }
+
+        hide() {
+            if (this.visible) {
+                this.visible = false;
+                if (this.progress >= 0) {
+                    loadingDialog.hideProgress();
+                }
+            }
         }
 
         framing(data) {
@@ -62,7 +118,13 @@ lazy(mega, 'requestStatusMonitor', () => {
                     this.logger.log("*** No operation in progress");
                 }
 
-                loadingDialog.hideProgress();
+                if (this.progress >= 0) {
+                    if (this.visible) {
+                        loadingDialog.hideProgress();
+                    }
+                    this.progress = -1;
+                    api.retry();
+                }
 
                 return 2;
             }
@@ -90,30 +152,7 @@ lazy(mega, 'requestStatusMonitor', () => {
                 return 0;
             }
 
-            let description = `User ${ab_to_base64(buffer.slice(2, 10))}`;
-
-            if (users > 1) {
-                description += ', affecting ';
-
-                for (let i = 1; i < users; i++) {
-                    description += `${ab_to_base64(buffer.slice(2 + 8 * i, 10 + 8 * i))},`;
-                }
-            }
-
-            description += ' is executing a ';
-
-            for (let i = 0; i < ops; i++) {
-                if (i) {
-                    description += '/';
-                }
-
-                if (String.fromCharCode(u8[offset + 2 + i]) === 'p') {
-                    description += 'file or folder creation';
-                }
-                else {
-                    description += 'UNKNOWN operation';
-                }
-            }
+            let description = self.d && getDescription(u8, buffer, offset, users, ops) || '';
 
             offset += 2 + ops;
 
@@ -122,11 +161,13 @@ lazy(mega, 'requestStatusMonitor', () => {
             const curr = view.getUint32(offset + 4, true);
             const end = view.getUint32(offset + 8, true);
 
-            const progress = curr / end * 100;
-            loadingDialog.showProgress(progress);
+            this.progress = curr / end * 100;
+            if (this.visible) {
+                loadingDialog.showProgress(this.progress);
+            }
 
             if (d) {
-                description += ` since ${start}, ${progress}% [${curr}/${end}]`;
+                description += ` since ${start}, ${this.progress}% [${curr}/${end}]`;
                 this.logger.log(description);
             }
 
@@ -160,14 +201,33 @@ lazy(mega, 'requestStatusMonitor', () => {
     };
 });
 
-mBroadcaster.once('startMega', () => {
+mBroadcaster.once('boot_done', () => {
     'use strict';
 
     if (is_iframed) {
         return;
     }
 
+    let hook;
     api.observe('setsid', () => {
+
+        if (!hook) {
+            const hide = () => mega.requestStatusMonitor.hide();
+            hook = (res) => {
+                queueMicrotask(hide);
+                return res;
+            };
+
+            api.hook(({channel}) => {
+
+                if (channel === 0 || channel === 4) {
+                    mega.requestStatusMonitor.show();
+
+                    // hide progress bar whenever this request completes.
+                    return hook;
+                }
+            });
+        }
         mega.requestStatusMonitor.init();
     });
 });

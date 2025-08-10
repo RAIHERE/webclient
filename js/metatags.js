@@ -9,8 +9,9 @@ mega.metatags = new function() {
     var isPageExcluded = function(page) {
         // XXX: add new items sorted alphabetically.
         var excludedPages = [
-            'activate-s4', 'keybackup', 'businessinvite', 'businesssignup', 'cancel', 'confirm', 'debug',
-            'discount', 'download', 'emailverify', 'key', 'filerequest', 'payment', 'recover',
+            'activate-s4', 'keybackup', 'businessinvite', 'businesssignup',
+            'cancel', 'confirm', 'debug', 'discount', 'download',
+            'emailverify', 'key', 'filerequest', 'payment', 'recover',
             'recoverybykey', 'recoverybypark', 'recoveryenterkey',
             'recoverykeychangepass', 'recoveryparkchangepass',
             'redeem', 'repay', 'reset', 'sms', 'start', 'test', 'thanks', 'twofactor',
@@ -33,7 +34,7 @@ mega.metatags = new function() {
     };
 
     var stopBots = function(metaRobots, noReporting) {
-        if (!noReporting && !isPageExcluded(page) && !is_fm() && !is_extension) {
+        if (!noReporting && !isPageExcluded(page) && !is_fm() && !is_extension && !is_chatlink) {
             if (d) {
                 console.error('A page without title. Please handle. Page: ' + page);
             }
@@ -133,7 +134,7 @@ mega.metatags = new function() {
 
         if (type === 'Product') {
             structContent['name'] = data.name;
-            structContent['image'] = [data.image || 'https://cms2.mega.nz/b41537c0eae056cfe5ab05902fca322b.png'];
+            structContent['image'] = [data.image || 'https://g.static.mega.co.nz/b41537c0eae056cfe5ab05902fca322b.png'];
             structContent['description'] = data.description;
             structContent['brand'] = { '@type': 'Brand', 'name': 'MEGA' };
             structContent['offers'] = {
@@ -237,7 +238,7 @@ mega.metatags = new function() {
                 'Start using MEGA\'s secure cloud storage and fast transfers today.';
             mTags.mega_title = l[23971] || mTags.en_title;
             mTags.mega_desc = l[23972] || mTags.en_desc;
-            mTags.image = 'https://cms2.mega.nz/559d084a50ad7283acb6f1c433136952.png';
+            mTags.image = 'https://g.static.mega.co.nz/559d084a50ad7283acb6f1c433136952.png';
         }
         else if (page === 'register') {
             mTags.en_title = 'Create Your Account - MEGA';
@@ -343,7 +344,7 @@ mega.metatags = new function() {
         }
         if (!mTags.mega_desc) {
             mTags.mega_desc = l[24023] || mega.whoami;
-            if (!isPageExcluded(page) && !is_fm() && !is_extension) {
+            if (!isPageExcluded(page) && !is_fm() && !is_extension && !is_chatlink) {
                 if (d) {
                     console.error('A page without Description. Please handle. Page: ' + page);
                 }
@@ -351,7 +352,7 @@ mega.metatags = new function() {
             }
         }
 
-        mTags.image = mTags.image || 'https://cms2.mega.nz/b41537c0eae056cfe5ab05902fca322b.png';
+        mTags.image = mTags.image || 'https:///g.static.mega.co.nz/b41537c0eae056cfe5ab05902fca322b.png';
         insertOgTwitterMetas(
             mTags.mega_title,
             mTags.mega_desc,

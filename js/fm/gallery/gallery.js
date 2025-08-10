@@ -1,9 +1,16 @@
 class GalleryNodeBlock {
-    constructor(node) {
+    constructor(node, mode = 'a') {
         this.node = node;
         this.el = document.createElement('a');
-        this.el.className = 'data-block-view';
+
+        this.el.className = `data-block-view ${mega.sensitives.isSensitive(node) ? ' is-sensitive' : ''}`;
         this.el.id = node.h;
+
+        if (mode === 'a') {
+            const checkmark = document.createElement('i');
+            checkmark.className = 'sprite-fm-mono icon-check';
+            this.el.appendChild(checkmark);
+        }
 
         this.spanEl = document.createElement('span');
         this.spanEl.className = 'data-block-bg content-visibility-auto';
@@ -12,7 +19,7 @@ class GalleryNodeBlock {
         this.el.nodeBlock = this;
         this.isRendered = false;
 
-        this.isVideo = mega.gallery.isVideo(this.node);
+        this.isVideo = M.isGalleryVideo(this.node);
     }
 
     setThumb(dataUrl) {
@@ -27,6 +34,31 @@ class GalleryNodeBlock {
 
         if (this.thumb) {
             this.thumb.classList.remove('w-full');
+        }
+    }
+
+    get isFav() {
+        return !!this._fav;
+    }
+
+    /**
+     * @param {Boolean} status True if the node is a favourite
+     * @returns {void}
+     */
+    set isFav(status) {
+        if (status === !!this._fav) {
+            return;
+        }
+
+        let spanFav = this.spanEl.querySelector('.data-block-fav-icon');
+
+        if (status) {
+            spanFav = document.createElement('span');
+            spanFav.className = 'data-block-fav-icon sprite-fm-mono icon-favourite-filled';
+            this.spanEl.appendChild(spanFav);
+        }
+        else if (spanFav) {
+            this.spanEl.removeChild(spanFav);
         }
     }
 
@@ -47,6 +79,10 @@ class GalleryNodeBlock {
             div.className = 'video-thumb-details';
             this.spanEl.appendChild(div);
 
+            const playIcon = document.createElement('i');
+            playIcon.className = 'video-thumb-play sprite-fm-mono icon-play-circle';
+            this.spanEl.appendChild(playIcon);
+
             const spanTime = document.createElement('span');
             spanTime.textContent = secondsToTimeShort(MediaAttribute(this.node).data.playtime);
             div.appendChild(spanTime);
@@ -55,9 +91,7 @@ class GalleryNodeBlock {
             spanMedia.classList.add('icon-image-90');
         }
 
-        const spanFav = document.createElement('span');
-        spanFav.className = 'data-block-fav-icon sprite-fm-mono icon-favourite-filled';
-        this.spanEl.appendChild(spanFav);
+        this.isFav = !!this.node.fav;
 
         if (mode === 'm' || mode === 'y') {
             this.el.dataset.ts = this.node.mtime || this.node.ts;
@@ -120,6 +154,7 @@ class MegaGallery {
         this.type = mega.gallery.sections[id] ? 'basic' : 'discovery';
         this.shouldProcessScroll = true;
         this.inPreview = false;
+        this.maxItems = {1: 3, 2: 5, 3: 10, 4: 15};
 
         this.clearRenderCache();
         this.setObserver();
@@ -191,7 +226,7 @@ class MegaGallery {
         return cameraTree;
     }
 
-    setMode(type, pushHistory, changeRootMode) {
+    setMode(type, pushHistory, changeLastSelection = false) {
 
         if (type !== 'a' && type !== 'y' && type !== 'm' && type !== 'd') {
 
@@ -208,11 +243,8 @@ class MegaGallery {
         this.galleryBlock.classList.remove('gallery-type-a', 'gallery-type-y', 'gallery-type-m', 'gallery-type-d');
         this.galleryBlock.classList.add(`gallery-type-${type}`);
 
-        if (changeRootMode === true
-            && mega.gallery.sections[M.currentdirid]
-            && mega.gallery.rootMode[mega.gallery.sections[M.currentdirid].root]
-        ) {
-            mega.gallery.rootMode[mega.gallery.sections[M.currentdirid].root] = this.mode;
+        if (changeLastSelection) {
+            mega.gallery.lastModeSelected = type;
         }
 
         if (type === 'a') {
@@ -222,8 +254,8 @@ class MegaGallery {
             delete this.zoom;
         }
 
-        $('.gallery-tab-lnk').removeClass('active');
-        $(`.gallery-tab-lnk-${this.mode}`).addClass('active');
+        $('.gallery-tab-lnk', '#media-section-right-controls .gallery-section-tabs').removeClass('selected');
+        $(`.gallery-tab-lnk-${this.mode}`, '#media-section-right-controls .gallery-section-tabs').addClass('selected');
 
         this.dropDynamicList();
 
@@ -350,7 +382,7 @@ class MegaGallery {
         const yearKeys = Object.keys(this.groups.y);
         const newStructure = {};
 
-        for (let i = yearKeys.length - 1; i > -1; i -= 2) {
+        for (let i = yearKeys.length - 1; i > -1; i -= 3) {
             newStructure[yearKeys[i]] = {c: [this.groups.y[yearKeys[i]].c], n: [this.groups.y[yearKeys[i]].n[0]]};
 
             if (this.groups.y[yearKeys[i - 1]]) {
@@ -358,6 +390,12 @@ class MegaGallery {
                 newStructure[yearKeys[i]].sy = yearKeys[i - 1];
                 newStructure[yearKeys[i]].c.push(this.groups.y[yearKeys[i - 1]].c);
                 newStructure[yearKeys[i]].n.push(this.groups.y[yearKeys[i - 1]].n[0]);
+            }
+            if (this.groups.y[yearKeys[i - 2]]) {
+
+                newStructure[yearKeys[i]].sy = yearKeys[i - 2];
+                newStructure[yearKeys[i]].c.push(this.groups.y[yearKeys[i - 2]].c);
+                newStructure[yearKeys[i]].n.push(this.groups.y[yearKeys[i - 2]].n[0]);
             }
         }
 
@@ -1165,23 +1203,28 @@ class MegaGallery {
         else {
             this.removeNodeFromGroups({ h, mtime: this.nodes[h] });
         }
+
+        delay('gallery.reset-media-counts', mega.gallery.resetMediaCounts.bind(null, M.v));
     }
 
     // Update dom node names if changed
-    updateNodeName(n) {
+    updateNodeDetails(n) {
 
         const group = this.getGroup(n);
         const rcKeys = Object.keys(this.renderCache);
 
         for (let i = rcKeys.length; i--;) {
-
             if (rcKeys[i].startsWith(`y${group[1]}`) || rcKeys[i].startsWith(`m${group[2]}`) ||
                 rcKeys[i].startsWith(`d${group[3]}`) || rcKeys[i].startsWith(`a${group[2]}`)) {
 
                 const domNode = this.renderCache[rcKeys[i]].querySelector(`[id="${n.h}"]`);
 
-                if (domNode && domNode.title !== n.name) {
-                    domNode.title = n.name;
+                if (domNode) {
+                    if (domNode.title !== n.name) {
+                        domNode.title = n.name;
+                    }
+
+                    domNode.nodeBlock.isFav = n.fav;
                 }
             }
         }
@@ -1208,7 +1251,7 @@ class MegaGallery {
         }
 
         this.dynamicList = new MegaDynamicList(container, {
-            'contentContainerClasses': 'content',
+            'contentContainerClasses': 'content px-4',
             'itemRenderFunction': this.renderGroup.bind(this),
             'itemHeightCallback': this.getGroupHeight.bind(this),
             'onResize': this.throttledResize.bind(this),
@@ -1222,35 +1265,23 @@ class MegaGallery {
         M.initShortcutsAndSelection(container);
     }
 
-    render(rewriteModeByRoot, reset) {
-        if (rewriteModeByRoot !== false && mega.gallery.sections[M.currentdirid]) {
-            const modeResetIsNeeded = reset === true
-                && M.currentdirid === mega.gallery.sections[M.currentdirid].root
-                && (
-                    M.currentdirid === M.previousdirid
-                    ||
-                        mega.gallery.sections[M.previousdirid]
-                        && mega.gallery.sections[M.previousdirid].root === mega.gallery.sections[M.currentdirid].root
-
-                );
-
-            if (modeResetIsNeeded) {
-                this.setMode('a', 2, true);
-            }
-            else if (mega.gallery.rootMode[mega.gallery.sections[M.currentdirid].root]
-                && this.mode !== mega.gallery.rootMode[mega.gallery.sections[M.currentdirid].root]) {
-                this.setMode(mega.gallery.rootMode[mega.gallery.sections[M.currentdirid].root], 2);
-            }
+    render(keepMode) {
+        if (keepMode) {
+            this.setMode(mega.gallery.lastModeSelected, 2);
         }
 
-        const rfBlock = $('.fm-right-files-block', '.fmholder');
-        const galleryHeader = $('.gallery-tabs-bl', rfBlock);
+        this.clearSelections();
 
-        galleryHeader.removeClass('hidden');
+        const rfBlock = $('.fm-right-files-block:not(.in-chat)', '.fmholder');
+        const galleryHeader = $('#media-section-controls', rfBlock).add('#media-section-right-controls', rfBlock);
+
+        $('#media-tabs', rfBlock).removeClass('hidden');
+        $('.gallery-tabs-bl', galleryHeader).removeClass('hidden');
         $('.gallery-section-tabs', galleryHeader).toggleClass('hidden', M.currentdirid === 'favourites');
         rfBlock.removeClass('hidden');
-        $('.files-grid-view.fm, .fm-blocks-view.fm, .fm-right-header, .fm-empty-section', rfBlock).addClass('hidden');
-        $('.fm-files-view-icon').removeClass('active').filter('.media-view').addClass('active');
+        $('.files-grid-view.fm, .fm-blocks-view.fm, .fm-empty-section', rfBlock).addClass('hidden');
+        mega.ui.secondaryNav.updateGalleryLayout();
+        mega.ui.secondaryNav.hideBreadcrumb();
 
         if (pfid && !M.v) {
             $('.fm-empty-section', rfBlock).removeClass('hidden');
@@ -1258,13 +1289,6 @@ class MegaGallery {
 
         if (window.selectionManager) {
             window.selectionManager.hideSelectionBar();
-        }
-
-        if (!mega.gallery.viewBtns) {
-            const viewBtns = $('.fm-header-buttons .view-links', rfBlock);
-            mega.gallery.viewBtns = viewBtns.clone(true);
-            galleryHeader.append(mega.gallery.viewBtns);
-            $('.view-links', galleryHeader).toggleClass('hidden', M.isGalleryPage());
         }
 
         if (M.v.length > 0) {
@@ -1279,15 +1303,63 @@ class MegaGallery {
             this.dynamicList.batchAdd(keys);
             this.dynamicList.initialRender();
             this.dynamicList.scrollToYPosition(this.scrollPosCache[this.mode].a);
+
+            galleryHeader.removeClass('hidden');
         }
-        else {
-            mega.gallery.showEmpty(M.currentdirid);
-            this.galleryBlock.classList.add('hidden');
+        else if (M.viewmode !== 2 || pfid) {
+            onIdle(() => {
+                if (!M.v.length) {
+                    mega.gallery.showEmpty(M.currentdirid);
+                    this.galleryBlock.classList.add('hidden');
+                }
+            });
         }
+
         tryCatch(() => {
             galleryHeader.toggleClass('invisible', !M.v.length &&
                 (this.id === 'photos' || this.id === 'images' || this.id === 'videos'));
         })();
+
+        if (this.mode === 'a') {
+            $.selectddUIgrid = '.gallery-type-a .gallery-view-scrolling';
+            $.selectddUIitem = 'a';
+
+            $($.selectddUIgrid).selectable({
+                filter: $.selectddUIitem,
+                cancel: '.ps__rail-y, .ps__rail-x, a, .checkdiv input',
+                start: (e) => {
+                    $.hideContextMenu(e);
+                    $.hideTopMenu();
+                    $.selecting = true;
+                },
+                stop: () => {
+                    $.selecting = false;
+                    mega.ui.mInfoPanel.reRenderIfVisible($.selected);
+
+                    if ($.selected.length) {
+                        this.checkOuterBounbdaries();
+                    }
+                    else {
+                        this.clearSelections();
+                    }
+                },
+                selecting: (_, ui) => {
+                    this.updateGroupSelect($(ui.selecting));
+                },
+                unselecting: (_, ui) => {
+                    this.updateGroupDeselect($(ui.unselecting));
+                },
+                appendTo: $.selectddUIgrid
+            });
+            $($.selectddUIgrid).trigger('selectablereinitialized');
+        }
+        else {
+            const uiGrid = $('.gallery-view-scrolling');
+
+            if (uiGrid.selectable('instance')) {
+                uiGrid.selectable('destroy');
+            }
+        }
     }
 
     resetAndRender() {
@@ -1304,7 +1376,6 @@ class MegaGallery {
     }
 
     bindEvents() {
-
         const $galleryBlock = $(this.galleryBlock);
 
         $galleryBlock.rebind('click.galleryView', '.data-block-view', e => {
@@ -1312,8 +1383,18 @@ class MegaGallery {
             const $eTarget = $(e.currentTarget);
             const h = $eTarget.attr('id');
 
-            selectionManager.clear_selection();
-            selectionManager.add_to_selection(h);
+            if (this.mode !== 'a') {
+                selectionManager.clear_selection();
+            }
+
+            if ($eTarget.hasClass('ui-selected')) {
+                selectionManager.remove_from_selection(h);
+                this.updateGroupDeselect($eTarget);
+            }
+            else {
+                selectionManager.add_to_selection(h);
+                this.updateGroupSelect($eTarget);
+            }
 
             $.hideContextMenu(e);
 
@@ -1323,14 +1404,22 @@ class MegaGallery {
             return false;
         });
 
-        $galleryBlock.rebind('contextmenu.galleryView', '.data-block-view', e => {
+        $galleryBlock.rebind('contextmenu.galleryView', '.data-block-view', (e) => {
 
             if (this.mode !== 'a') {
                 return false;
             }
 
+            const { currentTarget: el } = e;
+
+            if (el && M.d[el.id] && !$.selected.includes(el.id)) {
+                selectionManager.clear_selection();
+                this.clearSelections();
+                selectionManager.add_to_selection(el.id);
+                this.updateGroupSelect($(el));
+            }
+
             $.hideContextMenu(e);
-            selectionManager.resetTo(e.currentTarget.id);
             M.contextMenuUI(e, 1);
         });
 
@@ -1352,16 +1441,23 @@ class MegaGallery {
             return false;
         });
 
-        $galleryBlock.rebind('click.galleryViewClear', () => {
-            selectionManager.clear_selection();
-        });
+        let tappedItemId = '';
 
-        $galleryBlock.rebind('dblclick.galleryView', '.data-block-view', e => {
-
+        $galleryBlock.rebind('dblclick.galleryView touchend.tabletGalleryView', 'a.data-block-view', e => {
             const $eTarget = $(e.currentTarget);
+            const h = $eTarget.attr('id');
+
+            if (e.type === 'touchend' && tappedItemId !== h) {
+                tappedItemId = h;
+
+                delay('galleryView:touchend', () => {
+                    tappedItemId = '';
+                }, 300);
+
+                return false;
+            }
 
             if (this.mode === 'a') {
-                const h = $eTarget.attr('id');
                 const isVideo = e.currentTarget.nodeBlock.isVideo;
 
                 if (isVideo) {
@@ -1374,7 +1470,7 @@ class MegaGallery {
                 }
 
                 // Close node Info panel as it's not applicable when opening Preview
-                mega.ui.mInfoPanel.closeIfOpen();
+                mega.ui.mInfoPanel.hide();
 
                 this.inPreview = true;
                 slideshow(h, false);
@@ -1433,6 +1529,9 @@ class MegaGallery {
                 return false;
             }
 
+            selectionManager.clear_selection();
+            this.clearSelections();
+
             this.setMode(e.currentTarget.attributes['data-folder'].value, 1, true);
             this.render(false);
         });
@@ -1474,6 +1573,7 @@ class MegaGallery {
         if (!this.beforePageChangeListener) {
             this.beforePageChangeListener = mBroadcaster.addListener('beforepagechange', tpage => {
                 const pageId = String(self.page).replace('fm/', '');
+
                 if (this.inPreview && (pageId.length < 5 ? M.RootID === M.currentdirid : pageId === M.currentdirid)) {
                     return;
                 }
@@ -1484,13 +1584,7 @@ class MegaGallery {
                 this.clearRenderCache();
 
                 if (pfid && !tpage.startsWith('folder/')) {
-                    $('.fm-files-view-icon.media-view').addClass('hidden');
-                }
-
-                const id = tpage.replace(/^fm\//, '');
-
-                if (!mega.gallery.sections[id] && !id.startsWith('discovery/')) {
-                    $('.gallery-tabs-bl', '.fm-right-files-block').addClass('hidden');
+                    mega.ui.secondaryNav.updateGalleryLayout(true);
                 }
 
                 // Clear thumbnails to free memory if target page is not gallery anymore
@@ -1567,6 +1661,111 @@ class MegaGallery {
         return M.sortByModTimeFn2()(a, b, -1);
     }
 
+    getGroupMonthNodes(id, group) {
+        if (!group) {
+            group = this.getGroupById(id);
+        }
+
+        const monthNodes = [...group.n];
+        let nextKey = (id - 0.00001).toFixed(5);
+
+        while (true) {
+            const nextGroup = this.getGroupById(nextKey);
+
+            if (!nextGroup || !nextGroup.n.length) {
+                break;
+            }
+
+            monthNodes.push(...nextGroup.n);
+            nextKey = (nextKey - 0.00001).toFixed(5);
+        }
+
+        return monthNodes;
+    }
+
+    renderGroupMonthHeader(id, group, contentBlock) {
+        const chId = `select-media-${id}`;
+        const checkbox = new MCheckbox({
+            id: chId,
+            name: `select_media_${id}`,
+            passive: true
+        });
+
+        const monthNodes = this.getGroupMonthNodes(id, group);
+        let allSelected = $.selected.length >= monthNodes.length; // Presuming, based on length
+        let someSelected = false;
+        const selSet = new Set($.selected);
+
+        for (let i = 0; i < monthNodes.length; i++) {
+            if (selSet.has(monthNodes[i])) {
+                someSelected = true;
+            }
+            else if (allSelected) {
+                allSelected = false;
+            }
+
+            if (someSelected && !allSelected) {
+                break;
+            }
+        }
+
+        const checkDiv = checkbox.el.querySelector('.checkdiv');
+
+        if (allSelected) {
+            checkbox.checked = true;
+        }
+        else if (someSelected) {
+            checkbox.checked = true;
+            checkDiv.classList.add('checkboxMinimize');
+        }
+
+        checkbox.el.classList.add('flex', 'flex-row', 'items-center');
+        delay(`media-checkbox-${chId}`, () => {
+            checkbox.onChange = (newVal) => {
+                checkbox.checked = newVal;
+                const nodes = this.getGroupMonthNodes(id, group);
+
+                if (newVal) {
+                    for (let i = 0; i < nodes.length; i++) {
+                        selectionManager.add_to_selection(nodes[i]);
+                    }
+                }
+                else {
+                    for (let i = 0; i < nodes.length; i++) {
+                        selectionManager.remove_from_selection(nodes[i]);
+                    }
+                }
+
+                checkDiv.classList.remove('checkboxMinimize');
+            };
+        });
+
+        const dateTitle = document.createElement('div');
+        dateTitle.classList.add(
+            'timeline-date-title',
+            'px-2',
+            'pb-2',
+            'pt-8',
+            'flex',
+            'flex-row',
+            'gap-2',
+            'items-center'
+        );
+
+        const dateLabel = document.createElement('div');
+        dateLabel.classList.add('font-bold', 'text-color-high');
+        dateLabel.textContent = group.l;
+
+        const countLabel = document.createElement('div');
+        countLabel.className = 'text-color-medium font-body-2';
+        countLabel.textContent = mega.icu.format(l.items_count, monthNodes.length);
+
+        dateTitle.appendChild(checkbox.el);
+        dateTitle.appendChild(dateLabel);
+        dateTitle.appendChild(countLabel);
+        contentBlock.appendChild(dateTitle);
+    }
+
     renderGroup(id) {
         const cacheKey = this.mode + id;
 
@@ -1585,22 +1784,22 @@ class MegaGallery {
                 return this.renderCache[cacheKey];
             }
 
-            if (this.mode !== 'm') {
-                group.n.sort(this.sortByMtime.bind(this));
+            if (group.l) {
+                groupWrap.classList.add('showDate');
+                contentBlock.dataset.date = group.l;
 
-                if (group.l) {
-                    groupWrap.classList.add('showDate');
-                    contentBlock.dataset.date = group.l;
+                if (this.mode === 'a') {
+                    this.renderGroupMonthHeader(id, group, contentBlock);
                 }
             }
 
-            let l = group.n.length;
+            let len = group.n.length;
 
             if (group.max) {
-                l = Math.min(group.max, group.n.length);
+                len = Math.min(group.max, group.n.length);
             }
 
-            for (let i = 0; i < l; i++) {
+            for (let i = 0; i < len; i++) {
 
                 const nodeElm = this.renderNode(group.n[i]);
 
@@ -1621,10 +1820,10 @@ class MegaGallery {
             }
 
             if (this.mode === 'd') {
-                this.renderNodeExtraDay(group, groupWrap, contentBlock, l);
+                this.renderNodeExtraDay(group, groupWrap, contentBlock, len);
             }
             else if (this.mode === 'm') {
-                this.renderNodeExtraMonth(group, groupWrap, contentBlock, l);
+                this.renderNodeExtraMonth(group, groupWrap, contentBlock, len);
             }
         }
 
@@ -1637,14 +1836,14 @@ class MegaGallery {
 
         const dateblock = document.createElement('a');
 
-        dateblock.classList.add('gallery-date-block');
+        dateblock.classList.add('gallery-date-block', 'flex', 'flex-row', 'items-center');
 
         // Special month corrective for Vietnamese.
         if (locale === 'vi') {
             group.ml = group.ml.toLowerCase();
         }
 
-        $(dateblock).safeHTML(group.l.replace(group.ml, `<span>${group.ml}</span>`));
+        $(dateblock).safeHTML(group.l.replace(group.ml, `<span class="mr-2">${group.ml}</span>`));
 
         const iconBlock = document.createElement('i');
 
@@ -1652,23 +1851,12 @@ class MegaGallery {
         dateblock.appendChild(iconBlock);
         groupWrap.prepend(dateblock);
 
-        if (group.r) {
-            groupWrap.classList.add('layout-3-2');
-        }
-        else {
-            groupWrap.classList.add(`layout-${l}`);
-        }
+        groupWrap.classList.add(`layout-${l}${group.r ? '-2' : ''}`);
     }
 
     renderNodeExtraDay(group, groupWrap, contentBlock, l) {
-
         // c is only numeric 0 when it is sub block
-        if (group.c === 0) {
-            groupWrap.classList.add('layout-3-2');
-        }
-        else {
-            groupWrap.classList.add(`layout-${l}`);
-        }
+        groupWrap.classList.add(`layout-${l}${group.c === 0 ? '-2' : ''}`);
 
         if (group.mc) {
 
@@ -1699,7 +1887,7 @@ class MegaGallery {
             for (var i = selectedInCache.length; i--;) {
 
                 if (selectedInCache[i].id !== $.selected[0]) {
-                    selectedInCache[i].classList.remove('ui-selected');
+                    selectedInCache[i].classList.remove('ui-selected', 'ui-selecting');
                 }
             }
         }
@@ -1712,7 +1900,7 @@ class MegaGallery {
             return;
         }
 
-        const elm = new GalleryNodeBlock(node);
+        const elm = new GalleryNodeBlock(node, this.mode);
 
         mega.gallery.setShimmering(elm.el);
 
@@ -1738,8 +1926,7 @@ class MegaGallery {
                 height += this.getGroupHeight(key);
             }
             else {
-                const maxItems = {1: 3, 2: 5, 3: 10, 4: 15};
-                const maxItemsInRow = maxItems[this.zoom];
+                const maxItemsInRow = this.maxItems[this.zoom];
                 blockSize = this.dynamicList.$content.width() / maxItemsInRow;
                 height += Math.floor(index / maxItemsInRow) * blockSize;
                 return {
@@ -1760,31 +1947,23 @@ class MegaGallery {
         const group = this.getGroupById(id);
 
         if (this.mode === 'a') {
-
-            const maxItems = {1: 3, 2: 5, 3: 10, 4: 15};
-            const maxItemsInRow = maxItems[this.zoom];
+            const headerHeight = group.l ? 64 : 0;
+            const maxItemsInRow = this.maxItems[this.zoom];
             const blockSize = this.dynamicList.$content.width() / maxItemsInRow;
 
-            return Math.ceil(group.n.length / maxItemsInRow) * blockSize;
+            return Math.ceil(group.n.length / maxItemsInRow) * blockSize + headerHeight;
         }
-        else if (this.mode === 'd' || this.mode === 'y') {
-            return wrapWidth / 2 + (this.mode === 'y' ? 16 : 0);
+
+        if (this.mode === 'y') {
+            return 256 + 8;
         }
-        else if (this.mode === 'm') {
 
-            let height;
+        if (this.mode === 'd') {
+            return 285 + 8;
+        }
 
-            if (group.n.length <= 2) {
-                height = (wrapWidth - 20) / 2;
-            }
-            else if (group.n.length === 3) {
-                height = 380 / 620 * wrapWidth;
-            }
-            else {
-                height = 420 / 620 * wrapWidth;
-            }
-
-            return height + 64;
+        if (this.mode === 'm') {
+            return 330 + 8; // height + padding
         }
     }
 
@@ -1862,6 +2041,224 @@ class MegaGallery {
     getGroupById(id) {
         return this.activeModeList[id];
     }
+
+    /**
+     * @param {jQuery} $el Cell element
+     * @returns {void}
+     */
+    updateGroupSelect($el) {
+        if (this.mode !== 'a') {
+            return;
+        }
+
+        const groupId = $el.closest('.content-row').attr('id');
+
+        if (!groupId) {
+            return;
+        }
+
+        delay(`gallery.check-select-${groupId}`, () => {
+            const initGroupId = `${Math.ceil(groupId.replace('gallery-', ''))}.00000`;
+            const monthNodes = this.getGroupMonthNodes(initGroupId);
+            let all = true;
+            let some = false;
+            const selSet = new Set($.selected);
+
+            for (let i = 0; i < monthNodes.length; i++) {
+                if (selSet.has(monthNodes[i])) {
+                    some = true;
+                }
+                else {
+                    all = false;
+                }
+
+                // All conditions met
+                if (some && !all) {
+                    break;
+                }
+            }
+
+            const cacheBlock = this.renderCache[`a${initGroupId}`];
+            const checkbox = cacheBlock
+                ? cacheBlock.querySelector(`#${groupId.replace('.', '\\.')} .checkdiv`)
+                : null;
+
+            if (!checkbox) {
+                return;
+            }
+
+            const { mComponent: mc } = checkbox.parentNode;
+            mc.checked = all || some;
+
+            if (all || !some) {
+                checkbox.classList.remove('checkboxMinimize');
+            }
+            else {
+                checkbox.classList.add('checkboxMinimize');
+            }
+        }, 100);
+    }
+
+    /**
+     * @param {jQuery} $el Cell element
+     * @returns {void}
+     */
+    updateGroupDeselect($el) {
+        const groupId = $el.closest('.content-row').attr('id');
+
+        if (!groupId) {
+            return;
+        }
+
+        delay(`gallery.check-select-${groupId}`, () => {
+            const initGroupId = `${Math.ceil(groupId.replace('gallery-', ''))}.00000`;
+            let someSelected = false;
+
+            if ($.selected.length) {
+                const selSet = new Set($.selected);
+                const monthNodes = this.getGroupMonthNodes(initGroupId);
+
+                for (let i = 0; i < monthNodes.length; i++) {
+                    if (selSet.has(monthNodes[i])) {
+                        someSelected = true;
+                        break;
+                    }
+                }
+            }
+
+            const cacheBlock = this.renderCache[`a${initGroupId}`];
+            const checkbox = cacheBlock
+                ? cacheBlock.querySelector(`#${groupId.replace('.', '\\.')} .checkdiv`)
+                : null;
+
+            if (!checkbox) {
+                return;
+            }
+
+            const { mComponent: mc } = checkbox.parentNode;
+
+            if (someSelected) {
+                checkbox.classList.add('checkboxMinimize');
+            }
+            else {
+                mc.checked = false;
+                checkbox.classList.remove('checkboxMinimize');
+            }
+        }, 100);
+    }
+
+    enableGroupChecks() {
+        const blocks = Object.values(this.renderCache);
+        let i = blocks.length;
+
+        while (--i >= 0) {
+            const checkboxes = blocks[i].querySelectorAll('.content-row .checkdiv');
+            let j = checkboxes.length;
+
+            while (--j >= 0) {
+                const ch = checkboxes[j];
+                ch.parentNode.mComponent.checked = true;
+                ch.classList.remove('checkboxMinimize');
+            }
+        }
+    }
+
+    clearSelections() {
+        const blocks = Object.values(this.renderCache);
+        let i = blocks.length;
+
+        while (--i >= 0) {
+            const checkboxes = blocks[i].querySelectorAll('.content-row .checkdiv');
+            let j = checkboxes.length;
+
+            while (--j >= 0) {
+                const ch = checkboxes[j];
+                ch.parentNode.mComponent.checked = false;
+                ch.classList.remove('checkboxMinimize');
+            }
+
+            const selected = blocks[i].querySelectorAll('.ui-selected');
+            j = selected.length;
+
+            while (--j >= 0) {
+                selected[j].classList.remove('ui-selected', 'ui-selecting');
+            }
+        }
+    }
+
+    cellInSelectArea(index, groupOffset, offset, perRow, cellSize, helperPos) {
+        const { top, right, bottom, left } = helperPos;
+        const offsetTop = groupOffset + offset + parseInt(index / perRow) * cellSize;
+        const offsetLeft = (index % perRow) * cellSize;
+        const rightEdge = offsetLeft + cellSize;
+        const bottomEdge = offsetTop + cellSize;
+
+        const fitVert = (offsetTop >= top && offsetTop <= bottom)
+            || (bottomEdge >= top && bottomEdge <= bottom);
+        const fitHoriz = (offsetLeft <= right && offsetLeft >= left)
+            || (rightEdge >= left && rightEdge <= right);
+
+        return (fitVert && (fitHoriz || offsetLeft < left && rightEdge > right))
+            || fitHoriz && offsetTop < top && bottomEdge > bottom && fitHoriz;
+    }
+
+    checkOuterBounbdaries() {
+        const sel = $($.selectddUIgrid).selectable('instance');
+
+        if (!sel) {
+            return;
+        }
+
+        const top = sel.helper[0].offsetTop;
+        const left = sel.helper[0].offsetLeft;
+        const right = left + sel.helper[0].offsetWidth;
+        const bottom = top + sel.helper[0].offsetHeight;
+        const scrollTop = this.dynamicList.getScrollTop();
+        const containerWidth = this.dynamicList.$content.width();
+
+        // No need to check, the drag select happened within the area
+        if (top >= scrollTop && bottom <= scrollTop + this.dynamicList.listContainer.clientHeight) {
+            return;
+        }
+
+        const perRow = this.maxItems[this.zoom];
+        const cellSize = containerWidth / perRow;
+        const itemKeys = Object.values(this.dynamicList.items);
+        let i = itemKeys.length;
+
+        while (--i >= 0) {
+            const cache = this.renderCache[`a${itemKeys[i]}`];
+
+            if (!cache) {
+                continue; // Has not been rendered yet, so cannot be out by default
+            }
+
+            const groupOffset = this.dynamicList._offsets[itemKeys[i]];
+
+            if (
+                groupOffset > bottom
+                || groupOffset + this.dynamicList._heights[itemKeys[i]] < top
+            ) {
+                continue; // The entire item is out of the reach
+            }
+
+            const group = this.getGroupById(itemKeys[i]);
+            const offset = (group.l ? 64 : 0);
+            const cells = cache.querySelectorAll('.data-block-view');
+
+            for (let i = 0; i < cells.length; i++) {
+                const cell = cells[i];
+
+                if (this.cellInSelectArea(i, groupOffset, offset, perRow, cellSize, { top, right, bottom, left })) {
+                    selectionManager.add_to_selection(cell.id);
+                }
+                else {
+                    selectionManager.remove_from_selection(cell.id);
+                    cell.classList.remove('ui-selected', 'ui-selecting');
+                }
+            }
+        }
+    }
 }
 
 class MegaTargetGallery extends MegaGallery {
@@ -1890,7 +2287,7 @@ class MegaTargetGallery extends MegaGallery {
             subs = subs.concat(Object.keys(M.c[handles[i]]));
         }
 
-        const rubTree = MegaGallery.handlesArrToObj(M.getTreeHandles(M.RubbishID));
+        const rubTree = array.to.object(M.getTreeHandles(M.RubbishID), true);
 
         subs = subs.filter(h => {
             const n = M.d[h];
@@ -1899,7 +2296,8 @@ class MegaTargetGallery extends MegaGallery {
                 && !rubTree[h]
                 && !rubTree[n.p]
                 && !n.fv
-                && mega.gallery.isGalleryNode(n);
+                && M.isGalleryNode(n)
+                && mega.sensitives.shouldShowNode(n);
         }).sort(this.sortByMtime.bind(this));
 
         for (const h of subs) {
@@ -1915,20 +2313,19 @@ class MegaTargetGallery extends MegaGallery {
     }
 
     checkGalleryUpdate(n) {
-        if (!mega.gallery.isGalleryNode(n)) {
+        if (!M.isGalleryNode(n)) {
             return;
         }
 
-        if (M.currentdirid === n.p && !M.v.length) {
-            $(`.fm-empty-folder, .fm-empty-folder-link, .fm-empty-${M.currentdirid}`, '.fm-right-files-block')
-                .addClass('hidden');
+        if (!M.v.length && n.p === M.currentdirid) {
+            mega.ui.empty.clear();
         }
 
         if (pfid) {
             delay(`pfid_discovery:node_update${n.h}`, () => {
                 if (M.currentdirid === n.p) {
                     if (this.nodes[n.h]) {
-                        this.updateNodeName(n);
+                        this.updateNodeDetails(n);
                     }
                     else {
                         this.addNodeToGroups(n);
@@ -1970,7 +2367,7 @@ class MegaTargetGallery extends MegaGallery {
             }
             // Lets check this is name update
             else if (this.onpage && this.renderCache && this.nodes[n.h]) {
-                this.updateNodeName(n);
+                this.updateNodeDetails(n);
             }
         }
     }
@@ -1992,52 +2389,9 @@ class MegaMediaTypeGallery extends MegaGallery {
             return false;
         }
 
-        let nodes = [];
-        const cameraTree = MegaGallery.getCameraHandles();
-        const rubTree = MegaGallery.handlesArrToObj(M.getTreeHandles(M.RubbishID));
+        const nodes = await mega.gallery.initialiseMediaNodes(this.typeFilter.bind(this));
 
-        if (MegaGallery.dbActionPassed) {
-            nodes = Object.values(M.d).filter((n) =>
-                n.fa
-                && !rubTree[n.p]
-                && n.s > 0
-                && this.typeFilter(n, cameraTree)
-            );
-        }
-        else {
-            const handles = [];
-            const dbNodes = await MegaGallery.dbAction()
-                .catch(() => { // Fetching all available nodes in case of DB failure
-                    console.warn('Local DB failed. Fetching existing FM nodes.');
-                    return Object.values(M.d);
-                });
-
-            for (let i = 0; i < dbNodes.length; i++) {
-                const n = dbNodes[i];
-
-                if (!n.fa || !n.s || rubTree[n.p]) {
-                    continue;
-                }
-
-                handles.push(n.p);
-
-                if (this.typeFilter(n, cameraTree)) {
-                    nodes.push(n);
-                    this.updNode[n.h] = n;
-                }
-            }
-
-            await dbfetch.geta(handles).catch(nop);
-
-            MegaGallery.dbActionPassed = true;
-
-            this.updNode = Object.create(null);
-
-            // Initializing albums here for the performace's sake
-            if (mega.gallery.albums.awaitingDbAction) {
-                mega.gallery.albums.init();
-            }
-        }
+        this.updNode = Object.create(null);
 
         // This sort is needed for building groups, do not remove
         const sortFn = M.sortByModTimeFn2();
@@ -2051,16 +2405,10 @@ class MegaMediaTypeGallery extends MegaGallery {
             return;
         }
 
-        const sharesTree = M.getTreeHandles('shares');
-
         for (var i = 0; i < nodes.length; i++) {
             var n = nodes[i];
 
-            if (this.nodes[n.h] || n.t || sharesTree.includes(n.p) || this.id === 'favourites' && !n.fav) {
-                continue;
-            }
-
-            if (!n.fv) {
+            if (!this.nodes[n.h]) {
                 this.nodes[n.h] = this.setGroup(n)[0];
             }
         }
@@ -2077,10 +2425,11 @@ class MegaMediaTypeGallery extends MegaGallery {
         const cameraTree = MegaGallery.getCameraHandles();
 
         if (!n.t && this.typeFilter(n, cameraTree)) {
-            const ignoreHandles = MegaGallery.handlesArrToObj([
-                ...M.getTreeHandles('shares'),
-                ...M.getTreeHandles(M.RubbishID)
-            ]);
+            const ignoreHandles = array.to.object(
+                [...M.getTreeHandles('shares'), ...M.getTreeHandles(M.RubbishID)],
+                true
+            );
+
             let toGallery = !ignoreHandles[n.p];
 
             if (this.id === 'favourites') {
@@ -2108,13 +2457,15 @@ class MegaMediaTypeGallery extends MegaGallery {
             }
             // Lets check this is name update
             else if (this.onpage && this.renderCache && this.nodes[n.h]) {
-                this.updateNodeName(n);
+                this.updateNodeDetails(n);
 
                 if (mega.gallery.pendingFaBlocks[n.h] && n.fa.includes(':1*')) {
                     MegaGallery.addThumbnails(Object.values(mega.gallery.pendingFaBlocks[n.h]));
                     delete mega.gallery.pendingFaBlocks[n.h];
                 }
             }
+
+            delay('gallery.reset-media-counts', mega.gallery.resetMediaCounts.bind(null, M.v));
         }
     }
 }
@@ -2124,11 +2475,11 @@ mega.gallery.nodeUpdated = false;
 mega.gallery.albumsRendered = false;
 mega.gallery.publicSet = Object.create(null);
 mega.gallery.titleControl = null;
+mega.gallery.typeControl = null;
 mega.gallery.emptyBlock = null;
-mega.gallery.rootMode = {photos: 'a', images: 'a', videos: 'a'};
+mega.gallery.lastModeSelected = 'a';
 mega.gallery.pendingFaBlocks = {};
 mega.gallery.pendingThumbBlocks = {};
-mega.gallery.disallowedExtensions = { 'PSD': true, 'SVG': true };
 
 /**
  * @TODO: Remove this check once we bump all browsers up to support this feature
@@ -2182,10 +2533,10 @@ mega.gallery.fillMainView = (list, mapper) => {
     console.assert(M.v.length === length, 'check this... filtered invalid entries.');
 };
 
-mega.gallery.handleNodeRemoval = (n) => {
+mega.gallery.handleNodeRemoval = tryCatch((n) => {
     'use strict';
 
-    if (M.isAlbumsPage()) {
+    if (M.albums) {
         mega.gallery.albums.onCDNodeRemove(n);
         mega.gallery.nodeUpdated = true;
     }
@@ -2197,19 +2548,23 @@ mega.gallery.handleNodeRemoval = (n) => {
         mega.gallery.nodeUpdated = true;
         mega.gallery.albumsRendered = false;
     }
-};
+});
 
 /**
- * Checking if the file is even available for the gallery
- * @param {String|MegaNode|Object} n An ufs-node, or filename
- * @param {String} [ext] Optional filename extension
- * @returns {Number|String|Function|Boolean}
+ * Checking if we want to see add to album option in the current viewing page
+ * @returns {Boolean}
  */
-mega.gallery.isGalleryNode = (n, ext) => {
+mega.gallery.canShowAddToAlbum = () => {
     'use strict';
 
-    ext = ext || fileext(n && n.name || n, true, true);
-    return n.fa && (mega.gallery.isImage(n, ext) || mega.gallery.isVideo(n));
+    const areas = {
+        'shares': true,
+        's4': true,
+        [M.RubbishID]: true,
+        [M.getNodeByHandle(M.BackupsId).p]: true
+    };
+
+    return !areas[M.currentrootid];
 };
 
 /**
@@ -2221,8 +2576,10 @@ mega.gallery.isGalleryNode = (n, ext) => {
 mega.gallery.setShimmering = (el) => {
     'use strict';
 
+    const img = el.querySelector('img');
+
     // Image is already loaded
-    if (el.style.backgroundImage) {
+    if (img && img.complete) {
         return;
     }
 
@@ -2258,42 +2615,6 @@ mega.gallery.unsetShimmering = (el) => {
 mega.gallery.isPreviewable = (n, ext) => {
     'use strict';
     return is_image3(n, ext) || is_video(n);
-};
-
-/**
- * Same as is_image3(), additionally checking whether the node meet requirements for photo/media gallery.
- * @param {String|MegaNode|Object} n An ufs-node, or filename
- * @param {String} [ext] Optional filename extension
- * @returns {Boolean}
- */
-mega.gallery.isImage = (n, ext) => {
-    'use strict';
-
-    ext = ext || fileext(n && n.name || n, true, true);
-    return !mega.gallery.disallowedExtensions[ext] && is_image3(n, ext);
-};
-
-/**
- * Checks whether the node is a video, plus checks if thumbnail is available
- * @param {Object} n ufs node
- * @returns {Object.<String, Number>|Boolean}
- */
-mega.gallery.isVideo = (n) => {
-    'use strict';
-
-    if (!n || !n.fa || !n.fa.includes(':8*')) {
-        return false;
-    }
-
-    const p = M.getMediaProperties(n);
-
-    if (!p.showThumbnail || p.icon !== 'video') {
-        return false;
-    }
-
-    const props = MediaAttribute.prototype.fromAttributeString(n.fa, n.k);
-
-    return props && props.width && props.height ? p : false;
 };
 
 mega.gallery.checkEveryGalleryUpdate = n => {
@@ -2354,14 +2675,30 @@ mega.gallery.checkEveryGalleryDelete = h => {
     }
 };
 
-mega.gallery.clearMdView = () => {
+mega.gallery.handleNodeUpdate = (n) => {
     'use strict';
-    const $mediaIcon = $('.fm-files-view-icon.media-view').addClass('hidden');
 
     if (M.gallery) {
-        $mediaIcon.removeClass('active');
+        tryCatch(() => mega.gallery.checkEveryGalleryUpdate(n))();
+        mega.gallery.albumsRendered = false;
+    }
+    else if (M.albums) {
+        tryCatch(() => mega.gallery.albums.onCDNodeUpdate(n))();
+        mega.gallery.nodeUpdated = true;
+    }
+    else {
+        mega.gallery.nodeUpdated = true;
+        mega.gallery.albumsRendered = false;
+    }
+};
+
+mega.gallery.clearMdView = () => {
+    'use strict';
+    mega.ui.secondaryNav.updateGalleryLayout(true);
+
+    if (M.gallery) {
         $('.gallery-tabs-bl').addClass('hidden');
-        $(`.fm-files-view-icon.${M.viewmode ? 'block-view' : 'listing-view'}`).addClass('active');
+        mega.ui.secondaryNav.updateLayoutButton();
 
         assert(pfid);
         M.gallery = false;
@@ -2393,15 +2730,17 @@ mega.gallery.resetAll = () => {
 mega.gallery.showEmpty = (type, noMoreFiles) => {
     'use strict';
 
+    const rfBlock = $('.fm-right-files-block', '.fmholder');
+
     if (noMoreFiles || M.currentrootid === M.RootID &&
         (!M.c[M.currentdirid] || !Object.values(M.c[M.currentdirid]).length)) {
-        $('.fm-empty-folder', '.fm-right-files-block').removeClass('hidden');
-        $(`.fm-empty-${M.currentdirid}`, '.fm-right-files-block').addClass('hidden');
+        $(`.fm-empty-${M.currentdirid}`, rfBlock).addClass('hidden');
+        mega.ui.empty.folder();
         return;
     }
 
     if (!mega.gallery.emptyBlock) {
-        mega.gallery.emptyBlock = new GalleryEmptyBlock('.fm-main.default > .fm-right-files-block');
+        mega.gallery.emptyBlock = new GalleryEmptyBlock('.pm-main > .fm-right-files-block');
     }
 
     mega.gallery.emptyBlock.type = type;
@@ -2677,44 +3016,34 @@ mega.gallery.removeDbActionCache = () => {
 };
 
 /**
- * @param {HTMLCollection} elements The collection of the sidebar buttons
- * @param {HTMLElement} galleryBtn The gallery button
+ * @param {HTMLElement} menuNode The menu node to work with
  * @returns {Promise<void>}
  */
-mega.gallery.updateButtonsStates = async(elements, galleryBtn) => {
+mega.gallery.updateMediaPath = async() => {
     'use strict';
 
-    const galleryRoots = {
-        photos: true,
-        images: true,
-        videos: true
-    };
-    const { getItem } = await mega.gallery.prefs.init();
+    const { menuNode } = mega.ui.topmenu;
 
-    const res = getItem('web.locationPref');
-
-    if (!res || typeof res !== 'object' || !elements[0].querySelector) {
+    if (!menuNode) {
         return;
     }
 
-    const keys = Object.keys(res);
+    if (!u_attr || pfid) {
+        return;
+    }
 
-    for (let i = 0; i < keys.length; i++) {
-        const pathKey = keys[i];
+    const res = await mega.ccPrefs.getItem('web.locationPref.photos');
 
-        if (!galleryRoots[pathKey]) {
-            continue;
-        }
+    if (typeof res !== 'string' || res.length === 0) {
+        return;
+    }
 
-        const btn = elements[0].querySelector(`.btn-galleries[data-link=${pathKey}]`);
+    const lnk = menuNode.querySelector('.media');
 
-        if (btn) {
-            btn.dataset.locationPref = res[pathKey];
-        }
-
-        if (pathKey === 'photos') {
-            galleryBtn.dataset.locationPref = res[pathKey];
-        }
+    if (lnk) {
+        lnk.href = `/fm/${res}`;
+        lnk.dataset.section = lnk.href;
+        lnk.dataset.locationPref = res;
     }
 };
 
@@ -2732,13 +3061,28 @@ async function galleryUI(id) {
         mega.gallery.resetAll();
     }
 
+    const $headerBlock = $('.gallery-tabs-bl', '#media-section-controls');
     let gallery = mega.gallery[M.currentdirid];
 
-    $('.gallery-close-discovery', '.gallery-tabs-bl').addClass('hidden');
+    $headerBlock.removeClass('hidden');
+    $('#media-section-controls, #media-tabs', '.fm-right-files-block').removeClass('hidden');
+    $('.fm-notification-block.new-feature-rewind-notification', '.fm-right-files-block').addClass('hidden');
+    $('.gallery-close-discovery', $headerBlock).addClass('hidden');
+
+    mega.gallery.setTabs();
+
+    if (!mega.gallery.typeControl) {
+        mega.gallery.typeControl = new mega.gallery.GalleryTypeControl('.gallery-tabs-bl .gallery-section-title');
+    }
 
     if (!mega.gallery.titleControl) {
-        mega.gallery.titleControl = new GalleryTitleControl('.gallery-tabs-bl .gallery-section-title');
+        mega.gallery.titleControl = new mega.gallery.GalleryTitleControl('.gallery-tabs-bl .gallery-section-title');
     }
+
+    $('.media-filter-reset', $headerBlock).rebind('click.galleryReset', () => {
+        M.openFolder('photos');
+        mega.gallery.titleControl.clearLocationPreference();
+    });
 
     // cleanup existing (FM-side) MegaRender and such.
     M.v = [];
@@ -2749,11 +3093,16 @@ async function galleryUI(id) {
 
     M.onTreeUIOpen(M.currentdirid);
 
-    if (pfid || M.gallery && !M.isGalleryPage() && !M.isAlbumsPage()) {
-        if (window.pfcol) {
-            return mega.gallery.albums.initPublicAlbum();
-        }
+    if (window.pfcol) {
+        return mega.gallery.albums.initPublicAlbum();
+    }
+
+    if (pfid || M.gallery && !M.albums && !M.isGalleryPage()) {
         id = !id || typeof id !== 'string' ? M.currentdirid : id;
+        if (id.startsWith('device-centre/')) {
+            id = id.split('/')[2];
+            mega.devices.ui.handleAddBtnVisibility();
+        }
         $('.view-links', '.gallery-tabs-bl').removeClass('hidden');
     }
     else {
@@ -2763,6 +3112,19 @@ async function galleryUI(id) {
     // This keeps the banner persistent when navigating from Recents to Gallery
     $('.fm-right-files-block').addClass('visible-notification');
 
+    const section = mega.gallery.sections[M.currentdirid];
+    const $mdProhibited = $([
+        '.media-tabs',
+        '.gallery-section-title *'
+    ].join(','), '.fm-right-files-block');
+
+    const rightSectionControls = document.getElementById('media-section-right-controls');
+    if (id) {
+        rightSectionControls.classList.add('wrap');
+    }
+    else {
+        rightSectionControls.classList.remove('wrap');
+    }
     // This is media discovery
     if (id) {
         if (!pfid) {
@@ -2782,12 +3144,16 @@ async function galleryUI(id) {
         mega.gallery.titleControl.addTooltipToTitle();
 
         gallery = mega.gallery.discovery;
+        $mdProhibited.addClass('hidden');
     }
-    else if (mega.gallery.sections[M.currentdirid]) {
+    else if (section) {
         mega.gallery.titleControl.filterSection = M.currentdirid;
-        mega.gallery.titleControl.title = mega.gallery.sections[M.currentdirid].title;
-        mega.gallery.titleControl.icon = mega.gallery.sections[M.currentdirid].icon;
+        mega.gallery.titleControl.title = section.title;
+        mega.gallery.titleControl.icon = section.icon;
         mega.gallery.titleControl.removeTooltipFromTitle();
+        mega.gallery.titleControl.toggleHighlight(M.currentdirid);
+        mega.gallery.typeControl.updateTitle(section.root);
+        $mdProhibited.removeClass('hidden');
     }
 
     if (!gallery) {
@@ -2798,7 +3164,7 @@ async function galleryUI(id) {
         if (id) {
             gallery = mega.gallery.discovery = new MegaTargetGallery(id);
         }
-        else if (mega.gallery.sections[M.currentdirid]) {
+        else if (section) {
             gallery = mega.gallery[M.currentdirid] = new MegaMediaTypeGallery();
         }
     }
@@ -2828,6 +3194,16 @@ async function galleryUI(id) {
             console.timeEnd('gallery-ui');
             console.groupEnd();
         }
+
+        if (M.v.length) {
+            mega.ui.empty.clear();
+        }
+
+        mega.gallery.resetMediaCounts(M.v);
+
+        if (id) {
+            onIdle(fmtopUI);
+        }
     });
 }
 
@@ -2842,7 +3218,6 @@ MegaGallery.addThumbnails = (nodeBlocks) => {
         GalleryNodeBlock.thumbCache = Object.create(null);
     }
 
-    const thumbSize = 240;
     const keys = [];
     const thumbBlocks = {};
 
@@ -2868,18 +3243,23 @@ MegaGallery.addThumbnails = (nodeBlocks) => {
             mega.gallery.pendingFaBlocks[h][width] = nodeBlocks[i];
             continue;
         }
-        else if (width <= thumbSize) {
-            if (thumbBlocks[nodeBlocks[i].node.h]) {
-                thumbBlocks[nodeBlocks[i].node.h].push(nodeBlocks[i]);
+        else if (width <= MEGAImageElement.THUMBNAIL_SIZE) {
+            const urlCache = thumbnails.get(fa);
+
+            if (urlCache) {
+                nodeBlocks[i].setThumb(urlCache, fa);
+            }
+            else if (thumbBlocks[h]) {
+                thumbBlocks[h].push(nodeBlocks[i]);
             }
             else {
-                thumbBlocks[nodeBlocks[i].node.h] = [nodeBlocks[i]];
+                thumbBlocks[h] = [nodeBlocks[i]];
             }
             continue;
         }
 
         if (GalleryNodeBlock.thumbCache[key]) {
-            nodeBlocks[i].setThumb(GalleryNodeBlock.thumbCache[key], nodeBlocks[i].node.fa);
+            nodeBlocks[i].setThumb(GalleryNodeBlock.thumbCache[key], fa);
             continue;
         }
 
@@ -3055,37 +3435,33 @@ MegaGallery.handleResize = SoonFc(200, (entries) => {
     }
 });
 
-MegaGallery.dbAction = () => {
+MegaGallery.dbAction = async(p) => {
     'use strict';
 
     if (fmdb && fmdb.db !== null && fmdb.crashed !== 666) {
-        const ignoreHandles = MegaGallery.handlesArrToObj([
-            ...M.getTreeHandles('shares'),
-            ...M.getTreeHandles(M.RubbishID)
-        ]);
+        const res = [];
+        const parents = Object.create(null);
 
-        return fmdb.getbykey(
-            'f',
-            {
-                query: db => db.where('fa').notEqual(fmdb.toStore('')),
-                include: ({p}) => !ignoreHandles[p]
+        await dbfetch.geta(M.getTreeHandles(M.RootID)).catch(nop);
+
+        p = p || M.RootID;
+        await dbfetch.media(9e3, (r) => {
+            for (let i = r.length; i--;) {
+                const n = r[i];
+
+                if (!parents[n.p]) {
+                    parents[n.p] = 1 + (M.getNodeRoot(n.p) === p);
+                }
+                if (parents[n.p] > 1) {
+                    res.push(n);
+                }
             }
-        );
+        });
+
+        return res;
     }
 
-    return Promise.reject();
-};
-
-MegaGallery.handlesArrToObj = (array) => {
-    'use strict';
-
-    const obj = Object.create(null);
-
-    for (let i = 0; i < array.length; i++) {
-        obj[array[i]] = true;
-    }
-
-    return obj;
+    throw new Error('FMDB Unavailable.');
 };
 
 lazy(mega.gallery, 'dbLoading', () => {
@@ -3109,73 +3485,64 @@ lazy(mega.gallery, 'sections', () => {
             path: 'photos',
             icon: 'photos',
             root: 'photos',
-            filterFn: n => mega.gallery.isGalleryNode(n),
+            filterFn: () => true,
             title: l.gallery_all_locations
         },
         [mega.gallery.secKeys.cuphotos]: {
             path: mega.gallery.secKeys.cuphotos,
             icon: 'photos',
             root: 'photos',
-            filterFn: (n, cameraTree) => cameraTree && cameraTree.includes(n.p)
-                && (mega.gallery.isImage(n) || mega.gallery.isVideo(n)),
+            filterFn: (n, cameraTree) => cameraTree && cameraTree.includes(n.p),
             title: l.gallery_camera_uploads
         },
         [mega.gallery.secKeys.cdphotos]: {
             path: mega.gallery.secKeys.cdphotos,
             icon: 'photos',
             root: 'photos',
-            filterFn: (n, cameraTree) => (!cameraTree || !cameraTree.includes(n.p))
-                && (mega.gallery.isImage(n) || mega.gallery.isVideo(n)),
+            filterFn: (n, cameraTree) => !cameraTree || !cameraTree.includes(n.p),
             title: l.gallery_from_cloud_drive
         },
         images: {
             path: 'images',
             icon: 'images',
             root: 'images',
-            filterFn: n => mega.gallery.isImage(n),
+            filterFn: n => M.isGalleryImage(n),
             title: l.gallery_all_locations
         },
         [mega.gallery.secKeys.cuimages]: {
             path: mega.gallery.secKeys.cuimages,
             icon: 'images',
             root: 'images',
-            filterFn: (n, cameraTree) => cameraTree && cameraTree.includes(n.p) && mega.gallery.isImage(n),
+            filterFn: (n, cameraTree) => cameraTree && cameraTree.includes(n.p) && M.isGalleryImage(n),
             title: l.gallery_camera_uploads
         },
         [mega.gallery.secKeys.cdimages]: {
             path: mega.gallery.secKeys.cdimages,
             icon: 'images',
             root: 'images',
-            filterFn: (n, cameraTree) => (!cameraTree || !cameraTree.includes(n.p)) && mega.gallery.isImage(n),
+            filterFn: (n, cameraTree) => (!cameraTree || !cameraTree.includes(n.p)) && M.isGalleryImage(n),
             title: l.gallery_from_cloud_drive
         },
         videos: {
             path: 'videos',
             icon: 'videos',
             root: 'videos',
-            filterFn: n => mega.gallery.isVideo(n),
+            filterFn: n => M.isGalleryVideo(n),
             title: l.gallery_all_locations
         },
         [mega.gallery.secKeys.cuvideos]: {
             path: mega.gallery.secKeys.cuvideos,
             icon: 'videos',
             root: 'videos',
-            filterFn: (n, cameraTree) => cameraTree && cameraTree.includes(n.p) && mega.gallery.isVideo(n),
+            filterFn: (n, cameraTree) => cameraTree && cameraTree.includes(n.p) && M.isGalleryVideo(n),
             title: l.gallery_camera_uploads
         },
         [mega.gallery.secKeys.cdvideos]: {
             path: mega.gallery.secKeys.cdvideos,
             icon: 'videos',
             root: 'videos',
-            filterFn: (n, cameraTree) => (!cameraTree || !cameraTree.includes(n.p)) && mega.gallery.isVideo(n),
+            filterFn: (n, cameraTree) => (!cameraTree || !cameraTree.includes(n.p)) && M.isGalleryVideo(n),
             title: l.gallery_from_cloud_drive
-        },
-        favourites: {
-            path: 'favourites',
-            icon: 'favourite-filled',
-            root: 'favourites',
-            filterFn: n => mega.gallery.isImage(n) || mega.gallery.isVideo(n),
-            title: l.gallery_favourites
         }
     };
 });
@@ -3393,157 +3760,266 @@ lazy(mega.gallery, 'reporter', () => {
     };
 });
 
-lazy(mega.gallery, 'prefs', () => {
+lazy(mega.gallery, 'setTabs', () => {
     'use strict';
 
-    const prefKey = 'ccPref';
-    let data = {};
+    /**
+     * @param {0|1} section 0 - Media, 1 - Albums
+     * @returns {void}
+     */
+    return (section = 0) => {
+        let tabs = mega.gallery.mediaControl;
 
-    const saveUserAttribute = async() => {
-        const res = await Promise.resolve(mega.attr.get(u_attr.u, prefKey, false, true)).catch(dump);
+        if (!tabs) {
+            const tabClasses = 'py-3 px-6';
+            const container = document.querySelector('#media-tabs');
+            tabs = new MTabs();
 
-        if (res && res.cc && typeof res.cc === 'string') {
-            tryCatch(() => {
-                const tmp = JSON.parse(res.cc);
-                const tmpKeys = Object.keys(tmp);
+            container.prepend(tabs.el);
 
-                for (let i = 0; i < tmpKeys.length; i++) {
-                    const key = tmpKeys[i];
+            tabs.el.classList.add('media-tabs', 'px-6', 'justify-start');
+            tabs.tabs = [
+                {
+                    label: l.photos_timeline,
+                    click: () => {
+                        let loc = 'photos';
+                        const { titleControl: tc } = mega.gallery;
 
-                    if (key === 'web') {
-                        continue;
-                    }
+                        if (tc && tc.mediaLink && tc.mediaLink.dataset.locationPref) {
+                            loc = tc.mediaLink.dataset.locationPref;
+                        }
 
-                    data[key] = tmp[key];
+                        loadSubPage(`fm/${loc}`);
+                        mega.gallery.appendAppBanner(container);
+                    },
+                    classes: tabClasses
+                },
+                {
+                    label: l.albums,
+                    click: () => {
+                        loadSubPage('fm/albums');
+
+                        const banner = document.getElementById('media-banner');
+                        if (banner) {
+                            banner.parentNode.removeChild(banner);
+                        }
+                    },
+                    classes: tabClasses
                 }
-            })();
+            ];
+
+            mega.gallery.mediaControl = tabs;
+
+            if (!section) {
+                mega.gallery.appendAppBanner(container);
+            }
         }
 
-        mega.attr.set(prefKey, { cc: JSON.stringify(data) }, false, true).catch(dump);
+        tabs.activeTab = section;
+    };
+});
+
+lazy(mega.gallery, 'resetMediaCounts', () => {
+    'use strict';
+
+    /**
+     * @param {MegaNode[]} [nodes] The nodes to use for count
+     * @returns {void}
+     */
+    return () => {
+        if (mega.ui.secondaryNav.cardComponent) {
+            mega.ui.secondaryNav.cardComponent.update();
+        }
+    };
+});
+
+lazy(mega.gallery, 'initialiseMediaNodes', () => {
+    'use strict';
+
+    return async(filterFn) => {
+        const cameraTree = MegaGallery.getCameraHandles();
+        const disallowedFolders = array.to.object([
+            ...M.getTreeHandles(M.RubbishID),
+            ...M.getTreeHandles('shares'),
+            ...(M.BackupsId ? M.getTreeHandles(M.BackupsId) : []),
+            ...M.getTreeHandles('s4')
+        ], true);
+
+        const allowedInMedia = n => n && !n.t
+            && !disallowedFolders[n.p]
+            && !n.fv
+            && n.s
+            && M.isGalleryNode(n)
+            && mega.sensitives.shouldShowNode(n)
+            && (!filterFn || filterFn(n, cameraTree));
+
+        if (!MegaGallery.dbActionPassed) {
+            const dbNodes = await MegaGallery.dbAction()
+                .catch(() => { // Fetching all available nodes in case of DB failure
+                    console.warn('Local DB failed. Fetching existing FM nodes.');
+                    return Object.values(M.d);
+                });
+
+            await dbfetch.geta(dbNodes.map(({ h }) => h)).catch(nop);
+            MegaGallery.dbActionPassed = true;
+        }
+
+        return Object.values(M.d).filter(allowedInMedia);
+    };
+});
+
+mega.gallery.appendAppBanner = async(target) => {
+    if (pfid || M.CameraId) {
+        return;
+    }
+
+    const timeout = 120 * 24 * 60 * 60; // 120 days
+    const banner = target.querySelector('#media-banner');
+
+    if (banner) {
+        banner.parentNode.removeChild(banner);
+    }
+
+    /**
+     * @param {HTMLElement} target DOM node to attach to
+     * @param {*} configKey Config key to use for refusal storage
+     * @param {*} title Banner title
+     * @param {*} txt Banner text
+     * @param {*} btnTxt Banner action btn text
+     * @param {*} onClick Banner action
+     * @returns {void}
+     */
+    const renderBanner = (target, configKey, title, txt, btnTxt, onClick) => {
+        const refused = mega.config.get(configKey) | 0;
+
+        if (refused && (refused + timeout) * 1000 > Date.now()) {
+            return;
+        }
+
+        const banner = mCreateElement(
+            'div',
+            {
+                class: 'flex flex-row items-center transition-max-h max-h-0 overflow-y-hidden bg-mobile-surface-grey-1',
+                id: 'media-banner'
+            }
+        );
+
+        target.append(banner);
+
+        const titleEl = mCreateElement('div', { class: 'font-title-h3-bold text-color-high' });
+        titleEl.textContent = title;
+
+        const txtEl = mCreateElement('div');
+        txtEl.textContent = txt;
+
+        banner.appendChild(mCreateElement('div', { class: 'px-6 py-4 flex-1' }, [titleEl, txtEl]));
+
+        MegaButton.factory({
+            parentNode: banner,
+            text: btnTxt,
+            type: 'text',
+            componentClassname: 'slim white-space-nowrap font-bold info-link underline cursor-pointer',
+            onClick
+        });
+
+        MegaInteractable.factory({
+            parentNode: banner,
+            type: 'icon',
+            icon: 'sprite-fm-mono icon-dialog-close cursor-pointer',
+            componentClassname: 'mx-4',
+            onClick: () => {
+                mega.config.set(configKey, Date.now() / 1000 >>> 0);
+                banner.classList.remove('max-h-100');
+            }
+        });
+
+        banner.classList.add('max-h-100');
     };
 
-    const p = {
-        init: async() => {
-            if (!u_attr) {
-                dump('Gallery preferences are disabled for guests...');
-                return;
-            }
+    if (await accountUI.hasMobileSessions()) {
+        renderBanner(target, 'cudlh', l.cu_banner_title, l.cu_banner_txt, l.cu_banner_more, () => {
+            const dialogContents = () => {
+                const classes = 'py-3 px-6';
+                const activeClasses = 'font-600';
+                const container = mCreateElement('div');
+                const tabs = new MTabs();
+                tabs.el.classList.add('border-b');
 
-            if (p.getItem) {
-                return p;
-            }
+                const renderList = () => {
+                    let ol = container.querySelector('ol');
 
-            if (!p.isInitializing) {
-                p.isInitializing = Promise.resolve(mega.attr.get(u_attr.u, prefKey, false, true)).catch(dump);
-
-                p.isInitializing
-                    .then((res) => {
-                        if (res && res.cc && typeof res.cc === 'string') {
-                            tryCatch(() => {
-                                data = JSON.parse(res.cc);
-                            })();
-                        }
-                    })
-                    .finally(() => {
-                        if (p.isInitializing) {
-                            delete p.isInitializing;
-                        }
-                    });
-            }
-
-            await p.isInitializing;
-
-            if (!p.getItem) {
-                /**
-                 * Getting the value by traversing through the dotted key
-                 * @param {String|String[]} keys Key(s) to use. Format is 'root.childKey1.childKey2...'
-                 * @param {Object.<String, any>} d Data to traverse through recursively
-                 * @returns {any}
-                 */
-                p.getItem = (keys, d) => {
-                    if (typeof keys === 'string') {
-                        keys = keys.split('.');
-                    }
-
-                    if (!d) {
-                        d = data;
-                    }
-
-                    const key = keys.shift();
-
-                    return (keys.length && d[key]) ? p.getItem(keys, d[key]) : d[key];
-                };
-
-                /**
-                 * Removing the value by traversing through the dotted key
-                 * @param {String|String[]} keys Key(s) to use. Format is 'root.childKey1.childKey2...'
-                 * @param {Object.<String, any>} d Data to traverse through recursively
-                 * @returns {void}
-                 */
-                p.removeItem = (keys, d) => {
-                    if (typeof keys === 'string') {
-                        keys = keys.split('.');
-                    }
-
-                    if (!d) {
-                        d = data;
-                    }
-
-                    const key = keys.shift();
-
-                    if (!d[key]) {
-                        saveUserAttribute();
-                        return;
-                    }
-
-                    if (keys.length) {
-                        p.removeItem(keys, d[key]);
+                    if (ol) {
+                        ol.textContent = '';
                     }
                     else {
-                        delete d[key];
-                        saveUserAttribute();
+                        ol = mCreateElement('ol');
+                        container.appendChild(ol);
+                    }
+
+                    const prefix = (tabs.activeTab) ? 'cu_how_ios_p' : 'cu_how_andr_p';
+                    const list = Array.from({ length: 5 }, (_,i) => l[prefix + (i + 1)]);
+
+                    for (let i = list.length; i--;) {
+                        const txt = escapeHTML(list[i]).replace('[B]', '<b>').replace('[/B]', '</b>');
+                        const li = mCreateElement('li', null, [parseHTML(txt)]);
+                        ol.prepend(li);
                     }
                 };
 
-                /**
-                 * Updating the value by traversing through the dotted key
-                 * @param {String|String[]} keys Key(s) to use. Format is 'root.childKey1.childKey2...'
-                 * @param {any} value Value to set
-                 * @param {Object.<String, any>} d Data to traverse through recursively
-                 * @returns {void}
-                 */
-                p.setItem = (keys, value, d) => {
-                    if (typeof keys === 'string') {
-                        keys = keys.split('.');
+                container.prepend(tabs.el);
+
+                tabs.tabs = [
+                    {
+                        label: l.android,
+                        click: () => {
+                            tabs.activeTab = 0;
+                            renderList();
+                        },
+                        classes,
+                        activeClasses
+                    },
+                    {
+                        label: l.ios,
+                        click: () => {
+                            tabs.activeTab = 1;
+                            renderList();
+                        },
+                        classes,
+                        activeClasses
                     }
+                ];
 
-                    if (!d) {
-                        d = data;
-                    }
+                tabs.activeTab = 0;
+                renderList();
 
-                    const key = keys.shift();
+                return container;
+            };
 
-                    if (!d[key]) {
-                        d[key] = {};
-                    }
+            const footer = mCreateElement('div', { class: 'flex flex-row-reverse' });
 
-                    if (!keys.length) {
-                        d[key] = value;
-                        saveUserAttribute();
-                        return;
-                    }
+            MegaButton.factory({
+                parentNode: footer,
+                text: l.ok_button,
+                componentClassname: 'normal'
+            }).on('click.remove', () => {
+                mega.ui.sheet.hide();
+            });
 
-                    if (typeof d[key] !== 'object') {
-                        d[key] = {};
-                    }
-
-                    p.setItem(keys, value, d[key]);
-                };
-            }
-
-            return p;
-        }
-    };
-
-    return p;
-});
+            const options = {
+                name: 'how-to-cu',
+                title: l.cu_how_title,
+                contents: [dialogContents()],
+                showClose: true,
+                footer: {
+                    slot: [footer]
+                }
+            };
+            mega.ui.sheet.show(options);
+        });
+    }
+    else if (M.v.length) {
+        renderBanner(target, 'appdlh', l.cu_banner_title, l.cu_banner_txt1, l.download_now, () => {
+            window.open('https://mega.io/mobile', '_blank', 'noopener,noreferrer');
+        });
+    }
+};

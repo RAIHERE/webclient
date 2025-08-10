@@ -208,6 +208,9 @@ class MEGAPIRequest {
         // Unique request start ID
         this.seqNo = -Math.log(Math.random()) * 0x10000000 >>> 0;
 
+        // Dynamic handler to invoke whenever an API request is being retried.
+        this.retryHandler = null;
+
         /**
          * Unique Lexicographically Sortable Identifier
          * @property MEGAPIRequest.lex
@@ -287,6 +290,7 @@ class MEGAPIRequest {
         this.received = 0;
         this.residual = false;
         this.response = null;
+        this.retrying = 0;
         this.status = 0;
         this.symb = 0;
         this.timer = false;
@@ -484,6 +488,7 @@ class MEGAPIRequest {
         }
         else {
             this.inflight = null;
+            this.retryHandler = null;
             this.__ident_1 = Math.random().toString(31).slice(-7);
             queueMicrotask(() => this.flush().catch((ex) => self.d && this.logger.warn(ex)));
         }
@@ -538,13 +543,18 @@ class MEGAPIRequest {
         }
     }
 
-    notifyUpstreamFailure(error) {
+    async notifyUpstreamFailure(error) {
+        let result = error;
+
         for (let i = this.inflight.length; !this.cancelled && i--;) {
             const {options, payload, reject} = this.inflight[i];
 
             if (typeof options.notifyUpstreamFailure === 'function') {
-                let res = tryCatch(options.notifyUpstreamFailure)(error, payload, i, this.inflight.length);
+                let res = options.notifyUpstreamFailure(error, payload, {...options}, i, this.inflight.length);
 
+                if (res instanceof Promise) {
+                    res = await res.catch(echo);
+                }
                 if (res === EROLLEDBACK || res === EEXPIRED) {
                     if (self.d) {
                         this.logger.warn('Inflight request trap(%d)', res, payload);
@@ -565,11 +575,13 @@ class MEGAPIRequest {
 
                     if (res === EEXPIRED) {
 
+                        result = EAGAIN;
                         this.createRequestURL(this.inflight);
                     }
                 }
             }
         }
+        return result;
     }
 
     async errorHandler(res) {
@@ -584,7 +596,7 @@ class MEGAPIRequest {
 
             if (this.symb && !this.cancelled && this.inflight) {
 
-                this.notifyUpstreamFailure(res);
+                res = await this.notifyUpstreamFailure(res);
             }
 
             if (!this.cancelled) {
@@ -635,11 +647,78 @@ class MEGAPIRequest {
     }
 
     async fetch(uri, body) {
+        let response;
         const signal = this.getAbortSignal();
-        const response = await fetch(uri, {method: body ? 'POST' : 'GET', body, signal});
+        const options = {method: body ? 'POST' : 'GET', body, signal};
+
+        while (true) {
+            if (this.retryHandler && this.retrying++) {
+                this.retryHandler(options, this.retrying);
+            }
+            response = await fetch(uri, options);
+            if (response.status !== 402) {
+                break;
+            }
+            let cash = response.headers.get('X-Hashcash');
+            this.logger.assert(cash, `Invalid 402 response, missing header.`);
+
+            cash = cash.split(':');
+            this.logger.assert(cash.length === 4, `Invalid 402 response, unexpected number of elements ${cash}`);
+
+            const x = cash[0] | 0;
+            const y = parseInt(cash[1]);
+            this.logger.assert(x === 1 && y >= 0 && y < 256, `Invalid 402 response, mismatch ${cash}`);
+
+            options.headers = {
+                ...options.headers,
+                'X-Hashcash': `1:${cash[3]}:${await this.gencash(cash[3], y)}`
+            };
+        }
 
         this.response = response;
         this.status = response.status;
+    }
+
+    /**
+     * @param {String|Uint8Array} token 48-byte payload
+     * @param {Number} easiness encoded threshold,
+     * (maximum acceptable value in the first 32 bytes of the hash (little endian) - the lower, the harder to solve)
+     * @returns {Promise<String>} suitable base64-encoded four-byte prefix
+     */
+    async gencash(token, easiness) {
+        const buffer = new Uint8Array(4 + 262144 * 48);
+        const threshold = ((easiness & 63) << 1) + 1 << (easiness >> 6) * 7 + 3;
+
+        if (typeof token === 'string') {
+            token = new Uint8Array(base64_to_ab(token));
+        }
+
+        for (let i = 0; i < 262144; i++) {
+            buffer.set(token, 4 + i * 48);
+        }
+
+        let achieved = 0;
+        const round = async() => {
+            while (true) {
+                // increment prefix
+                for (let j = 0; ; j++) {
+                    buffer[j]++;
+                    if (buffer[j]) {
+                        break;
+                    }
+                }
+                const prefix = buffer.slice(0, 4);
+                const view = new DataView(await crypto.subtle.digest("SHA-256", buffer));
+
+                if (achieved || view.getUint32(0) <= threshold) {
+                    achieved = 1;
+                    return ab_to_base64(prefix);
+                }
+            }
+        };
+
+        // in theory, this should scale with the number of CPU cores, but no such luck on Chromium
+        return Promise.race([round(), round()]);
     }
 
     async parser() {
@@ -1165,8 +1244,8 @@ class MEGAKeepAliveStream {
     }
 
     async fetch(options) {
-        this.schedule(36);
-        const {body, ok, status, statusText} = await fetch(this.url, options);
+        this.schedule(42);
+        const {body, ok, status, statusText} = await this.fire(options);
 
         this.status = status;
         if (!(ok && status === 200)) {
@@ -1180,6 +1259,9 @@ class MEGAKeepAliveStream {
 
         this.reader = body.getReader();
         return new ReadableStream(this);
+    }
+    fire(options) {
+        return fetch(this.url, options);
     }
 
     async start(controller) {
@@ -1277,16 +1359,16 @@ lazy(self, 'api', () => {
     'use strict';
     const chunkedSplitHandler = freeze({
         cs: freeze({
-            '[': tree_residue,     // tree residue
-            '[{[f{': tree_node,    // tree node
-            '[{[f2{': tree_node,   // tree node (versioned)
-            '[{[ok0{': tree_ok0    // tree share owner key
+            '[': self.tree_residue,     // tree residue
+            '[{[f{': self.tree_node,    // tree node
+            '[{[f2{': self.tree_node,   // tree node (versioned)
+            '[{[ok0{': self.tree_ok0    // tree share owner key
         }),
         sc: freeze({
-            '{': sc_residue,       // SC residue
-            '{[a{': sc_packet,     // SC command
-            '{[a{{t[f{': sc_node,  // SC node
-            '{[a{{t[f2{': sc_node  // SC node (versioned)
+            '{': self.sc_residue,       // SC residue
+            '{[a{': self.sc_packet,     // SC command
+            '{[a{{t[f{': self.sc_node,  // SC node
+            '{[a{{t[f2{': self.sc_node  // SC node (versioned)
         })
     });
     const channels = [
@@ -1308,15 +1390,18 @@ lazy(self, 'api', () => {
         // WSC interface (chunked mode)
         [5, 'wsc', chunkedSplitHandler.sc],
 
-        // off band attribute requests (keys) for chat
-        [6, 'cs']
+        // off band requests for chat
+        [6, 'cs'],
+
+        // off band, general purpose
+        [7, 'cs']
     ];
     const apixs = [];
     const catchup = new Set();
     const inflight = new Map();
     const observers = new MapSet();
-    const seenTreeFetch = new Set();
     const pendingTreeFetch = new Set();
+    const inflightTreeFetch = new Set();
     const logger = new MegaLogger(`api.xs${makeUUID().substr(-18)}`);
     const clone = ((clone) => (value) => clone(value))(window.Dexie && Dexie.deepClone || window.clone || echo);
     const cache = new LRULapse(12, 36, self.d > 0 && ((...args) => logger.debug('reply.cache flush', ...args)));
@@ -1352,7 +1437,10 @@ lazy(self, 'api', () => {
     // Set globally-accessed current sequence-tag
     const mSetSt = (st) => {
         if (isScRunning()) {
-            currst = st || null;
+            if (self.d && !st) {
+                logger.warn('zero seqtag...', typeof st, st);
+            }
+            currst = st || currst;
         }
         else if (d) {
             logger[st === '.' ? 'info' : 'warn']('SC connection is not ready, per st=%s', st || null);
@@ -1362,7 +1450,7 @@ lazy(self, 'api', () => {
     // Set globally-accessed last-seen sequence-tag
     const mSetLastSt = (st) => {
         if (st !== lastst) {
-            if (self.d > 1) {
+            if (self.d > 1 || 'rad' in mega) {
                 logger.warn('Updating last-st, %s -> %s', lastst, st);
             }
             lastst = typeof st === 'string' && st || lastst;
@@ -1562,11 +1650,11 @@ lazy(self, 'api', () => {
     });
 
     Object.defineProperty(inflight, 'remove', {
-        value: function(...args) {
+        value(...args) {
             for (let i = args.length; i--;) {
                 this.delete(args[i]);
             }
-            delay('api!sc<resume>', () => {
+            queueMicrotask(() => {
                 console.assert(this.size || !window.scinflight, 'Invalid SC-inflight state, API gave no ST?');
                 return !this.size && window.scinflight && queueMicrotask(execsc);
             });
@@ -1653,8 +1741,9 @@ lazy(self, 'api', () => {
                 if (options.apipath || options.queryString) {
                     options.symb |= MEGAPIRequest.SYMB_CUSTOMREQUEST;
                 }
-                if (options.notifyUpstreamFailure) {
+                if (typeof options.notifyUpstreamFailure === 'function') {
                     options.symb |= MEGAPIRequest.SYMB_NOTIFYFAILURE;
+                    options.notifyUpstreamFailure = tryCatch(options.notifyUpstreamFailure.bind(channel));
                 }
 
                 instance.enqueue({type, payload, options, resolve, reject}).catch(reject);
@@ -1679,6 +1768,26 @@ lazy(self, 'api', () => {
                     });
                 }
                 promise = promise.finally(() => inflight.remove(key));
+            }
+
+            if (observers.hooks) {
+                const {channel, service} = instance;
+                for (let i = observers.hooks.length; i--;) {
+                    const res = observers.hooks[i]({channel, service, payload});
+
+                    if (res === false) {
+                        observers.hooks.splice(i, 1);
+                        if (!observers.hooks.length) {
+                            delete observers.hooks;
+                        }
+                    }
+                    else if (typeof res === 'function') {
+                        promise = promise.then(res);
+                    }
+                    if (res && 'retryHandler' in res) {
+                        instance.retryHandler = res.retryHandler;
+                    }
+                }
             }
 
             return promise;
@@ -1739,12 +1848,16 @@ lazy(self, 'api', () => {
          */
         async tree(handles) {
 
-            if (Array.isArray(handles)) {
-
-                handles.forEach(pendingTreeFetch.add, pendingTreeFetch);
+            if (!Array.isArray(handles)) {
+                handles = [handles];
             }
-            else {
-                pendingTreeFetch.add(handles);
+
+            for (let i = handles.length; i--;) {
+                const h = handles[i];
+
+                if (!inflightTreeFetch.has(h)) {
+                    pendingTreeFetch.add(h);
+                }
             }
 
             return lock('tree-fetch.lock', async() => {
@@ -1755,11 +1868,8 @@ lazy(self, 'api', () => {
                 for (let i = pending.length; i--;) {
                     const n = pending[i];
 
-                    if (!seenTreeFetch.has(n) && (!M.d[n] || M.d[n].t && !M.c[n])) {
-
-                        payload.n.push(n);
-                        seenTreeFetch.add(n);
-                    }
+                    payload.n.push(n);
+                    inflightTreeFetch.add(n);
                 }
 
                 if (payload.n.length) {
@@ -1767,8 +1877,9 @@ lazy(self, 'api', () => {
                         logger.info('Requesting %d tree nodes...', payload.n.length);
                     }
                     const res = await this.req(payload, 4).catch(echo);
+                    inflightTreeFetch.clear();
 
-                    if (typeof res === 'number' && res < 0 && res !== EACCESS) {
+                    if (Number(res) < 0 && res !== EACCESS) {
                         throw res;
                     }
 
@@ -1786,15 +1897,19 @@ lazy(self, 'api', () => {
          */
         ack(pr, pid, hold) {
             if (!inflight.has(pid)) {
+                if (self.d || 'rad' in mega) {
+                    const a1 = currst && this.stcmp(pr.st, currst);
+                    const a2 = inflight.size ? inflight.has(pr.st) : -1;
+                    logger.warn('push(%s)=%s/%s', pid, a1, a2, currst, lastst, hold, [pr]);
+                }
+
                 if (!inflight.size) {
                     return 3;
                 }
 
-                // logger.warn('ack(%s)=%s/%s', pid, pr.st > currst, inflight.has(pr.st), currst, lastst, hold, [pr]);
-
                 pid = inflight.get(pr.st);
                 if (!pid) {
-                    return pr.st > currst ? 7 : 2;
+                    return currst && this.stcmp(pr.st, currst) > 0 ? 7 : 2;
                 }
             }
 
@@ -1980,6 +2095,38 @@ lazy(self, 'api', () => {
                     req.timer.cancel(true);
                 }
             }
+        },
+
+        /**
+         * Helper used for yielding to the main thread once an API request has been dispatched,
+         * so that we can continue execution while awaiting a server response, with the
+         * continuation scheduled as a prioritized task.
+         * @param {Number} [channel] API channel.
+         * @returns {!Promise<*>} void
+         * @memberOf api
+         */
+        async yield(channel) {
+            if (channel >= 0 && channel < channels.length) {
+
+                if (channels[channel]) {
+                    const xs = apixs[channel];
+
+                    await navigator.locks.request(xs.__ident_0, () => lock(channel));
+
+                    while (xs.flushing && !xs.inflight) {
+
+                        await tSleep(-1);
+                    }
+                }
+            }
+            else if (channel === undefined) {
+
+                for (let i = channels.length; i--;) {
+
+                    await this.yield(i).catch(dump);
+                }
+            }
+            return document.hidden || scheduler.yield();
         },
 
         /**
@@ -2252,7 +2399,12 @@ lazy(self, 'api', () => {
          * @memberOf api
          */
         observe(what, callback) {
-            observers.set(what, callback);
+            observers.set(what, tryCatch(callback));
+
+            if (what === 'setsid' && apixs[2] && apixs[2].sid.endsWith(self.u_sid)) {
+                // sid already available, notify.
+                this.notify(what, self.u_sid);
+            }
         },
 
         /**
@@ -2264,11 +2416,31 @@ lazy(self, 'api', () => {
          * @private
          */
         notify(what, data) {
-            delay(`api:event-notify.${what}`, () => {
-                observers.find(what, (callback) => {
-                    queueMicrotask(callback.bind(null, data));
+
+            if (!observers[what] && observers.has(what)) {
+
+                queueMicrotask(() => {
+                    delete observers[what];
+
+                    observers.find(what, (callback) => {
+
+                        callback(data);
+                    });
                 });
-            });
+                observers[what] = 1;
+            }
+        },
+
+        /**
+         * Watcher for API requests.
+         * @param {Function} cb hook
+         * @memberOf api
+         */
+        hook(cb) {
+            if (!observers.hooks) {
+                observers.hooks = [];
+            }
+            observers.hooks.push(tryCatch(cb));
         },
 
         /**
@@ -2302,6 +2474,30 @@ lazy(self, 'api', () => {
                     }
                 }
             }
+        },
+
+        /**
+         * Compare sequence tags
+         * @param {String} st1 left seqtag
+         * @param {String} st2 right seqtag
+         * @returns {Number} 1 if left newer, -1 if right newer, 0 if both are equal, NaN if invalid data passed.
+         */
+        stcmp(st1, st2) {
+            if (typeof st1 !== 'string' || typeof st2 !== 'string') {
+
+                if (self.d) {
+                    logger.warn(`[stcmp] Ignoring invalid data passed...`, st1, st2);
+                }
+
+                return NaN;
+            }
+
+            if (st1.length === st2.length) {
+
+                return st1 > st2 ? 1 : st1 < st2 ? -1 : 0;
+            }
+
+            return st1.length > st2.length ? 1 : -1;
         },
 
         /**
@@ -2339,7 +2535,7 @@ lazy(self, 'api', () => {
                     for (const pending of catchup) {
                         const {st, resolve} = pending;
 
-                        if (pkt.st >= st) {
+                        if (this.stcmp(pkt.st, st) >= 0) {
                             fire(resolve, pkt.st);
                             catchup.delete(pending);
                             break;
@@ -2350,7 +2546,7 @@ lazy(self, 'api', () => {
             }
 
             return new Promise((resolve) => {
-                if (lastst >= pkt || !isScRunning()) {
+                if (this.stcmp(lastst, pkt) >= 0 || !isScRunning()) {
                     return fire(resolve, pkt);
                 }
                 catchup.add({st: pkt, resolve});

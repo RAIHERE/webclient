@@ -688,15 +688,13 @@ function secondsToTimeShort(secs) {
     'use strict';
     var val = secondsToTime(secs);
 
-    if (!val) {
-        return val;
-    }
-
-    if (val.substr(0, 1) === "0") {
-        val = val.substr(1, val.length);
-    }
-    if (val.substr(0, 2) === "0:") {
-        val = val.substr(2, val.length);
+    if (val) {
+        if (val[0] === "0") {
+            val = val.slice(1);
+        }
+        if (val[1] === ':' && val[0] === '0') {
+            val = val.slice(2);
+        }
     }
 
     return val;
@@ -1052,13 +1050,14 @@ mBroadcaster.once('boot_done', function populate_l() {
         'pricing': "https://mega.io/pricing",
         'vpn': "https://mega.io/vpn",
         'vpn#dow': "https://mega.io/vpn#downloadapps",
-        'pass#dow': "https://mega.io/pass#downloadapps",
+        'pass': "https://mega.io/pass",
+        'pass#dow': "https://mega.io/pass#downloadapp",
     };
 
     const mega_io_hyperlinks = Object.create(null);
 
     for (const key in mega_io_links) {
-        mega_io_hyperlinks[key] = `<a href="${mega_io_links[key]}" target="_blank" rel="noopener noreferrer">`;
+        mega_io_hyperlinks[key] = `<a href="${mega_io_links[key]}" target="_blank" rel="noopener">`;
     }
 
     // MEGA static hosts
@@ -1090,12 +1089,7 @@ mBroadcaster.once('boot_done', function populate_l() {
     l[7156] = escapeHTML(l[7156])
         .replace('[A]', '<a href="https://mega.io/mobile" target="_blank" class="clickurl">')
         .replace('[/A]', '</a>');
-    l[7202] = escapeHTML(l[7202]).replace(
-        '[A]',
-        '<a href="https://mega.io/resellers" target="_blank" rel="noopener noreferrer" class="voucher-reseller-link">'
-    ).replace('[/A]', '</a>');
     l[7709] = escapeHTML(l[7709]).replace('[S]', '<span class="complete-text">').replace('[/S]', '</span>');
-    l[7945] = escapeHTML(l[7945]).replace('[B]', '<b>').replace('[/B]', '</b>');
     l[7991] = escapeHTML(l[7991])
         .replace('%1', '<span class="provider-icon"></span><span class="provider-name"></span>');
     l[7996] = escapeHTML(l[7996]).replace('[S]', '<span class="purchase">').replace('[/S]', '</span>');
@@ -1183,6 +1177,13 @@ mBroadcaster.once('boot_done', function populate_l() {
             + '">'
         )
         .replace('[/A3]', '</a>');
+    l.double_billing_sub_cancel = escapeHTML(l.double_billing_sub_cancel)
+        .replace(
+            '[A]',
+            `<a href="https://help.mega.io/plans-storage/payments-billing/cancel-mobile-subscription"
+                target="_blank" class="clickurl">`
+        )
+        .replace('[/A]', '</a>');
     l[16865] = escapeHTML(l[16865])
         .replace('[A]', '<a href="https://mega.io/desktop" target="_blank" class="clickurl">')
         .replace('[/A]', '</a>');
@@ -1252,6 +1253,10 @@ mBroadcaster.once('boot_done', function populate_l() {
     l[23709] = escapeHTML(l[23709]).replace('[B]', '').replace('[/B]', '');
     l['23789.s'] = escapeHTML(l[23789]).replace('%1', '<span></span>');
     l['23790.s'] = escapeHTML(l[23790]).replace('%1', '<span></span>');
+    l.share_unverified_dialog_desc = escapeHTML(l.share_unverified_dialog_desc)
+        .replace('[A]', '<a href="https://help.mega.io/security/data-protection/contact-verification-reminders" ' +
+            'target="_blank" rel="noopener noreferrer">')
+        .replace('[/A]', '</a>');
 
     // Mobile only
     if (is_mobile) {
@@ -1296,7 +1301,12 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace('[/A]', '</a>');
     l[22074] = escapeHTML(l[22074]).replace('[S]', '<span class="purchase">').replace('[/S]', '</span>');
     l[22077] = escapeHTML(l[22077]).replace('[S]', '<span class="green strong">').replace('[S]', '</span>');
-    l[22248] = escapeHTML(l[22248]).replace(/\[S]/g, '<strong>').replace(/\[\/S]/g, '</strong>');
+    l[22248] = escapeHTML(l[22248]).replace(/\[S]/g, '<strong>').replace(/\[\/S]/g, '</strong>')
+        .replace('[A]',
+                 `<a target="_blank" class="clickurl" href="${
+                     l.mega_help_host
+                 }/security/data-protection/credential-stuffing">`)
+        .replace('[/A]', '</a>');
     l[22667] = escapeHTML(l[22667])
         .replace(/\[S]/g, '<span>').replace(/\[\/S]/g, '</span>')
         .replace('[A]', '<a class="clickurl" href="/pro" data-eventid="500491">')
@@ -1305,95 +1315,10 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace(/\[S]/g, '<span>').replace(/\[\/S]/g, '</span>')
         .replace('[A]', '<a class="clickurl" href="/pro" data-eventid="500490">')
         .replace('[/A]', '</a>');
-    l[22685] = escapeHTML(l[22685]).replace('[B]', '<strong>').replace('[/B]', '</strong>');
-    l[22689] = escapeHTML(l[22689]).replace('[B]', '<strong>').replace('[/B]', '</strong>');
-    l[22696] = escapeHTML(l[22696])
-        .replace('[A]', '<a class="clickurl" href="/pro" data-eventid="500481">').replace('[/A]', '</a>')
-        .replace('[S]', '<span class="no-buisness">').replace('[/S]', '</span>');
-    l[22700] = escapeHTML(l[22700]).replace('[S]', '<i class="sprite-fm-mono icon-up"></i><span>')
-        .replace('[/S]', '</span>').replace('%1', '');
-    l[22723] = escapeHTML(l[22723]).replace('[B]', '<strong>').replace('[/B]', '</strong>');
-    l['22726.m'] = escapeHTML(l[22726]).replace('[B]', '<strong>').replace('[/B]', '*</strong>');
-    l[22726] = escapeHTML(l[22726]).replace('[B]', '<strong>').replace('[/B]', '</strong>');
-    l[22771] = escapeHTML(l[22771]).replace('[B]', '<strong>').replace('[/B]', '</strong>');
-    l[22898] = escapeHTML(l[22898]).replace('[A]', '<a class="clickurl" href="https://mega.io/mobile" target="_blank">')
-        .replace('[/A]', '</a>')
-        .replace('[BR]', '<br>');
     l[22900] = escapeHTML(l[22900]).replace('[A]', '<a class="reg-success-change-email-btn">').replace('[/A]', '</a>');
     l['23062.k'] = escapeHTML(l[23062]).replace('[%s]', l[7049]);
-    let referral_program_rules = '';
-    const breaks = '[BR][BR]';
-    const referralProgramStrings = [
-        l.referral_program_rules_p0,
-        '[BR]',
-        l.referral_program_rules_l0,
-        l.referral_program_rules_l1,
-        l.referral_program_rules_l2,
-        '[BR]',
-        l.referral_program_rules_p1,
-        breaks,
-        l.referral_program_rules_p2,
-        breaks,
-        l.referral_program_rules_p3,
-        breaks,
-        l.referral_program_rules_p4,
-        breaks,
-        l.referral_program_rules_p5,
-        breaks,
-        l.referral_program_rules_p6,
-        breaks,
-        l.referral_program_rules_p7,
-        breaks,
-        l.referral_program_rules_p8,
-        breaks,
-        l.referral_program_rules_p9,
-        breaks,
-        l.referral_program_rules_p10,
-        breaks,
-        l.referral_program_rules_p11,
-        breaks,
-        l.referral_program_rules_p12,
-        breaks,
-        l.referral_program_rules_p13,
-        breaks,
-        l.referral_program_rules_p14,
-        breaks,
-        l.referral_program_rules_p15,
-        breaks,
-        l.referral_program_rules_p16,
-        breaks,
-        l.referral_program_rules_p17
-    ];
-    for (let i = 0; i < referralProgramStrings.length; i++){
-        referral_program_rules += referralProgramStrings[i];
-    }
-    l['referral_program_rules.d'] = escapeHTML(referral_program_rules)
-        .replace(/\[P]/g, '').replace(/\[\/P]/g, '')
-        .replace(/\[L]/g, '<i class="sprite-fm-mono icon-check"></i><div class="affiliate-guide info">')
-        .replace(/\[\/L]/g, '</div>')
-        .replace(/\[BR]/g, '<br>')
-        .replace(/\[A]/g, '<a class="clickurl" href="https://mega.io/terms" target="_blank">')
-        .replace(/\[\/A]/g, '</a>');
-    l['referral_program_rules.m'] = escapeHTML(referral_program_rules)
-        .replace(/\[P]/g, '<div class="mobile button-block no-bg"><div class="mobile label-info no-icon">')
-        .replace(/\[\/P]/g, '</div></div>')
-        .replace(/\[L]/g, '<div class="mobile button-block no-bg"><div class="mobile fm-icon green-tick">' +
-            '</div><div class="mobile label-info">').replace(/\[\/L]/g, '</div></div>')
-        .replace(/\[BR]/g, '')
-        .replace(/\[A]/g, '<a class="clickurl" href="https://mega.io/terms" target="_blank">')
-        .replace(/\[\/A]/g, '</a>');
-    l[23214] = escapeHTML(l[23214]).replace('[A]', '<a class="fm-affiliate guide-dialog to-rules">')
-        .replace('[/A]', '</a>');
     l[23243] = escapeHTML(l[23243])
         .replace('[A]', '<a href="https://mega.io/terms" class="clickurl" target="_blank">')
-        .replace('[/A]', '</a>');
-    l[23370] = escapeHTML(l[23370]).replace('[A]', '<a class="mailto" href="mailto:support@mega.nz">')
-        .replace('[/A]', '</a>');
-    l[23371] = escapeHTML(l[23371]).replace('[A]', '<a class="mailto" href="mailto:support@mega.nz">')
-        .replace('[/A]', '</a>');
-    l[23372] = escapeHTML(l[23372]).replace('[A]', '<a class="mailto" href="mailto:support@mega.nz">')
-        .replace('[/A]', '</a>');
-    l[23373] = escapeHTML(l[23373]).replace('[A]', '<a class="mailto" href="mailto:support@mega.nz">')
         .replace('[/A]', '</a>');
     l[24431] = escapeHTML(l[24431]).replace('[A]', '<a href="/repay" class="clickurl">').replace('[/A]', '</a>')
         .replace('[S]', '<span>').replace('[/S]', '</span>');
@@ -1559,6 +1484,10 @@ mBroadcaster.once('boot_done', function populate_l() {
             `<a class="clickurl" target="_blank" href="${l.mega_help_host}`
             + `/megas4/s4-buckets/change-bucket-object-url-access">`
         ).replace('[/A]', '</a>');
+    l.s4_pro_egress_info = escapeHTML(l.s4_pro_egress_info)
+        .replace(
+            '[A]', '<a class="link clickurl" target="_blank" href="https://mega.io/terms#S4">'
+        ).replace('[/A]', '</a>');
     l.pro_flexi_expired_banner = escapeHTML(l.pro_flexi_expired_banner)
         .replace('[A]', '<a href="/repay" class="clickurl">').replace('[/A]', '</a>')
         .replace('[S]', '<span>').replace('[/S]', '</span>');
@@ -1581,10 +1510,6 @@ mBroadcaster.once('boot_done', function populate_l() {
     l.file_request_upload_caption_2 = escapeHTML(l.file_request_upload_caption_2)
         .replace('[A]', '<a target="_blank" href="https://help.mega.io/files-folders/sharing/upload-file-request">')
         .replace('[/A]', '</a>');
-    l.redemption_support_email = escapeHTML(l.redemption_support_email)
-        .replace('[S]', '<span>').replace('[/S]', '</span>');
-    l.estimated_price_text_min_50 = escapeHTML(l.estimated_price_text_min_50)
-        .replace('[S]', '<span>').replace('[/S]', '</span>');
 
     // TODO: Combine all of these limited dl strings to be done at once in a new array?
     l.dl_limited_tq_mini = escapeHTML(l.dl_limited_tq_mini)
@@ -1737,7 +1662,8 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace(/\[\/S\d]/g, '</span>');
 
     l.manage_link_export_link_text = escapeHTML(l.manage_link_export_link_text)
-        .replace('[A]', '<a target="_blank" href="https://help.mega.io/files-folders/sharing/encrypted-links">')
+        .replace('[A]',
+                 '<a target="_blank" href="https://help.mega.io/security/data-protection/make-links-more-secure">')
         .replace('[/A]', '</a>');
     l.terms_dialog_text = escapeHTML(l.terms_dialog_text)
         .replace('[A]', '<a href="https://mega.io/terms" target="_blank" rel="noopener noreferrer">')
@@ -1776,6 +1702,18 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace('[/A]', '</a>');
     l.s4_voucher_terms = escapeHTML(l.s4_voucher_terms)
         .replace('[A]', '<a class="clickurl" href="https://mega.io/s4-terms" target="_blank">')
+        .replace('[/A]', '</a>');
+    l.pwm_upsell_desc = escapeHTML(l.pwm_upsell_desc)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/pass" target="_blank">')
+        .replace('[/A]', '</a>');
+    l.vpn_upsell_desc = escapeHTML(l.vpn_upsell_desc)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/vpn" target="_blank">')
+        .replace('[/A]', '</a>');
+    l.pro_welcome_dialog_pwm_desc = escapeHTML(l.pro_welcome_dialog_pwm_desc)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/pass" target="_blank">')
+        .replace('[/A]', '</a>');
+    l.pro_welcome_dialog_vpn_desc = escapeHTML(l.pro_welcome_dialog_vpn_desc)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/vpn" target="_blank">')
         .replace('[/A]', '</a>');
 
     const rewindHelpLink = 'https://help.mega.io/files-folders/rewind/how-do-i-use-rewind';
@@ -1822,13 +1760,29 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace(/\[S\d]/g, '<span>')
         .replace(/\[\/S\d]/g, '</span>');
 
-    l.logout_recovery_key = escapeHTML(l.logout_recovery_key)
-        .replace('[A]', `<a href="${recoveryKeyLink}" target="_blank">`)
+    l.invite_subject_text = escapeHTML(encodeURIComponent(l.invite_subject_text));
+
+    l.dc_empty_desc_noapp = escapeHTML(l.dc_empty_desc_noapp)
+        .replace('[A]', `<a href="${l.mega_help_host}/installs-apps/desktop/backup-vs-sync"
+                            target="_blank" class="clickurl">`)
         .replace('[/A]', '</a>');
 
-    l.invite_subject_text = escapeHTML(encodeURIComponent(l.invite_subject_text));
-    l.available_commission_tip = escapeHTML(l.available_commission_tip)
-        .replace('[A]', '<a class="clickurl" href="/pro">').replace('[/A]', '</a>');
+    l.dc_empty_desc_withapp = escapeHTML(l.dc_empty_desc_withapp)
+        .replace('[A]', `<a href="${l.mega_help_host}/installs-apps/desktop/backup-vs-sync"
+                            target="_blank" class="clickurl">`)
+        .replace('[/A]', '</a>');
+
+    l.dc_no_active_devices_desc = escapeHTML(l.dc_no_active_devices_desc)
+        .replace('[S]', '<span class="js-inactive-filter-select">')
+        .replace('[/S]', '</span>')
+        .replace('[A1]', '<a href="https://mega.io/desktop" target="_blank" class="clickurl">')
+        .replace('[/A1]', '</a>')
+        .replace('[A2]', '<a href="https://mega.io/mobile" target="_blank" class="clickurl">')
+        .replace('[/A2]', '</a>');
+
+    l.dc_no_active_folders_desc = escapeHTML(l.dc_no_active_folders_desc)
+        .replace('[S]', '<span class="js-inactive-filter-select">')
+        .replace('[/S]', '</span>');
 
     l.etd_link_removed_body = escapeHTML(l.etd_link_removed_body)
         .replace('[A1]', `<a href="https://mega.io/terms" target="_blank">`)
@@ -1838,11 +1792,11 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace('[P]', '<h3 class="sub-header">')
         .replace('[/P]', '</h3>');
 
-    l.s4_s3_prefix_example = escapeHTML(l.s4_s3_prefix_example)
+    l.s4_iam_prefix_usage = escapeHTML(l.s4_iam_prefix_usage)
         .replace(/\[S]/g, '<span class="code">')
         .replace(/\[\/S]/g, '</span>');
 
-    l.s4_iam_prefix_example = escapeHTML(l.s4_iam_prefix_example)
+    l.s4_s3_endpoint_prefix_tip = escapeHTML(l.s4_s3_endpoint_prefix_tip)
         .replace(/\[S]/g, '<span class="code">')
         .replace(/\[\/S]/g, '</span>');
 
@@ -1865,6 +1819,18 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace('[/A]', '</a>')
         .replace('[B]', '<b>')
         .replace('[/B]', '</b>');
+
+    l.s4_activation_terms = escapeHTML(l.s4_activation_terms)
+        .replace('[A1]', '<a href="https://mega.io/terms#S4" target="_blank" class="clickurl">')
+        .replace('[/A1]', '</a>')
+        .replace('[A2]', '<a href="https://mega.io/terms" target="_blank" class="clickurl">')
+        .replace('[/A2]', '</a>')
+        .replace('[A3]', '<a href="https://mega.io/privacy" target="_blank" class="clickurl">')
+        .replace('[/A3]', '</a>');
+
+    l.s4_cnt_exists_error = escapeHTML(l.s4_cnt_exists_error)
+        .replace('[A]', '<a href="mailto:support@mega.nz">')
+        .replace('[/A]', '</a>');
 
     l.content_removed = escapeHTML(l.content_removed)
         .replace('[A]', '<a class="clickurl" href="https://mega.io/takedown" target="_blank">')
@@ -1893,19 +1859,32 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace('[/A1]', '</a>')
         .replace('[A2]', `<a ${rewindLinkAttr} href="${rewindHelpLink}">`)
         .replace('[/A2]', '</a>');
+
+    l.dc_app_promo_gstarted_desc = escapeHTML(l.dc_app_promo_gstarted_desc)
+        .replace('[A1]', '<a class="clickurl" href="https://mega.io/desktop" target="_blank">')
+        .replace('[/A1]', '</a>')
+        .replace('[A2]', '<a class="clickurl" href="https://mega.io/mobile" target="_blank">')
+        .replace('[/A2]', '</a>');
+    l.dc_app_promo_backup_desc = escapeHTML(l.dc_app_promo_backup_desc)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/desktop" target="_blank">')
+        .replace('[/A]', '</a>');
+    l.dc_app_promo_sync_desc = escapeHTML(l.dc_app_promo_sync_desc)
+        .replace('[A1]', '<a class="clickurl" href="https://mega.io/desktop" target="_blank">')
+        .replace('[/A1]', '</a>')
+        .replace('[A2]', `<a class="clickurl"
+            target="_blank"
+            href="https://play.google.com/store/apps/details?id=mega.privacy.android.app&referrer=meganzdc">`)
+        .replace('[/A2]', '</a>');
+    l.dc_app_promo_cuploads_desc = escapeHTML(l.dc_app_promo_cuploads_desc)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/mobile">')
+        .replace('[/A]', '</a>');
+
     l.agree_vpn_tos = escapeHTML(l.agree_vpn_tos)
         .replace('[A]', '<a class="clickurl" href="https://mega.io/vpn-terms" target="_blank">')
         .replace('[/A]', '</a>');
     l.then_price_m_after_n_days = escapeHTML(l.then_price_m_after_n_days)
         .replace(/\[S]/g, '<span class="asterisk">')
         .replace(/\[\/S]/g, '</span>');
-    l.after_trial_card_charged_m = escapeHTML(l.after_trial_card_charged_m);
-    l.trial_details_visit_tos = escapeHTML(l.trial_details_visit_tos)
-        .replace('[A1]', mega_io_hyperlinks['terms#recPaiSub'])
-        .replace('[A2]', mega_io_hyperlinks['terms#ref'])
-        .replace('[A3]', mega_io_hyperlinks['p-s/p-b/c-s'])
-        .replace('[A4]', mega_io_hyperlinks.terms)
-        .replace(/\[\/A\d*]/g, '</a>');
     l.vpn_is_attached_text = escapeHTML(l.vpn_is_attached_text)
         .replace('[A1]', mega_io_hyperlinks['vpn#dow'])
         .replace('[A2]', mega_io_hyperlinks.pricing)
@@ -1951,20 +1930,113 @@ mBroadcaster.once('boot_done', function populate_l() {
         .replace('[A]', '<a href="mailto:support@mega.nz">')
         .replace('[/A]', '</a>');
 
-    l.item_updated = escapeHTML(l.item_updated)
-        .replace('[S]', '"<span class="long-title-truncate">')
-        .replace('[/S]', '</span>"');
+    for (const key of [
+        'file_renamed_to',
+        'folder_renamed_to',
+        'mobile_file_move_to_folder',
+        'mobile_file_copy_to_folder',
+        'mobile_folder_move_to_folder',
+        'mobile_folder_copy_to_folder',
+        'item_updated',
+        'delete_confirmation_title',
+        'item_deleted',
+    ]) {
 
-    l.delete_confirmation_title = escapeHTML(l.delete_confirmation_title)
-        .replace('[S]', '<span class="long-title-truncate">"')
-        .replace('[/S]', '</span>"');
-
-    l.item_deleted = escapeHTML(l.item_deleted)
-        .replace('[S]', '"<span class="long-title-truncate">')
-        .replace('[/S]', '</span>"');
+        l[key] = escapeHTML(l[key])
+            .replace(/\[S]/g, '"<span class="long-title-truncate">')
+            .replace(/\[\/S]/g, '</span>"');
+    }
 
     l.request_failed = escapeHTML(l.request_failed)
         .replace('[A]', '<a href="mailto:support@mega.nz">')
+        .replace('[/A]', '</a>');
+
+    l.recovery_key_subtitle = escapeHTML(l.recovery_key_subtitle)
+        .replace('[A]', `<a class="clickurl" href="${recoveryKeyLink}" target="_blank">`)
+        .replace('[/A]', '</a>');
+
+    l.select_file_notes = escapeHTML(l.select_file_notes)
+        .replace('[B]', '<b>')
+        .replace('[/B]', '</b>');
+
+    l.import_notes = escapeHTML(l.import_notes)
+        .replace('[A]',
+                 `<a class="clickurl" href="https://help.mega.io/pass/features/import-passwords" target="_blank">`)
+        .replace('[/A]', '</a>');
+
+    l.import_password_subtitle = escapeHTML(l.import_password_subtitle)
+        .replace('[A]',
+                 `<a class="clickurl" href="https://help.mega.io/pass/features/import-passwords" target="_blank">`)
+        .replace('[/A]', '</a>');
+
+    l.referral_close_full = escapeHTML(l.referral_close_full)
+        .replace('[A]', '<a href="https://mega.io/refer" target="_blank" class="clickurl">')
+        .replace('[/A]', '</a>');
+
+    l.referral_close_text = escapeHTML(l.referral_close_text)
+        .replace('[A]', '<a href="https://mega.io/refer" target="_blank">')
+        .replace('[/A]', '</a>');
+
+    l.chat_protected = escapeHTML(l.chat_protected)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/chatandmeetings" target="_blank">')
+        .replace('[/A]', '</a>');
+    l.meeting_protected = escapeHTML(l.meeting_protected)
+        .replace('[A]', '<a class="clickurl" href="https://mega.io/chatandmeetings" target="_blank">')
+        .replace('[/A]', '</a>');
+    l.pro_for_duration = escapeHTML(l.pro_for_duration)
+        .replace('[S1]', '<span class="plan-name">').replace('[/S1]', '</span>')
+        .replace('[S2]', '<span class="plan-duration">').replace('[/S2]', '</span>')
+        .replace('[S3]', '<span class="plan-duration">').replace('[/S3]', '</span>');
+    l.you_have_selected_vpn = escapeHTML(l.you_have_selected_vpn)
+        .replace('[S]', '<span>').replace('[/S]', '</span>');
+    l.you_have_selected_pass = escapeHTML(l.you_have_selected_pass)
+        .replace('[S]', '<span>').replace('[/S]', '</span>');
+    l.you_have_selected_vpn_trial = escapeHTML(l.you_have_selected_vpn_trial)
+        .replace('[S]', '<span>').replace('[/S]', '</span>');
+    l.you_have_selected_pass_trial = escapeHTML(l.you_have_selected_pass_trial)
+        .replace('[S]', '<span>').replace('[/S]', '</span>');
+
+    const otpHelpLink = 'https://help.mega.io/pass/mega-pass-features/one-time-passwords';
+
+    l.otp_promo_dialog_content = escapeHTML(l.otp_promo_dialog_content)
+        .replace(/\[BR]/g, '<br>')
+        .replace('[A]', `<a href=${otpHelpLink} target="_blank">`)
+        .replace('[/A]', '</a>');
+
+    l.otp_field_instructions = escapeHTML(l.otp_field_instructions)
+        .replace('[S]', '<span>').replace('[/S]', '</span>')
+        .replace('[A]', '<a class="clickurl">').replace('[/A]', '</a>');
+
+    l.otp_learn_more = escapeHTML(l.otp_learn_more)
+        .replace('[A]', `<a class="clickurl" href=${otpHelpLink}" target="_blank">`)
+        .replace('[/A]', '</a>');
+
+    l.otp_content_non_pwd_users = escapeHTML(l.otp_content_non_pwd_users)
+        .replace('[A]', `<a href="${otpHelpLink}" target="_blank">`)
+        .replace('[/A]', '</a>')
+        .replace('[BR]', '<br>');
+
+    l.ach_vpn_trial_blurb = escapeHTML(l.ach_vpn_trial_blurb)
+        .replace('[A]', mega_io_hyperlinks.vpn).replace('[/A]', '</a>');
+    l.ach_vpn_trial_blurb_expires = escapeHTML(l.ach_vpn_trial_blurb_expires)
+        .replace('[A]', mega_io_hyperlinks.vpn).replace('[/A]', '</a>');
+    l.ach_pwm_trial_blurb = escapeHTML(l.ach_pwm_trial_blurb)
+        .replace('[A]', mega_io_hyperlinks.pass).replace('[/A]', '</a>');
+    l.ach_pwm_trial_blurb_expires = escapeHTML(l.ach_pwm_trial_blurb_expires)
+        .replace('[A]', mega_io_hyperlinks.pass).replace('[/A]', '</a>');
+
+    const ssExceedUrl = 'https://help.mega.io/plans-storage/space-storage/storage-exceeded';
+    l.plan_exp_banner_text_oq = escapeHTML(l.plan_exp_banner_text_oq)
+        .replace('[A]', `<a class="clickurl" data-eventid="500870" href="${ssExceedUrl}" target="_blank">`)
+        .replace('[/A]', '</a>');
+    l.payment_failed_banner_text_oq = escapeHTML(l.payment_failed_banner_text_oq)
+        .replace('[A]', `<a class="clickurl" data-eventid="500871" href="${ssExceedUrl}" target="_blank">`)
+        .replace('[/A]', '</a>');
+    l.recovery_key_page_para2 = escapeHTML(l.recovery_key_page_para2)
+        .replace(
+            '[A]',
+            `<a href="${recoveryKeyLink}" class="clickurl" data-eventid="500915" target="_blank" rel="noopener">`
+        )
         .replace('[/A]', '</a>');
 
     const common = [
@@ -1972,19 +2044,18 @@ mBroadcaster.once('boot_done', function populate_l() {
         18284, 18285, 18286, 18287, 18289, 18290, 18291, 18294, 18295, 18296, 18297, 18298, 18302, 18303, 18304,
         18305, 18314, 18315, 18316, 18419, 19807, 19808, 19810, 19811, 19812, 19813, 19814, 19854, 19821, 20402,
         20462, 20969, 20970, 20971, 20973, 10637,
-        23524, 23534, 23296, 23299, 23304, 23819, 24077, 24099,
+        23524, 23534, 23819, 24077, 24099,
         24680, 24849, 24850,
 
         // Non numeric ids
         'bsn_calc_min_users',
         'pro_flexi_account_suspended_description',
         'cannot_leave_share_content',
-        'available_commission_tip',
-        'pending_commission_tip',
-        'commission_amount_tip',
-        'go_to_pro',
         'after_days_card_charged_m',
         's4_disable_feature_info',
+        's4_activation_tools_info',
+        's4_s3_prefix_usage',
+        'info_panel_tags_create_btn'
     ];
     for (let i = common.length; i--;) {
         var num = common[i];
@@ -2011,93 +2082,6 @@ mBroadcaster.once('boot_done', function populate_l() {
     if (remappedLangLocales.hasOwnProperty(locale)) {
         locale = remappedLangLocales[locale];
     }
-});
-
-/** @property mega.intl */
-lazy(mega, 'intl', function _() {
-    'use strict';
-    const ns = Object.create(null);
-    const Intl = window.Intl || {};
-    if (!Intl.NumberFormat) {
-        // weak silly polyfill
-        Intl.NumberFormat = function mIntlNumberFormat() { /* dummy */ };
-        Intl.NumberFormat.prototype = {
-            constructor: Intl.NumberFormat,
-            format: (n) => parseFloat(n).toString(),
-            formatToParts: function(n) {
-                const [i, f] = this.format(n).split(/[,.]/);
-                return [
-                    {type: 'integer', value: i | 0}, {type: 'decimal', value: '.'}, {type: 'fraction', value: f | 0}
-                ];
-            }
-        };
-        // @todo add Collator whenever needed.
-    }
-
-    /** @property mega.intl.number */
-    lazy(ns, 'number', function() {
-        return this.get('NumberFormat', {minimumFractionDigits: 2});
-    });
-
-    /** @property mega.intl.bitcoin */
-    lazy(ns, 'bitcoin', function() {
-        return this.get('NumberFormat', {minimumFractionDigits: 8});
-    });
-
-    /** @property mega.intl.collator */
-    lazy(ns, 'collator', function() {
-        return this.get('Collator');
-    });
-
-    /** @property mega.intl.decimal */
-    lazy(ns, 'decimal', function() {
-        return this.get('NumberFormat');
-    });
-
-    /** @property mega.intl.decimalSeparator */
-    lazy(ns, 'decimalSeparator', function() {
-        const value = tryCatch(() => this.number.formatToParts(1.1).find(obj => obj.type === 'decimal').value, false)();
-        return value || '.';
-    });
-
-    /** @property mega.intl.locale */
-    lazy(ns, 'locale', function() {
-        const locale = window.locale || window.lang;
-        const navLocales = Array.isArray(navigator.languages)
-            && navigator.languages.filter(l => l !== locale && l.startsWith(locale))[0];
-
-        // @todo Polyfill Intl.Locale() and return an instance of it instead?
-        return navLocales && this.test(navLocales) || this.test(locale) || 'en';
-    });
-
-    /** @function mega.intl.get */
-    ns.get = function(type, options) {
-        let intl;
-
-        tryCatch(() => {
-            intl = new Intl[type](this.locale.replace('ar', 'en'), options);
-        }, false)();
-
-        return intl || new Intl[type]();
-    };
-
-    /** @function mega.intl.compare */
-    ns.compare = function(a, b) {
-        // compares two strings according to the sort order of the current locale.
-        return this.collator.compare(a, b);
-    };
-
-    /** @function mega.intl.reset */
-    ns.reset = function() {
-        delete mega.intl;
-        lazy(mega, 'intl', _);
-    };
-
-    /** @function mega.intl.test */
-    ns.test = locale => tryCatch(() => Intl.NumberFormat.supportedLocalesOf(locale)[0], false)();
-    // @todo ^ does this return the canonical even in browsers not supporting Intl.getCanonicalLocales() ?
-
-    return ns;
 });
 
 /**

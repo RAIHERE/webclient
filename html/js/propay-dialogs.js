@@ -7,9 +7,13 @@
 
 var closeButtonJS = 'button.js-close';
 
-var closeStripeDialog = () => {
+var closeStripeDialog = (blockPaymentRefresh) => {
     'use strict';
+    if (pro.propay.onPropayPage() && !blockPaymentRefresh) {
+        pro.propay.updatePayment();
+    }
 
+    pro.propay.hideLoadingOverlay();
     closeDialog();
     $('.fm-dialog-overlay').off('click.stripeDialog');
     $(document).off('keydown.stripeDialog');
@@ -74,7 +78,10 @@ var astroPayDialog = {
         //*/
 
         // Cache DOM reference for lookup in other functions
-        this.$dialog = $('.astropay-dialog');
+        this.$dialog = pro.propay.onPropayPage()
+            ? $('.astropay-dialog.propay-inline-dialog')
+            : $('.astropay-dialog:not(.propay-inline-dialog)');
+
         this.$backgroundOverlay = $('.fm-dialog-overlay');
         this.$pendingOverlay = $('.payment-result.pending.original');
         this.$propayPage = $('.payment-section', 'body');
@@ -84,7 +91,7 @@ var astroPayDialog = {
 
         // Initalise the rest of the dialog
         this.initCloseButton();
-        this.initConfirmButton();
+        // this.initConfirmButton();
         this.updateDialogDetails();
         this.showDialog();
     },
@@ -142,7 +149,6 @@ var astroPayDialog = {
     showDialog: function () {
 
         this.$dialog.removeClass('hidden');
-        this.showBackgroundOverlay();
 
         // Hide the Propage page
         if (is_mobile) {
@@ -161,10 +167,18 @@ var astroPayDialog = {
     /**
      * Hide the overlay and dialog
      */
-    hideDialog: function () {
+    hideDialog: function(force) {
+        'use strict';
+
+        if (!this.$dialog) {
+            return;
+        }
 
         this.$backgroundOverlay.addClass('hidden').removeClass('payment-dialog-overlay');
-        this.$dialog.addClass('hidden');
+
+        if (!pro.propay.onPropayPage() || force) {
+            this.$dialog.addClass('hidden');
+        }
 
         // Show the Propage page
         if (is_mobile) {
@@ -178,7 +192,12 @@ var astroPayDialog = {
     /**
      * Shows the background overlay
      */
-    showBackgroundOverlay: function () {
+    showBackgroundOverlay() {
+        'use strict';
+
+        if (pro.propay.onPropayPage()) {
+            return;
+        }
 
         // Show the background overlay only for desktop
         if (!is_mobile) {
@@ -207,41 +226,48 @@ var astroPayDialog = {
     /**
      * Get the details entered by the user and redirect to AstroPay
      */
-    initConfirmButton: function () {
+    submit() {
         "use strict";
-        this.$dialog.find('.accept').rebind('click', function () {
+        // Store the full name and tax number entered
+        const propayIndicator = pro.propay.onPropayPage() ? 'propay-' : '';
+        astroPayDialog.fullName = $.trim(astroPayDialog.$dialog.find(`#${propayIndicator}astropay-name-field`).val());
+        astroPayDialog.address = $.trim(astroPayDialog.$dialog.find(`#${propayIndicator}astropay-address-field`).val());
+        astroPayDialog.city = $.trim(astroPayDialog.$dialog.find(`#${propayIndicator}astropay-city-field`).val());
+        astroPayDialog.taxNumber = $.trim(astroPayDialog.$dialog.find(`#${propayIndicator}astropay-tax-field`).val());
 
-            // Store the full name and tax number entered
-            astroPayDialog.fullName = $.trim(astroPayDialog.$dialog.find('#astropay-name-field').val());
-            astroPayDialog.address = $.trim(astroPayDialog.$dialog.find('#astropay-address-field').val());
-            astroPayDialog.city = $.trim(astroPayDialog.$dialog.find('#astropay-city-field').val());
-            astroPayDialog.taxNumber = $.trim(astroPayDialog.$dialog.find('#astropay-tax-field').val());
 
-            // Make sure they entered something
-            if ((astroPayDialog.fullName === '') || (astroPayDialog.fullName === '')) {
+        // Make sure they entered something
+        if ((astroPayDialog.fullName === '')) {
 
-                // Show error dialog with Missing payment details
-                msgDialog('warninga', l[6958], l[6959], '', function () {
+            pro.propay.hideLoadingOverlay();
+            // Show error dialog with Missing payment details
+            msgDialog('warninga', l[6958], l[6959], '', () => {
+                astroPayDialog.hideDialog();
+            });
+
+            return false;
+        }
+
+        // If the tax number is invalid, show an error dialog
+        if (!astroPayDialog.taxNumberIsValid()) {
+
+            pro.propay.hideLoadingOverlay();
+            msgDialog('warninga', l[6958], l[17789], '', () => {
+                if (pro.propay.onPropayPage()) {
+                    astroPayDialog.hideDialog();
+                }
+                else {
                     astroPayDialog.showBackgroundOverlay();
-                });
+                }
+            });
 
-                return false;
-            }
 
-            // If the tax number is invalid, show an error dialog
-            if (!astroPayDialog.taxNumberIsValid()) {
+            return false;
+        }
 
-                msgDialog('warninga', l[6958], l[17789], '', function () {
-                    astroPayDialog.showBackgroundOverlay();
-                });
-
-                return false;
-            }
-
-            // Try redirecting to payment provider
-            astroPayDialog.hideDialog();
-            pro.propay.sendPurchaseToApi();
-        });
+        // Try redirecting to payment provider
+        astroPayDialog.hideDialog();
+        pro.propay.sendPurchaseToApi(11);
     },
 
     /**
@@ -568,7 +594,17 @@ var voucherDialog = {
         'use strict';
 
         // Cache DOM reference for lookup in other functions
-        this.$dialog = $('.voucher-dialog');
+        if (pro.propay.onPropayPage()) {
+            this.$dialog = $('.voucher-dialog.propay-inline-dialog');
+        }
+        else {
+            this.$dialog = $('.voucher-dialog:not(.propay-inline-dialog)');
+        }
+
+        if (!this.$dialog.length) {
+            this.$dialog = $('.voucher-dialog');
+        }
+
         this.$backgroundOverlay = $('.fm-dialog-overlay');
         this.$successOverlay = $('.payment-result.success');
 
@@ -588,11 +624,11 @@ var voucherDialog = {
         'use strict';
         var self = this;
 
-        // Add the styling for the overlay
-        M.safeShowDialog('voucher-dialog', function() {
-            self.showBackgroundOverlay();
-            return self.$dialog;
-        });
+        if (pro.propay.onPropayPage() && pro.propay.usingBalance) {
+            return false;
+        }
+
+        this.$dialog.removeClass('hidden');
     },
 
     /**
@@ -600,11 +636,13 @@ var voucherDialog = {
      */
     setDialogDetails: function() {
 
+        const selectedProPackage = pro.propay.getPlan(true);
+
         // Get the selected Pro plan details
-        var proNum = pro.propay.selectedProPackage[1];
+        var proNum = selectedProPackage[1];
         var proPlan = pro.getProPlanName(proNum);
-        var proPrice = pro.propay.selectedProPackage[5];
-        var numOfMonths = pro.propay.selectedProPackage[4];
+        var proPrice = selectedProPackage[5];
+        var numOfMonths = selectedProPackage[4];
         var monthsWording = pro.propay.getNumOfMonthsWording(numOfMonths);
         var balance = parseFloat(pro.propay.proBalance).toFixed(2);
         var newBalance = parseFloat(balance - proPrice).toFixed(2);
@@ -612,8 +650,8 @@ var voucherDialog = {
             return item[1] === M.account.type;
         })[0];
         var oldStorage = oldPlan ? (oldPlan[2] * Math.pow(1024, 3)) : 0;
-        var newStorage = Math.max(pro.propay.selectedProPackage[2] * Math.pow(1024, 3), oldStorage);
-        var newTransfer = pro.propay.selectedProPackage[3] * Math.pow(1024, 3);
+        var newStorage = Math.max(selectedProPackage[2] * Math.pow(1024, 3), oldStorage);
+        var newTransfer = selectedProPackage[3] * Math.pow(1024, 3);
 
         // Update template
         const $planIcon = this.$dialog.find('.plan-icon');
@@ -627,12 +665,15 @@ var voucherDialog = {
         this.$dialog.find('.voucher-plan-title').text(proPlan);
         this.$dialog.find('.voucher-plan-txt .duration').text(monthsWording);
         this.$dialog.find('.voucher-plan-price .price').text(formatCurrency(proPrice));
-        this.$dialog.find('#voucher-code-input input').val('');
         const hasSufficientBalance = this.changeColourIfSufficientBalance();
 
         var $voucherAccountBalance = this.$dialog.find('.voucher-account-balance');
-        var $balanceAmount = $voucherAccountBalance.find('.balance-amount');
-        $balanceAmount.text(formatCurrency(balance));
+        const $balanceAmount = pro.propay.onPropayPage()
+            ? $('footer .balance .balance-amount', pro.propay.$page)
+            : $('.balance-amount', $voucherAccountBalance);
+
+        $balanceAmount.text(l.account_balance.replace('%1', formatCurrency(balance)));
+
 
         // Mobile specific dialog enhancements
         if (is_mobile) {
@@ -680,25 +721,30 @@ var voucherDialog = {
         }
     },
 
+    hasSufficientBalance() {
+        'use strict';
+
+        const price = pro.propay.getPlan(true)[5];
+        return parseFloat(pro.propay.proBalance) >= parseFloat(price);
+        // $('.voucher-information-help', this.$dialog).toggleClass('hidden', hasSufficientBalance);
+    },
+
     /**
      * Show green price if they have sufficient funds, or red if they need to top up
      */
     changeColourIfSufficientBalance: function() {
 
-        const price = pro.propay.selectedProPackage[5];
-        const hasSufficientBalance = parseFloat(pro.propay.proBalance) >= parseFloat(price);
+        const hasSufficientBalance = this.hasSufficientBalance();
 
         // If they have enough balance to purchase the plan, make it green
         if (hasSufficientBalance) {
             $('.voucher-account-balance', this.$dialog).addClass('sufficient-funds');
             $('.voucher-buy-now', this.$dialog).addClass('sufficient-funds');
-            $('.voucher-information-help', this.$dialog).addClass('hidden');
         }
         else {
             // Otherwise leave it as red
             $('.voucher-account-balance', this.$dialog).removeClass('sufficient-funds');
             $('.voucher-buy-now', this.$dialog).removeClass('sufficient-funds');
-            $('.voucher-information-help', this.$dialog).removeClass('hidden');
         }
 
         return hasSufficientBalance;
@@ -720,14 +766,6 @@ var voucherDialog = {
         $('.fm-dialog-overlay.payment-dialog-overlay').rebind('click', function(event) {
             event.stopPropagation();
         });
-    },
-
-    /**
-     * Shows the background overlay
-     */
-    showBackgroundOverlay: function() {
-
-        voucherDialog.$backgroundOverlay.removeClass('hidden').addClass('payment-dialog-overlay');
     },
 
     /**
@@ -770,9 +808,7 @@ var voucherDialog = {
 
             // If empty voucher show message Error - Please enter your voucher code
             if (voucherCode === '') {
-                msgDialog('warninga', l[135], l[1015], '', function() {
-                    voucherDialog.showBackgroundOverlay();
-                });
+                msgDialog('warninga', l[135], l[1015], '');
             }
             else {
                 // Clear text box
@@ -785,6 +821,65 @@ var voucherDialog = {
                 voucherDialog.addVoucher(voucherCode);
             }
         });
+    },
+
+    setPropayWarning(redeemed) {
+        'use strict';
+
+        if (!pro.propay.onPropayPage()
+            || !(pro.propay.$page && pro.propay.$page.length)) {
+            return;
+        }
+        pro.propay.updateBalanceDropdownOption();
+
+        if (!(pro.propay.currentGateway && (pro.propay.currentGateway.gatewayId === 0))) {
+            return;
+        }
+        const $voucher = $('.voucher-block', pro.propay.$page);
+
+        const $insufficientBalance = $('.insufficient-balance', $voucher).addClass('hidden');
+        const $insufficientBalanceRedeemed = $('.insufficient-balance-redeemed', $voucher).addClass('hidden');
+        const $redeemed = $('.redeemed', $voucher).addClass('hidden');
+
+        let state = 0;
+
+        if (!this.hasSufficientBalance() && pro.propay.usingBalance) {
+            state |= 1;
+        }
+        if (redeemed) {
+            state |= 2;
+        }
+
+        if (!state) {
+            return 0;
+        }
+        else if (state === 3) {
+            $('span', $insufficientBalanceRedeemed)
+                .text(l.voucher_redeemed_enter_another
+                    .replace('%1', formatCurrency(pro.propay.proBalance))
+                    .replace('%2', pro.propay.getNumOfMonthsWording(pro.propay.getPlan(true)[4])));
+
+            $insufficientBalanceRedeemed.removeClass('hidden');
+        }
+        else if (state === 2) {
+            $('span', $redeemed)
+                .text(l.voucher_redeemed_balance_now
+                    .replace('%1', formatCurrency(pro.propay.proBalance)));
+
+            $redeemed.removeClass('hidden');
+
+        }
+        else if (state === 1) {
+            $('span', $insufficientBalance)
+                .text(l.voucher_warn_duration
+                    .replace('%1', pro.propay.getNumOfMonthsWording(pro.propay.getPlan(true)[4])));
+
+            $insufficientBalance.removeClass('hidden');
+        }
+
+        $voucher.toggleClass('error', !!state);
+
+        return state;
     },
 
     /**
@@ -801,7 +896,9 @@ var voucherDialog = {
                 return redeem.redeemVoucher(voucherCode);
             })
             .then(({data, res}) => {
-                loadingDialog.hide();
+                if (!pro.propay.onPropayPage()) {
+                    loadingDialog.hide();
+                }
 
                 if (d) {
                     console.debug('voucherDialog.addVoucher', res, data);
@@ -823,11 +920,22 @@ var voucherDialog = {
                     var newBalance = parseFloat(balance - proPrice).toFixed(2);
 
                     // Update dialog details
-                    voucherDialog.$dialog.find('.voucher-account-balance .balance-amount')
-                        .text(formatCurrency(balance));
+
+                    if (pro.propay.onPropayPage()) {
+                        $('span.balance-amount', pro.propay.$page)
+                            .text(l.account_balance.replace('%1', formatCurrency(balance)));
+                    }
+                    else {
+                        ('.voucher-account-balance .balance-amount', voucherDialog.$dialog)
+                            .text(formatCurrency(balance));
+                    }
+
                     voucherDialog.$dialog.find('.voucher-account-balance .new-balance-amount')
                         .text(formatCurrency(newBalance));
                     const sufficientBalance = voucherDialog.changeColourIfSufficientBalance();
+
+                    $('.redeemed-note span')
+                        .text(l.voucher_redeemed_balance_now.replace('%1', formatCurrency(newBalance)));
 
                     if (!sufficientBalance) {
                         voucherDialog.$dialog.find('.voucher-redeem').removeClass('hidden');
@@ -835,8 +943,9 @@ var voucherDialog = {
                     voucherDialog.$dialog.find('.voucher-buy-now').removeClass('hidden');
                     // Hide voucher input
                     $('.voucher-input-container', voucherDialog.$dialog).addClass('hidden');
-
+                    voucherDialog.setPropayWarning(true);
                     voucherDialog.showVoucherDialog();
+                    loadingDialog.hide();
                 });
             })
             .catch(function(ex) {
@@ -846,9 +955,7 @@ var voucherDialog = {
                     if (ex === ETOOMANY) {
                         ex = l.redeem_etoomany;
                     }
-                    msgDialog('warninga', l[135], l[47], ex, function() {
-                        voucherDialog.showBackgroundOverlay();
-                    });
+                    msgDialog('warninga', l[135], l[47], ex);
                 }
             });
     },
@@ -860,8 +967,8 @@ var voucherDialog = {
     getLatestBalance: function(callbackFunction) {
 
         // Flag 'pro: 1' includes the Pro balance in the response
-        api_req({ a: 'uq', pro: 1 }, {
-            callback : function(result) {
+        return api_req({ a: 'uq', pro: 1 }, {
+            callback(result) {
                 // If successful result
                 if (typeof result === 'object') {
                     if (result.balance && result.balance[0]) {
@@ -878,7 +985,9 @@ var voucherDialog = {
                 }
 
                 // Run the callback
-                callbackFunction();
+                if (typeof callbackFunction === 'function') {
+                    callbackFunction();
+                }
             }
         });
     },
@@ -907,9 +1016,7 @@ var voucherDialog = {
             if ((parseFloat(pro.propay.proBalance) < parseFloat(selectedPlanPrice))) {
 
                 // Show warning and re-apply the background because the msgDialog function removes it on close
-                msgDialog('warningb', l[6804], l[6805], '', () => {
-                    voucherDialog.showBackgroundOverlay();
-                });
+                msgDialog('warningb', l[6804], l[6805], '');
             }
             else {
                 // Hide the overlay and dialog
@@ -917,7 +1024,7 @@ var voucherDialog = {
 
                 // Proceed with payment via account balance
                 pro.propay.proPaymentMethod = 'pro_prepaid';
-                pro.propay.sendPurchaseToApi();
+                pro.propay.sendPurchaseToApi(0);
             }
         });
     },
@@ -1283,10 +1390,13 @@ var addressDialog = {
         listener: null
     },
 
+    validInputs: null,
+    billingInfoFilled: null,
+
     /**
      * Open and setup the dialog
      */
-    init: function (plan, userInfo, businessRegisterPage) {
+    init(plan, userInfo, businessRegisterPage, blockDialog) {
         "use strict";
         var self = this;
 
@@ -1309,7 +1419,7 @@ var addressDialog = {
             const selectedState =
                 (billingInfo.country === 'US' || billingInfo.country === 'CA') && billingInfo.state || false;
 
-            self.showDialog();
+            self.showDialog(blockDialog);
             self.prefillInfo(billingInfo);
             self.initStateDropDown(selectedState, billingInfo.country);
             self.initCountryDropDown(billingInfo.country);
@@ -1327,11 +1437,25 @@ var addressDialog = {
     /**
      * Display the dialog
      */
-    showDialog: function() {
+    showDialog(blockShow) {
+        'use strict';
 
         // Cache DOM reference for lookup in other functions
+        // const dialogParent = is_mobile ? '#startholder' : 'section.mega-dialog-container';
+        // TODO: Improve for business
+
         const dialogParent = is_mobile ? '#startholder' : 'section.mega-dialog-container';
-        this.$dialog = $('.payment-address-dialog', dialogParent);
+
+        if (pro.propay.onPropayPage()) {
+            this.$dialog = $('#propay .payment-address-dialog.propay-dialog');
+        }
+        else {
+            this.$dialog = $('.payment-address-dialog:not(.propay-dialog)', dialogParent);
+        }
+
+        if (!this.$dialog.length) {
+            this.$dialog = $('.payment-address-dialog');
+        }
 
         this.$backgroundOverlay = $('.fm-dialog-overlay');
         this.$propayPage = $('.payment-section', '.fmholder');
@@ -1380,8 +1504,7 @@ var addressDialog = {
         // in case we are coming from normal users sign ups (PRO)
         if (!this.businessPlan || !this.userInfo) {
             // Get the selected package
-            selectedPlanIndex = $('.duration-options-list .membership-radio.checked').parent().attr('data-plan-index');
-            selectedPackage = pro.membershipPlans[selectedPlanIndex];
+            const selectedPackage = pro.propay.getPlan(true);
 
             // Get the selected Pro plan details
             proNum = selectedPackage[pro.UTQA_RES_INDEX_ACCOUNTLEVEL];
@@ -1401,11 +1524,7 @@ var addressDialog = {
             $('.payment-plan-price', this.$dialog).toggleClass('hidden', !!trial);
 
             if (trial) {
-                const trailText = l.after_trial_card_charged_m
-                    .replace('%1', trial.days)
-                    .replace('%2', formatCurrency(selectedPackage[pro.UTQA_RES_INDEX_PRICE]));
-
-                $freeTrial.filter('.free-trial-info').text(trailText);
+                $freeTrial.filter('.free-trial-info').text(l.after_trial_card_charged_m);
             }
 
 
@@ -1476,7 +1595,8 @@ var addressDialog = {
             const proPlanName = pro.getProPlanName(discountInfo.al);
 
             // Get the selected package
-            const selectedPackage = pro.membershipPlans[selectedPlanIndex];
+            // const selectedPackage = pro.membershipPlans[selectedPlanIndex];
+            const selectedPackage = pro.propay.selectedProPackage;
             const regularMonthlyPrice = selectedPackage[pro.UTQA_RES_INDEX_PRICE];
 
             // Update text for "When the #-month/year promotion ends on 26 April, 2024 you will start a
@@ -1491,7 +1611,7 @@ var addressDialog = {
             $promotionTextSelector.text(discountRecurringText);
         }
 
-        $('.mobile.separator-line.paid-only', this.$dialog).toggleClass('hidden', trial);
+        $('.mobile.separator-line.paid-only', this.$dialog).toggleClass('hidden', !!trial);
 
         if (trial) {
             if (is_mobile) {
@@ -1517,9 +1637,12 @@ var addressDialog = {
             $('.duration', $('.payment-note-first.recurring', this.$dialog).removeClass('hidden')).text(l[10628]);
         }
 
-        // Show the black background overlay and the dialog
-        this.$backgroundOverlay.removeClass('hidden').addClass('payment-dialog-overlay');
-        this.$dialog.removeClass('hidden');
+        if (!blockShow) {
+            // Show the black background overlay and the dialog
+            this.$backgroundOverlay.removeClass('hidden').addClass('payment-dialog-overlay');
+            this.$dialog.removeClass('hidden');
+        }
+
 
         this.firstNameMegaInput = new mega.ui.MegaInputs($('.first-name', this.$dialog));
         this.lastNameMegaInput = new mega.ui.MegaInputs($('.last-name', this.$dialog));
@@ -1562,7 +1685,7 @@ var addressDialog = {
             });
         }
         else {
-            bindDropdownEvents($select);
+            bindDropdownEvents($select, undefined, !is_mobile && this.$dialog);
         }
     },
 
@@ -1573,7 +1696,16 @@ var addressDialog = {
      */
     initStateDropDown: function(preselected, country) {
 
-        var $statesSelect = $('.states', this.$dialog);
+        let $statesSelect;
+        if (pro.propay.onPropayPage()) {
+            $statesSelect = $('.states' + (is_mobile ? '.mobile' : '.desktop') + '-device', this.$dialog)
+                .removeClass('hidden');
+            $('.states' + (is_mobile ? '.desktop' : '.mobile') + '-device', this.$dialog).addClass('hidden');
+        }
+        else {
+            $statesSelect = $('.states', this.$dialog);
+        }
+
         var $selectScroll = $('.dropdown-scroll', $statesSelect);
         var $optionsContainer = is_mobile ? $statesSelect : $selectScroll;
         var option = is_mobile ? 'option' : 'div';
@@ -1621,13 +1753,27 @@ var addressDialog = {
      */
     initCountryDropDown: function(preselected) {
 
-        var $countriesSelect = $('.countries', this.$dialog);
+        let $countriesSelect;
+        if (pro.propay.onPropayPage()) {
+            $countriesSelect = $('.countries' + (is_mobile ? '.mobile' : '.desktop') + '-device', this.$dialog)
+                .removeClass('hidden');
+            $('.countries' + (is_mobile ? '.desktop' : '.mobile') + '-device', this.$dialog).addClass('hidden');
+        }
+        else {
+            $countriesSelect = $('.countries', this.$dialog);
+        }
+
+        // var $countriesSelect = $('.countries', this.$dialog);
         var $selectScroll = $('.dropdown-scroll', $countriesSelect);
         var $optionsContainer = is_mobile ? $countriesSelect : $selectScroll;
         var option = is_mobile ? 'option' : 'div';
 
         // Remove all countries (leave the first option because its actually placeholder).
         $selectScroll.empty();
+
+        if (pro.propay.onPropayPage()) {
+            $('*:not(.default)', $optionsContainer).remove();
+        }
 
         // Build options
         $.each(M.getCountries(), function(isoCode, countryName) {
@@ -1672,14 +1818,19 @@ var addressDialog = {
         };
 
         var $countriesSelect = $('.countries', this.$dialog);
-        var $statesSelect = $('.states', this.$dialog);
+        const $statesSelect = pro.propay.onPropayPage()
+            ? $('.states' + (is_mobile ? '.mobile' : '.desktop') + '-device', this.$dialog)
+            : $('.states', this.$dialog);
         var $postcodeInput = inputSelector(this.postCodeMegaInput);
         var $taxcodeMegaInput = inputSelector(this.taxCodeMegaInput);
         const $titleElemTaxCode = $('.mega-input-title', $taxcodeMegaInput.$input.parent());
         const $titleElemPostCode = $('.mega-input-title', $postcodeInput.$input.parent());
+        const $propayTaxTitle = $('.taxcode-title', this.$dialog);
 
         const countryCode = $('.option[data-state="active"]', $countriesSelect).attr('data-value');
-        const fullTaxName = `${getTaxName(countryCode)} ${l[7347]}`;
+        const taxName = getTaxName(countryCode);
+        const fullTaxName = `${taxName} ${l[7347]}`;
+
         if ($titleElemTaxCode.length) {
             $taxcodeMegaInput.updateTitle(fullTaxName);
         }
@@ -1687,36 +1838,13 @@ var addressDialog = {
             $taxcodeMegaInput.$input.attr('placeholder', fullTaxName);
         }
 
+        if (pro.propay.onPropayPage() && $propayTaxTitle.length) {
+            $propayTaxTitle.text(taxName);
+        }
+
         // Change the States depending on the selected country
         var changeStates = function(selectedCountryCode) {
-
-            // If postcode translations not set, then decalre them.
-            if (!addressDialog.localePostalCodeName) {
-
-                addressDialog.localePostalCodeName = freeze({
-                    "US": "ZIP Code",
-                    "CA": "Postal Code",
-                    "PH": "ZIP Code",
-                    "DE": "PLZ",
-                    "AT": "PLZ",
-                    "IN": "Pincode",
-                    "IE": "Eircode",
-                    "BR": "CEP",
-                    "IT": "CAP"
-                });
-            }
-
-            // If selecting a country whereby the postcode is named differently, update the placeholder value.
-            if (addressDialog.localePostalCodeName[selectedCountryCode]) {
-                if ($titleElemPostCode.length) {
-                    $postcodeInput
-                        .updateTitle(addressDialog.localePostalCodeName[selectedCountryCode]);
-                }
-                else {
-                    $postcodeInput.$input.attr('placeholder', addressDialog.localePostalCodeName[selectedCountryCode]);
-                }
-            }
-            else if ($titleElemPostCode.length) {
+            if ($titleElemPostCode.length) {
                 $postcodeInput.updateTitle(l[10659]);
             }
             else {
@@ -1799,7 +1927,14 @@ var addressDialog = {
 
         // Add the click handler to redirect off site
         this.$dialog.find('.payment-buy-now').rebind('click', function() {
-            addressDialog.validateAndPay();
+            addressDialog.validateAndPay((info) => {
+                if (pro.propay.onPropayPage()) {
+                    pro.propay.initBillingInfo(info).then(() => {
+                        pro.propay.updatePayment.bind(pro.propay)();
+                        addressDialog.closeDialog();
+                    });
+                }
+            }, false, false, pro.propay.onPropayPage());
             eventlog(500458);
         });
     },
@@ -1809,6 +1944,10 @@ var addressDialog = {
      */
     prefillInfo: function(billingInfo) {
         'use strict';
+
+        if (this.billingInfoFilled) {
+            return;
+        }
 
         const prefillMultipleInputs = (inputs, value) => {
             if (Array.isArray(inputs)) {
@@ -1886,6 +2025,8 @@ var addressDialog = {
         if (noLname) {
             fillInputFromAttr(this.lastNameMegaInput, 'lname', 'lastname');
         }
+
+        this.billingInfoFilled = true;
     },
 
     /**
@@ -1977,6 +2118,16 @@ var addressDialog = {
         'use strict';
         var self = this;
         this.$rememberDetailsCheckbox = $(".remember-billing-info-wrapper").find(".checkbox");
+
+        // If the user has not checked the remember checkbox, clear the billing info fields
+        // We won't save the billing info, but may appear to the user that we do in this case if we don't clear it
+        if (!this.$rememberDetailsCheckbox.hasClass("checkboxOn")) {
+            const $billingInfoInputs = $('.content-block.address-block .mega-input', this.$dialog);
+            $('.address1, .address2, .city, .state, .postcode, .country, .taxcode', $billingInfoInputs)
+                .val('')
+                .parent().removeClass('valued');
+        }
+
         $(".remember-billing-info, .radio-txt", this.$dialog).rebind('click.commonevent', function() {
             if (self.$rememberDetailsCheckbox.hasClass('checkboxOn')) {
                 self.$rememberDetailsCheckbox.addClass('checkboxOff').removeClass('checkboxOn');
@@ -2018,6 +2169,13 @@ var addressDialog = {
                     loadSubPage('repay');
                 }
             }
+            else if (addressDialog.mostRecentValidInput) {
+                pro.propay.fillBillingInfo(addressDialog.mostRecentValidInput);
+                delete addressDialog.mostRecentValidInput;
+            }
+            else {
+                addressDialog.billingInfoFilled = false;
+            }
 
             eventlog(500459);
         });
@@ -2026,18 +2184,23 @@ var addressDialog = {
     /**
      * Closes the dialog
      */
-    closeDialog: function() {
+    closeDialog(callback) {
+        'use strict';
 
         if (this.$backgroundOverlay) {
             this.$backgroundOverlay.addClass('hidden').removeClass('payment-dialog-overlay');
             this.$dialog.removeClass('active').addClass('hidden');
+        }
+        if (typeof callback === 'function') {
+            callback();
         }
     },
 
     /**
      * Collects the form details and validates the form
      */
-    validateAndPay: function() {
+    validateAndPay(callback, validateOnly, allowEcpFlow, blockPayment) {
+        'use strict';
 
         const inputSelector = function(input) {
             return Array.isArray(input) ? input[1] : input;
@@ -2098,8 +2261,15 @@ var addressDialog = {
         }
 
         // Check all required fields
-        if (!fieldValues['first-name'] || !fieldValues['last-name'] || !fieldValues['address1'] ||
-                !fieldValues['city'] || !fieldValues['postcode'] || !country || stateNotSet) {
+        if (!fieldValues['first-name']
+            || !fieldValues['last-name']
+            || !fieldValues.address1
+            || !fieldValues.city
+            || !fieldValues.postcode
+            || !country
+            || stateNotSet) {
+
+            console.warn('validateAndPay: Incomplete form fields', fieldValues, country, state, taxCode);
 
             // Show a general error and exit early if they are not complete
             $errorMessage.removeClass(is_mobile ? 'v-hidden' : 'hidden');
@@ -2113,16 +2283,32 @@ var addressDialog = {
                 }
             }
 
+            addressDialog.validInputs = addressDialog.validInputs || false;
+
             onIdle(() => eventlog(500517));
 
             return false;
+        }
+        addressDialog.validInputs = true;
+
+        addressDialog.mostRecentValidInput = {
+            ...fieldValues,
+            firstname: fieldValues['first-name'],
+            lastname: fieldValues['last-name'],
+            country,
+            state,
+            taxCode
+        };
+
+        if (validateOnly) {
+            return;
         }
 
         // If remember billing address, save as user attribute for future usage.
         if (this.$rememberDetailsCheckbox.hasClass("checkboxOn")) {
             const saveAttribute = function(name, value) {
                 if (value) {
-                    mega.attr.setArrayAttribute('billinginfo', name, value, false, true);
+                    return mega.attr.setArrayAttribute('billinginfo', name, value, false, true);
                 }
             };
             saveAttribute('firstname', to8(fieldValues['first-name']));
@@ -2155,8 +2341,19 @@ var addressDialog = {
         // log the click on the 'subscribe' button
         delay('addressDlg.click', eventlog.bind(null, 99789));
 
+
+        if (typeof callback === 'function') {
+            callback(addressDialog.mostRecentValidInput);
+            delete addressDialog.mostRecentValidInput;
+        }
+        if (pro.propay.onPropayPage()) {
+            addressDialog.closeDialog();
+        }
+
         // Send to the API
-        this.proceedToPay(fieldValues, state, country, taxCode);
+        if (!blockPayment) {
+            this.proceedToPay(fieldValues, state, country, taxCode, allowEcpFlow);
+        }
     },
 
     /**
@@ -2165,7 +2362,7 @@ var addressDialog = {
      * @param {type} state The value of the state dropdown
      * @param {type} country The value of the country dropdown
      */
-    proceedToPay: function(fieldValues, state, country, taxCode) {
+    proceedToPay(fieldValues, state, country, taxCode, allowEcpFlow) {
         'use strict';
         // Set details for the UTC call
         this.extraDetails.first_name = fieldValues['first-name'];
@@ -2186,12 +2383,14 @@ var addressDialog = {
         // Hide the dialog so the loading one will show, then proceed to pay
         this.$dialog.addClass('hidden');
 
+        const propayGatewayId = pro.propay.currentGateway && pro.propay.currentGateway.gatewayId;
+
         if (!this.businessPlan || !this.userInfo || !this.businessRegPage) {
-            if (pro.propay.trial && pro.propay.shouldShowTrial()) {
+            if (!this.businessPlan && !this.businessRegPage && pro.propay.trial && pro.propay.shouldShowTrial()) {
                 pro.propay.redeemFreeTrial();
             }
-            else {
-                pro.propay.sendPurchaseToApi();
+            else if ((propayGatewayId !== 16) || allowEcpFlow) {
+                pro.propay.sendPurchaseToApi(propayGatewayId);
             }
         }
         else {
@@ -2206,7 +2405,12 @@ var addressDialog = {
     redirectToSite: function(utcResult) {
 
         var url = utcResult.EUR['url'];
-        window.location = url + '?lang=' + lang;
+        if (pro.propay.currentGateway && pro.propay.currentGateway.gatewayId === 16) {
+            window.location = url;
+        }
+        else {
+            window.location = url + '?lang=' + lang;
+        }
     },
 
     /**
@@ -2260,7 +2464,7 @@ var addressDialog = {
         div.className = 'payment-success-cloak flex flex-column justify-between items-center gap-4'
             + (is_mobile ? ' mobile' : '');
         mainContentDiv.className = 'payment-success-content-wrapper flex flex-column justify-center items-center'
-            + (pro.propay.trial ? ' trial' : '');
+            + (pro.propay.shouldShowTrial() ? ' trial' : '');
         icon.className = 'sprite-fm-mono icon-check-circle-thin-outline';
         estimatedPriceDiv.className = 'font-h3-bold mb-8';
 
@@ -2289,6 +2493,100 @@ var addressDialog = {
         });
     },
 
+    getStripeDialog() {
+        'use strict';
+
+        if (!pro.propay.onPropayPage()) {
+            return $('.payment-stripe-dialog.business');
+        }
+
+        if (!pro.propay.paymentButton) {
+            return $('.payment-stripe-dialog:not(.stripe-button):not(.business)');
+        }
+
+        const isWide = $('body').innerWidth() >= 1080;
+
+        if (is_mobile && !isWide) {
+            return $('#propay .fixed-continue-btn .stripe-button');
+        }
+
+        return $(`footer.${isWide ? 'desktop' : 'mobile'} .stripe-button`, pro.propay.$page);
+    },
+
+    showPaymentSuccess() {
+        'use strict';
+        const $stripeDialog = this.getStripeDialog();
+        const $stripeIframe = $('iframe#stripe-widget', $stripeDialog);
+
+        if (parseInt(pro.propay.planNum) === pro.ACCOUNT_LEVEL_FEATURE_VPN) {
+            this.showSuccessCloak(
+                l[6961],
+                l.vpn_purchase_success_txt.replace('%1', u_attr.email || ''),
+                l.goto_mega_vpn,
+                () => {
+                    mega.redirect('mega.io', 'vpn#downloadapps', false, false);
+                }
+            );
+
+            pro.propay.hideLoadingOverlay();
+        }
+        else if (parseInt(pro.propay.planNum) === pro.ACCOUNT_LEVEL_FEATURE_PWM) {
+            this.showSuccessCloak(
+                l[6961],
+                l.pwm_purchase_success_txt.replace('%1', u_attr.email || ''),
+                l.goto_mega_pass,
+                () => {
+                    mega.redirect('mega.io', 'pass#downloadapp', false, false);
+                }
+            );
+
+            pro.propay.hideLoadingOverlay();
+        }
+        else if (pro.propay.onPropayPage() && pro.propay.paymentButton) {
+            this.showSuccessCloak(
+                l['6961'],
+                l.upgraded_account
+                    .replace('%1', u_attr.email || '')
+                    .replace('%2', pro.getProPlanName(pro.propay.planNum)),
+                l['6826'],
+                () => {
+                    if (pro.propay.planObj && (pro.propay.planObj.level === pro.ACCOUNT_LEVEL_PRO_FLEXI)) {
+                        delete addressDialog.paymentInProcess;
+                        fm_fullreload(null, 'upf-proflexi').catch(dump);
+                    }
+                    else {
+                        pro.redirectToSite();
+                    }
+                });
+
+            pro.propay.hideLoadingOverlay();
+        }
+        else {
+            const $stripeSuccessDialog = $('.payment-stripe-success-dialog'
+                + ((pro.propay.onPropayPage() && is_mobile) ? '.mobile' : ''));
+
+            // If this is newly created business account, it then requires verification
+            if (addressDialog.userInfo && !addressDialog.userInfo.isUpgrade) {
+                $('.success-desc', $stripeSuccessDialog).safeHTML(l[25081]);
+                $('button.js-close, .btn-close-dialog', $stripeSuccessDialog).addClass('hidden');
+            }
+            else {
+                $('button.js-close, .btn-close-dialog', $stripeSuccessDialog)
+                    .removeClass('hidden')
+                    .rebind('click.stripeDlg', closeDialog);
+
+                delay('reload:stripe', pro.redirectToSite, 4000);
+            }
+
+            pro.propay.hideLoadingOverlay();
+
+            M.safeShowDialog('stripe-pay-success', $stripeSuccessDialog);
+        }
+
+        $stripeIframe.remove();
+        $stripeDialog.addClass('hidden');
+    },
+
     stripePaymentChecker: function(saleId) {
         'use strict';
         addressDialog.stripeCheckerCounter++;
@@ -2300,7 +2598,9 @@ var addressDialog = {
         const base = 3000; // 3sec
         const nextTick = addressDialog.stripeCheckerCounter * shift + base;
 
-        if (pro.propay.trial) {
+        this.paymentInProcess = true;
+
+        if (pro.propay.shouldShowTrial()) {
             api.screq({a: 'cft', id: saleId}).then(({result}) => {
 
                 if (+result === 1) {
@@ -2310,16 +2610,20 @@ var addressDialog = {
                 }
 
                 if (+result === 0) {
-                    const $stripeDialog = $('.payment-stripe-dialog');
+                    const $stripeDialog = this.getStripeDialog();
                     const $stripeIframe = $('iframe#stripe-widget', $stripeDialog);
 
-                    // Assume all trials are monthly plans at the moment
-                    const plan = pro.getPlan(pro.propay.planNum, 1);
+                    const plan = pro.getPlan(pro.propay.planNum, pro.propay.selectedPeriod);
                     const planPrice = plan[pro.UTQA_RES_INDEX_LOCALPRICE] || plan[pro.UTQA_RES_INDEX_PRICE];
                     const planCurrency = plan[pro.UTQA_RES_INDEX_LOCALPRICECURRENCY] || 'EUR';
                     const planNumber = parseInt(pro.propay.planNum);
+                    const planTaxInfo = pro.getStandardisedTaxInfo(pro.getPlan(pro.propay.planNum, 1));
 
-                    const startDateTxt = l.m_sub_will_start
+                    const baseString = planTaxInfo
+                        ? l.m_sub_will_start_tma.replace('%3', pro.taxInfo.taxName)
+                        : l.m_sub_will_start;
+
+                    const startDateTxt = baseString
                         .replace('%1', formatCurrency(planPrice, planCurrency, 'narrowSymbol')
                             + (planCurrency === 'EUR' ? '' : '*'))
                         .replace('%2', time2date((Date.now() / 1000) + pro.propay.trial.days * 86400, 2));
@@ -2338,7 +2642,7 @@ var addressDialog = {
                             planCurrency
                         );
 
-                        pro.propay.hideLoadingOverlay();
+                        // pro.propay.hideLoadingOverlay();
                     }
                     else if (planNumber === pro.ACCOUNT_LEVEL_FEATURE_PWM) {
                         onIdle(() => eventlog(500563));
@@ -2349,28 +2653,42 @@ var addressDialog = {
                             l.goto_mega_pass,
                             () => {
                                 onIdle(() => eventlog(500564));
-                                mega.redirect('mega.io', 'pass#downloadapps', false, false);
+                                mega.redirect('mega.io', 'pass#downloadapp', false, false);
                             },
                             planCurrency
                         );
-
-                        pro.propay.hideLoadingOverlay();
                     }
 
                     $stripeIframe.remove();
                     $stripeDialog.addClass('hidden');
 
-                    closeStripeDialog();
+                    closeStripeDialog(true);
+                    delete addressDialog.paymentInProcess;
+                    pro.loadMembershipPlans(null, true);
                 }
 
             }).catch((ex) => {
                 closeStripeDialog();
+                delete addressDialog.paymentInProcess;
                 if (ex === EEXIST) {
                     const planNumber = parseInt(pro.propay.planNum);
                     const warningTitle = planNumber === pro.ACCOUNT_LEVEL_FEATURE_VPN
                         ? l.vpn_free_trial_used_h
                         : l.pwm_free_trial_used_h;
-                    msgDialog('warninga', l[135], warningTitle, l.vpn_free_trial_used_b);
+
+                    msgDialog(
+                        `confirmationa:!^${l.subscribe_btn}!${l[82]}`,
+                        '',
+                        warningTitle,
+                        l.vpn_free_trial_used_b,
+                        (yes) => {
+                            if (yes) {
+                                localStorage.ignoreTrial = '1';
+                                window.location.reload();
+                            }
+                        }
+                    );
+
                     onIdle(() => eventlog(500522));
                 }
                 else {
@@ -2389,54 +2707,10 @@ var addressDialog = {
 
                 if (typeof result === 'string') {
                     // success
-                    const $stripeDialog = $('.payment-stripe-dialog');
-                    const $stripeIframe = $('iframe#stripe-widget', $stripeDialog);
-
-                    if (parseInt(pro.propay.planNum) === pro.ACCOUNT_LEVEL_FEATURE_VPN) {
-                        this.showSuccessCloak(
-                            l[6961],
-                            l.vpn_purchase_success_txt.replace('%1', u_attr.email || ''),
-                            l.goto_mega_vpn,
-                            () => {
-                                mega.redirect('mega.io', 'vpn#downloadapps', false, false);
-                            }
-                        );
-
-                        pro.propay.hideLoadingOverlay();
+                    this.showPaymentSuccess();
+                    if (pro.propay.planObj && (pro.propay.planObj.level !== pro.ACCOUNT_LEVEL_PRO_FLEXI)) {
+                        delete addressDialog.paymentInProcess;
                     }
-                    else if (parseInt(pro.propay.planNum) === pro.ACCOUNT_LEVEL_FEATURE_PWM) {
-                        this.showSuccessCloak(
-                            l[6961],
-                            l.pwm_purchase_success_txt.replace('%1', u_attr.email || ''),
-                            l.goto_mega_pass,
-                            () => {
-                                mega.redirect('mega.io', 'pwm#downloadapps', false, false);
-                            }
-                        );
-
-                        pro.propay.hideLoadingOverlay();
-                    }
-                    else {
-                        const $stripeSuccessDialog = $('.payment-stripe-success-dialog');
-
-                        // If this is newly created business account, it then requires verification
-                        if (addressDialog.userInfo && !addressDialog.userInfo.isUpgrade) {
-                            $('.success-desc', $stripeSuccessDialog).safeHTML(l[25081]);
-                            $('button.js-close, .btn-close-dialog', $stripeSuccessDialog).addClass('hidden');
-                        }
-                        else {
-                            $('button.js-close, .btn-close-dialog', $stripeSuccessDialog)
-                                .removeClass('hidden')
-                                .rebind('click.stripeDlg', closeDialog);
-
-                            delay('reload:stripe', pro.redirectToSite, 4000);
-                        }
-
-                        M.safeShowDialog('stripe-pay-success', $stripeSuccessDialog);
-                    }
-
-                    $stripeIframe.remove();
-                    $stripeDialog.addClass('hidden');
                 }
 
             })
@@ -2447,6 +2721,7 @@ var addressDialog = {
                 }
                 else {
                     tell(ex);
+                    delete addressDialog.paymentInProcess;
                 }
             });
     },
@@ -2461,7 +2736,7 @@ var addressDialog = {
         clearTimeout(pro.propay.listenRemover);
 
         const failHandle = (error) => {
-            const $stripeDialog = $('.payment-stripe-dialog');
+            const $stripeDialog = addressDialog.getStripeDialog();
             const $stripeFailureDialog = $('.payment-stripe-failure-dialog');
             const $stripeIframe = $('iframe#stripe-widget', $stripeDialog);
 
@@ -2526,6 +2801,19 @@ var addressDialog = {
                 failHandle(l[1679]);
                 return;
             }
+            if (event.data.startsWith('json^')) {
+                const eventData = JSON.parse(event.data.split('^')[1]);
+                if (eventData && (eventData.type === 'resize')) {
+                    // Resize the stripe iframe
+                    const $stripeDialog = addressDialog.getStripeDialog();
+                    const $stripeIframe = $('.iframe-container', $stripeDialog);
+                    if ($stripeIframe) {
+                        $stripeIframe.css('height', eventData.height + 'px');
+                    }
+                }
+                window.addEventListener('message', addressDialog.stripeFrameHandler, {once: true});
+                return;
+            }
             if (event.data.startsWith('eventlog^')) {
                 // Log events that come from the stripe iframe dialog
                 onIdle(() => eventlog(event.data.split('^')[1]));
@@ -2547,6 +2835,39 @@ var addressDialog = {
                 }
                 return;
             }
+
+
+            // TODO: add a prefix to express checkout messages
+            if ((event.data === 'hideButtonLoading')
+                || (event.data === 'showLoading')
+                || (event.data === 'invalidInput')
+                || (event.data === 'paymentCancelled')
+                || (event.data === 'validInput')) {
+
+                if (event.data === 'showLoading') {
+                    pro.propay.showLoadingOverlay('processing');
+                }
+                else if (event.data === 'invalidInput') {
+                    pro.propay.hideLoadingOverlay();
+                }
+                else if (event.data === 'paymentCancelled') {
+                    pro.propay.hideLoadingOverlay();
+                    pro.propay.updatePayment();
+                }
+                else if (event.data === 'validInput') {
+                    pro.propay.showLoadingOverlay('transferring');
+                }
+                else {
+                    $('.stripe-button .loader').addClass('hidden');
+                }
+
+                window.addEventListener('message', addressDialog.stripeFrameHandler, {once: true});
+                pro.propay.listenRemover = setTimeout(() => {
+                    window.removeEventListener('message', addressDialog.stripeFrameHandler, {once: true});
+                }, 7e5);
+                return;
+            }
+
             if (event.data.startsWith('payfail^')) {
                 failHandle(getErrorText(event.data.split('^')));
             }
@@ -2560,6 +2881,10 @@ var addressDialog = {
                             mega.ui.toast.show(l.payment_card_update_desc, 6);
                             loadSubPage('fm/account');
                         }
+                        const banner = document.componentSelector('.payment-banner');
+                        if (banner) {
+                            banner.hide();
+                        }
                     }
                     else {
                         msgDialog('info', '', l.payment_card_update, l.payment_card_update_desc, () => {
@@ -2567,6 +2892,10 @@ var addressDialog = {
                                 accountUI.plan.init(M.account);
                             }
                         });
+                        const banner = mega.ui.secondaryNav.bannerHolder.querySelector('.new-banner');
+                        if (banner) {
+                            banner.classList.add('hidden');
+                        }
                     }
                 }
                 else {
@@ -2620,23 +2949,31 @@ var addressDialog = {
      */
     processUtcResult: function(utcResult, isStripe, saleId) {
         'use strict';
+
         this.gatewayOrigin = null;
+
+        if (utcResult.EUR === 0) {
+
+            this.showPaymentSuccess();
+            return;
+        }
 
         if (!utcResult.EUR) {
             console.error('unexpected result...', utcResult);
             utcResult.EUR = false;
         }
 
-        if (isStripe) {
+        if (isStripe && !((typeof utcResult.EUR === 'object') && utcResult.EUR.error)) {
             this.stripeSaleId = null;
             if (utcResult.EUR) {
-                const $stripeDialog = $('.payment-stripe-dialog').toggleClass('edit', !!utcResult.edit);
-                const $iframeContainer =
-                    $('.mobile.payment-stripe-dialog .iframe-container,' +
-                          ' .mega-dialog.payment-stripe-dialog .iframe-container');
-                let $stripeIframe = $('iframe#stripe-widget', $stripeDialog);
+                const $stripeDialog = this.getStripeDialog().toggleClass('edit', !!utcResult.edit);
+                const $iframeContainer = pro.propay.paymentButton
+                    ? $('.iframe-container', $stripeDialog)
+                    : $('.mobile.payment-stripe-dialog .iframe-container,' +
+                          ' .payment-stripe-dialog .iframe-container');
+                let $stripeIframe = $('iframe#stripe-widget');
                 $stripeIframe.remove();
-                const sandBoxCSP = 'allow-scripts allow-same-origin allow-forms allow-popups';
+                const sandBoxCSP = 'allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation';
 
                 $stripeIframe = mCreateElement(
                     'iframe',
@@ -2644,7 +2981,8 @@ var addressDialog = {
                         width: '100%',
                         height: '100%',
                         sandbox: sandBoxCSP,
-                        frameBorder: '0'
+                        frameBorder: '0',
+                        allow: 'payment',
                     },
                     $iframeContainer[0]
                 );
@@ -2686,10 +3024,22 @@ var addressDialog = {
 
                 this.stripeSaleId = 'EDIT';
 
+                if (pro.propay.onPropayPage()) {
+                    iframeSrc += `&v=2`;
+                }
+
+                if (pro.propay.paymentButton) {
+                    iframeSrc += `&pt=${pro.propay.paymentButton}`;
+                }
+                else if (pro.propay.currentGateway && pro.propay.currentGateway.gatewayName) {
+                    iframeSrc += `&pt=${pro.propay.currentGateway.gatewayName}`;
+                }
+
                 if (!utcResult.edit) {
 
                     iframeSrc += `&p=${this.proNum}`;
-                    if (this.extraDetails.recurring) {
+                    if (this.extraDetails.recurring &&
+                        (pro.propay.currentGateway && pro.propay.currentGateway.supportsRecurring)) {
                         iframeSrc += '&r=1';
                     }
 
@@ -2721,8 +3071,9 @@ var addressDialog = {
                     iframeSrc += '&mobile=1';
                 }
 
-                if (pro.propay.selectedProPackage &&
-                    pro.propay.selectedProPackage[pro.UTQA_RES_INDEX_EXTRAS].trial) {
+                if (pro.propay.shouldShowTrial()
+                    && pro.propay.selectedProPackage
+                    && pro.propay.selectedProPackage[pro.UTQA_RES_INDEX_EXTRAS].trial) {
                     iframeSrc += `&trial=${pro.propay.selectedProPackage[pro.UTQA_RES_INDEX_EXTRAS].trial.days}`;
                     iframeSrc += `&tprice=${pro.propay.selectedProPackage[pro.UTQA_RES_INDEX_PRICE]}`;
                     iframeSrc += `&locales=${getCountryAndLocales().locales}`;
@@ -2731,10 +3082,14 @@ var addressDialog = {
                 $stripeIframe.src = iframeSrc;
                 $stripeIframe.id = 'stripe-widget';
 
-                pro.propay.hideLoadingOverlay();
-                loadingDialog.hide();
+                if (!pro.propay.useSavedCard) {
+                    pro.propay.hideLoadingOverlay();
+                    loadingDialog.hide();
+                }
 
-                M.safeShowDialog('stripe-pay', $stripeDialog);
+                // $('.content', $stripeDialog).toggleClass('hidden', pro.propay.useSavedCard);
+
+                $stripeDialog.removeClass('hidden');
 
                 onIdle(() => eventlog(500518));
 
@@ -2744,7 +3099,6 @@ var addressDialog = {
                 }, 6e5); // 10 minutes
 
                 // Keeping keys binding consistent with iframe events
-                $(document).rebind('keydown.stripeDialog', () => false);
 
                 $('.fm-dialog-overlay').rebind('click.stripeDialog', () => {
                     this.discardCreditCardUpdate();
@@ -2799,6 +3153,8 @@ var addressDialog = {
      */
     showError: function(utcResult) {
 
+        let callbackFn;
+
         // Generic error: Oops, something went wrong. Please try again later.
         var message = l[200] + ' ' + l[253];
 
@@ -2815,12 +3171,11 @@ var addressDialog = {
         // You have too many incomplete payments in the last 12 hours...
         else if (utcResult.EUR.error === ETEMPUNAVAIL) {
             message = l[7982];
+            callbackFn = addressDialog.closeDialog.bind(addressDialog);
         }
 
         // Show error dialog
-        msgDialog('warninga', l[7235], message, '', function() {
-            addressDialog.showDialog();
-        });
+        msgDialog('warninga', l[7235], message, '', callbackFn || addressDialog.showDialog.bind(addressDialog));
     },
 
     /**
@@ -2897,11 +3252,13 @@ var cardDialog = {
         // Position the dialog and open it
         this.$dialog.addClass('active').removeClass('hidden');
 
+        const selectedProPackage = pro.propay.getPlan(true);
+
         // Get the selected Pro plan details
-        var proNum = pro.propay.selectedProPackage[1];
+        var proNum = selectedProPackage[1];
         var proPlan = pro.getProPlanName(proNum);
-        var proPrice = pro.propay.selectedProPackage[5];
-        var numOfMonths = pro.propay.selectedProPackage[4];
+        var proPrice = selectedProPackage[5];
+        var numOfMonths = selectedProPackage[4];
         var monthsWording = pro.propay.getNumOfMonthsWording(numOfMonths);
 
         const discountInfo = pro.propay.getDiscount();
@@ -3183,7 +3540,7 @@ var cardDialog = {
                 }
                 else {
                     // Otherwise continue to charge card
-                    pro.propay.sendPurchaseToApi();
+                    pro.propay.sendPurchaseToApi(cardDialog.gatewayId);
                 }
             }
         });
@@ -3453,7 +3810,7 @@ var bitcoinDialog = {
         });
 
         // Make background overlay darker and show the dialog
-        $dialogBackgroundOverlay.addClass('bitcoin-invoice-dialog-overlay').removeClass('hidden');
+        // $dialogBackgroundOverlay.addClass('bitcoin-invoice-dialog-overlay').removeClass('hidden');
         $bitcoinDialog.removeClass('hidden');
     },
 
@@ -3467,8 +3824,8 @@ var bitcoinDialog = {
     generateBitcoinQrCode: function(dialog, bitcoinAddress, priceInBitcoins) {
 
         var options = {
-            width: 256,
-            height: 256,
+            width: 80,
+            height: 80,
             correctLevel: QRErrorCorrectLevel.H,    // High
             background: '#f2f2f2',
             foreground: '#151412',
@@ -3512,26 +3869,15 @@ var bitcoinDialog = {
                 }
 
                 // Show time remaining
-                dialog.find('.time-to-expire').text(minutesPadded + ':' + secondsPadded);
+                dialog.find('.time-to-expire').text(l['6814'] + ' ' + minutesPadded + ':' + secondsPadded);
             }
             else {
-                // Grey out and hide details as the price has expired
-                dialog.find('.scan-code-instruction').css('opacity', '0.25');
-                dialog.find('.bitcoin-address').css('visibility', 'hidden');
-                dialog.find('.bitcoin-qr-code').css('opacity', '0.15');
-                dialog.find('.qr-code-mega-icon').hide();
-                dialog.find('.plan-icon').css('opacity', '0.25');
-                dialog.find('.plan-name').css('opacity', '0.25');
-                dialog.find('.plan-duration').css('opacity', '0.25');
-                dialog.find('.plan-price-euros').css('opacity', '0.25');
-                dialog.find('.plan-price-bitcoins').css('opacity', '0.25');
-                dialog.find('.plan-price-bitcoins-btc').css('opacity', '0.25');
-                dialog.find('.expiry-instruction').text(l[8845]).css('opacity', '1');
                 dialog.find('.time-to-expire').text('00:00').css('opacity', '1');
                 dialog.find('.price-expired-instruction').show();
 
                 // End countdown timer
                 clearInterval(bitcoinDialog.countdownIntervalId);
+                pro.propay.updatePayment();
             }
         }, 1000);
     },
@@ -3543,7 +3889,7 @@ var bitcoinDialog = {
     processUtcResult: function(utcResult) {
 
         // Hide the loading animation
-        pro.propay.hideLoadingOverlay();
+        // pro.propay.hideLoadingOverlay();
 
         // Show the Bitcoin invoice dialog
         if (typeof utcResult.EUR === 'object') {
@@ -3576,7 +3922,6 @@ var bitcoinDialog = {
         });
     }
 };
-
 var insertEmailToPayResult = function($overlay) {
     "use strict";
 
@@ -3587,3 +3932,4 @@ var insertEmailToPayResult = function($overlay) {
         $overlay.find('.payment-result-txt .user-email').text(acc.email);
     }
 };
+

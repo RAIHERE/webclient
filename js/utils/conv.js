@@ -34,12 +34,72 @@
     };
 
     /**
+     * Takes an array or object and randomizes arrays it contains to a certain depth
+     * @param {Array} input The array or object to randomize
+     * @param {Number | Boolean} [maxDepth] The maximum depth to randomize to, or true to randomize all depths
+     * - If true, all depths will be randomized (up to 15 levels, number chosen arbitrarily, to prevent infinite loops)
+     * @param {Number} [currentDepth] - The current depth of the object
+     * @returns {Array} randomized array
+     */
+    array.randomize = function(input, maxDepth, currentDepth = 0) {
+        if (maxDepth) {
+            if (!currentDepth) {
+                currentDepth = 0;
+            }
+            if (typeof maxDepth === 'number' && currentDepth >= maxDepth) {
+                return input;
+            }
+            else if (maxDepth === true && currentDepth > 15) {
+                // In case of unexpected issues, abort after 15 levels if no depth is specified
+                console.error('maxDepth exceeded. Aborting. To increase the limit, set maxDepth to a number.');
+            }
+        }
+
+        if (input && typeof input === 'object') {
+
+            if (Array.isArray(input)) {
+                for (let i = input.length; i--;) {
+                    if (maxDepth) {
+                        this.randomize(input[i], maxDepth, currentDepth + 1);
+                    }
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [input[i], input[j]] = [input[j], input[i]];
+                }
+            }
+            else if (maxDepth) {
+                for (const key in input) {
+                    if (Object.hasOwnProperty.call(input, key)) {
+                        this.randomize(input[key], maxDepth, currentDepth + 1);
+                    }
+                }
+            }
+        }
+
+        return input;
+    };
+
+    /**
      * Get an array with unique values
      * @param {Array} input The input array
      * @memberOf array
      */
     array.unique = function(input) {
         return [...new Set(input)];
+    };
+
+    /**
+     * Helper to extend Array(s) where the use of the spread operator would fail.
+     * @param {Array} dst The destination array (what would be mutated with Array.push(...x) otherwise)
+     * @param {Array} src The source array to expand the destination one with.
+     * @param {Boolean} [unique] optionally, whether to return only non-duplicated entries.
+     * @returns {Array} newly extended array
+     * @memberOf array
+     */
+    array.extend = function(dst, src, unique = true) {
+        src = dst.concat(src);
+        dst = unique ? this.unique(src) : src;
+        // @todo optionally, mutate the dst array(?)
+        return dst;
     };
 
     /**
@@ -380,7 +440,8 @@ function hex2bin(hex) {
         ntoh: {
             value(n, endian = 'be') {
                 let s = '';
-                const t = typeof n === 'bigint' ? [255n, 256n] : [255, 256];
+                const cast = typeof n === 'bigint' ? BigInt : Number;
+                const t = [cast(255), cast(256)];
 
                 if (endian === 'be') {
                     while (n > 1) {
@@ -389,7 +450,7 @@ function hex2bin(hex) {
                     }
                 }
                 else {
-                    while (n > 1) {
+                    while (n > 0) {
                         s = String.fromCharCode(Number(n & t[0])) + s;
                         n /= t[1];
                     }

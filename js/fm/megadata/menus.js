@@ -19,7 +19,7 @@ MegaData.prototype.buildSubMenu = function(id) {
 
     csb = document.getElementById('sm_move');
     if (!csb || parseInt(csb.dataset.folders) !== rootTreeLen) {
-        if (rootTree) {
+        if (rootTree && Object.values(rootTree).some(mega.sensitives.shouldShowInTree)) {
             cs = ' contains-submenu sprite-fm-mono-after icon-arrow-right-after';
             sm = '<span class="dropdown body submenu" id="sm_' + rootID + '">'
                 + '<span id="csb_' + rootID + '"></span>' + arrow + '</span>';
@@ -57,14 +57,15 @@ MegaData.prototype.buildSubMenu = function(id) {
 
         folders.sort(M.getSortByNameFn2(1));
         for (var i = 0; i < folders.length; i++) {
-            if (folders[i].t & M.IS_S4CRT) {
+            if (folders[i].t & M.IS_S4CRT || !mega.sensitives.shouldShowInTree(folders[i])) {
                 continue;
             }
+
             var fid = escapeHTML(folders[i].h);
 
             cs = '';
             sm = '';
-            if (this.tree[fid]) {
+            if (this.tree[fid] && Object.values(this.tree[fid]).some(mega.sensitives.shouldShowInTree)) {
                 cs = ' contains-submenu sprite-fm-mono-after icon-arrow-right-after';
                 sm = '<span class="dropdown body submenu" id="sm_' + fid + '">'
                     + '<span id="csb_' + fid + '"></span>' + arrow + '</span>';
@@ -95,18 +96,25 @@ MegaData.prototype.buildSubMenu = function(id) {
     M.disableCircularTargets('#fi_');
 };
 
-MegaData.prototype.getSelectedSourceRoot = function(isSearch, isTree) {
+MegaData.prototype.getNodeSourceRoot = function(h, isSearch, isTree) {
     'use strict';
 
     let sourceRoot = isTree || isSearch || M.currentdirid === 'recents'
         || M.currentdirid === 'public-links' || M.currentdirid === 'out-shares'
-        ? M.getNodeRoot($.selected[0]) : M.currentrootid;
+        || M.onDeviceCenter
+            && mega.devices.ui.getRenderSection() === 'cloud-drive'
+        ? M.getNodeRoot(h) : M.currentrootid;
 
     if (sourceRoot === 'file-requests') {
         sourceRoot = M.RootID;
     }
 
     return sourceRoot;
+};
+MegaData.prototype.getSelectedSourceRoot = function(isSearch, isTree) {
+    'use strict';
+
+    return this.getNodeSourceRoot($.selected[0], isSearch, isTree);
 };
 
 MegaData.prototype.checkSendToChat = function(isSearch, sourceRoot) {
@@ -120,8 +128,9 @@ MegaData.prototype.checkSendToChat = function(isSearch, sourceRoot) {
             let n = M.d[$.selected[i]];
             const nRoot = isSearch ? n && n.u === u_handle && M.getNodeRoot($.selected[i]) : sourceRoot;
 
-            if (!n || n.t && (nRoot !== M.RootID && nRoot !== M.InboxID && nRoot !== 's4'
-                && !M.isDynPage(nRoot)) || nRoot === M.RubbishID) {
+            if (!n || n.h === M.RootID || n.t && (nRoot !== M.RootID && nRoot !== M.InboxID &&
+                nRoot !== 's4' && nRoot !== mega.devices.rootId && !M.isDynPage(nRoot) && nRoot !== 'out-shares') ||
+                nRoot === M.RubbishID) {
 
                 return false;
             }
@@ -134,11 +143,13 @@ MegaData.prototype.checkSendToChat = function(isSearch, sourceRoot) {
 
 /**
  * Build an array of context-menu items to show for the selected node
+ * @param {Event} evt Event to pass
+ * @param {Boolean} isTree Whether this is a context menu invoked in a tree or not
  * @returns {Promise}
  */
 // @todo make eslint happy..
 // eslint-disable-next-line complexity,sonarjs/cognitive-complexity
-MegaData.prototype.menuItems = async function menuItems(isTree) {
+MegaData.prototype.menuItems = async function menuItems(evt, isTree) {
     "use strict";
 
     console.assert($.selected);
@@ -168,13 +179,27 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
         await dbfetch.geta(nodes).catch(dump);
     }
 
+    const isHeaderContext = evt && evt.currentTarget.classList &&
+        evt.currentTarget.classList.contains('fm-header-context');
+
+    if (M.onDeviceCenter) {
+        const { ui } = mega.devices;
+        const section = ui.getRenderSection();
+        if (section !== 'cloud-drive'
+            || ui.isFullSyncRelated($.selected[0])
+            || ui.isBackupRelated($.selected)
+        ) {
+            return ui.getContextMenuItems($.selected, isHeaderContext);
+        }
+    }
+
     let n;
     const items = Object.create(null);
     const isSearch = page.startsWith('fm/search');
     const selNode = M.getNodeByHandle($.selected[0]);
     const sourceRoot = M.getSelectedSourceRoot(isSearch, isTree);
     let restrictedFolders = false;
-    const isInShare = M.currentrootid === 'shares';
+    const isInShare = M.currentrootid === 'shares' || M.onDeviceCenter && !!sharer(selNode.h);
 
     if (selNode && selNode.su && !M.d[selNode.p]) {
         items['.leaveshare-item'] = 1;
@@ -190,7 +215,7 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
                 items['.open-item'] = 1;
             }
 
-            if ((sourceRoot === M.RootID || sourceRoot === 's4'
+            if ((sourceRoot === M.RootID || sourceRoot === M.InboxID || sourceRoot === 's4'
                 || M.isDynPage(M.currentrootid)) && !folderlink) {
 
                 let exp = false;
@@ -204,6 +229,11 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
                 }
 
                 items['.sh4r1ng-item'] = 1;
+                items['.transferit-item'] = 1;
+                if (sourceRoot !== 's4' && sourceRoot !== M.RootID && isHeaderContext) {
+                    delete items['.sh4r1ng-item'];
+                    delete items['.transferit-item'];
+                }
 
                 if (shares.length || M.ps[selNode.h]) {
                     items['.removeshare-item'] = 1;
@@ -220,7 +250,9 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
                                     : ':not(.file-request-page)';
                         }
 
-                        items[`.file-request-manage${fileRequestPageClass}`] = 1;
+                        if (!isHeaderContext) {
+                            items[`.file-request-manage${fileRequestPageClass}`] = 1;
+                        }
                         items[`.file-request-copy-link${fileRequestPageClass}`] = 1;
                         items[`.file-request-remove${fileRequestPageClass}`] = 1;
                     }
@@ -236,9 +268,11 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
             }
 
             // This is just to make sure the source root is on the cloud drive
-            if (mega.rewind && sourceRoot === M.RootID) {
+            if (mega.rewind && sourceRoot === M.RootID
+                && !M.onDeviceCenter
+                && !folderlink
+            ) {
                 items['.rewind-item'] = 1;
-                mega.rewind.bindContextMenu();
             }
         }
         else {
@@ -268,7 +302,7 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
             }
         }
 
-        if (M.currentCustomView || M.currentdirid && M.currentdirid.startsWith('search/')) {
+        if (M.currentCustomView && M.currentCustomView.type !== mega.devices.rootId || M.search) {
             items['.open-cloud-item'] = 1;
             if (folderlink) {
                 items['.open-in-location'] = 1;
@@ -277,13 +311,23 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
                 items['.open-cloud-item'] = 1;
             }
         }
+        else if (M.onDeviceCenter) {
+            if (sharer(selNode.h)) {
+                items['.open-in-location'] = 1;
+            }
+            else {
+                items['.open-cloud-item'] = 1;
+            }
+        }
 
+        // If Full Access node rights
         if (M.getNodeRights(selNode.h) > 1) {
             items['.rename-item'] = 1;
+            items['.colour-label-items'] = 1;
 
-            if (!isInShare) {
+            const isInshareRelated = isInShare || M.onDeviceCenter && sharer(selNode.h);
+            if (!isInshareRelated) {
                 items['.add-star-item'] = 1;
-                items['.colour-label-items'] = 1;
 
                 if (M.isFavourite(selNode.h)) {
 
@@ -309,8 +353,6 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
                 }
             }
 
-            M.colourLabelcmUpdate(selNode.h);
-
             if (items['.edit-file-item']) {
                 $('.dropdown-item.edit-file-item span').text(l[865]);
             }
@@ -326,7 +368,26 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
 
     // Allow to mark as Favourite/Labeled from multi-selection
     if ($.selected.length > 1) {
-        items['.colour-label-items'] = 1;
+
+        let allNodesFullAccess = true;
+
+        // Check all selected nodes
+        for (let i = 0; i < $.selected.length; i++) {
+
+            const selectedHandle = $.selected[i];
+
+            // If not Full Access node rights, disable
+            if (M.getNodeRights(selectedHandle) < 2) {
+                allNodesFullAccess = false;
+                break;
+            }
+        }
+
+        // If all nodes have Full Access node rights, show colour label option
+        if (allNodesFullAccess) {
+            items['.colour-label-items'] = 1;
+        }
+
         let allAreFavourite = !isInShare;
 
         if (!isInShare) {
@@ -345,15 +406,11 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
                 restrictedFolders = true;
             }
         }
+    }
 
-        if (allAreFavourite) {
-            $('.add-star-item').safeHTML('<i class="sprite-fm-mono icon-favourite-removed"></i>@@', l[5872]);
-        }
-        else {
-            $('.add-star-item').safeHTML('<i class="sprite-fm-mono icon-favourite"></i>@@', l[5871]);
-        }
-
-        M.colourLabelcmUpdate($.selected);
+    const sen = mega.sensitives.getSensitivityStatus($.selected, evt);
+    if (sen) {
+        items['.add-sensitive-item'] = sen;
     }
 
     if (M.checkSendToChat(isSearch, sourceRoot)) {
@@ -368,7 +425,7 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
     }
     items['.refresh-item'] = 1;
 
-    if (M.gallery) {
+    if (mega.gallery.canShowAddToAlbum() && $.selected.every(h => M.isGalleryNode(M.getNodeByHandle(h)))) {
         items['.add-to-album'] = 1;
     }
 
@@ -390,28 +447,56 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
     }
 
     if (M.isGalleryPage()) {
+        if ($.selected.length === 1 && !M.isMediaDiscoveryPage()) {
+            items['.open-cloud-item'] = 1;
+        }
 
-        items['.open-cloud-item'] = 1;
-
+        items['.getlink-item'] = 1;
         delete items['.move-item'];
         delete items['.copy-item'];
         delete items['.rename-item'];
-        delete items['.remove-item'];
-        if (M.currentdirid !== 'favourites') {
-            delete items['.add-star-item'];
-        }
+        delete items['.togglepausesync-item'];
         delete items['.colour-label-items'];
-        delete items['.embedcode-item'];
         delete items['.properties-versions'];
         delete items['.clearprevious-versions'];
         delete items['.open-in-location'];
     }
 
-    if ((sourceRoot === M.RootID
+    const handleRubbishNodes = () => {
+        delete items['.move-item'];
+        delete items['.copy-item'];
+        delete items['.rename-item'];
+        delete items['.add-star-item'];
+        delete items['.download-item'];
+        delete items['.zipdownload-item'];
+        delete items['.colour-label-items'];
+        delete items['.embedcode-item'];
+        delete items['.properties-versions'];
+        delete items['.clearprevious-versions'];
+        delete items['.getlink-item'];
+        delete items['.transferit-item'];
+
+        let allReveratable = true;
+        for (var j = $.selected.length; j--;) {
+            n = M.getNodeByHandle($.selected[j]);
+
+            if (!n.rr || M.getNodeRoot(n.h) !== M.RubbishID) {
+                allReveratable = false;
+            }
+        }
+        if (allReveratable) {
+            items['.revert-item'] = 1;
+        }
+        else {
+            delete items['.revert-item'];
+        }
+    };
+    if ((sourceRoot === M.RootID || sourceRoot === M.InboxID || sourceRoot === 'out-shares'
          || sourceRoot === 's4' || M.isDynPage(M.currentrootid)) && !folderlink) {
 
         items['.move-item'] = 1;
         items['.getlink-item'] = 1;
+        items['.transferit-item'] = 1;
 
         var cl = new mega.Share();
         var hasExportLink = cl.hasExportLink($.selected);
@@ -429,12 +514,14 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
             delete items['.embedcode-item'];
             delete items['.removelink-item'];
             delete items['.sh4r1ng-item'];
+            delete items['.transferit-item'];
             delete items['.add-star-item'];
             delete items['.colour-label-items'];
             delete items['.download-item'];
             delete items['.play-item'];
             delete items['.preview-item'];
             delete items['.edit-file-item'];
+            delete items['.add-sensitive-item'];
 
             if ($.selected.length > 1 || selNode.t !== 1) {
                 delete items['.open-item'];
@@ -444,29 +531,11 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
         }
     }
     else if (sourceRoot === M.RubbishID && !folderlink) {
-        items['.move-item'] = 1;
+        handleRubbishNodes();
+    }
 
-        delete items['.move-item'];
-        delete items['.copy-item'];
-        delete items['.rename-item'];
-        delete items['.add-star-item'];
-        delete items['.download-item'];
-        delete items['.zipdownload-item'];
-        delete items['.colour-label-items'];
-        delete items['.properties-versions'];
-        delete items['.clearprevious-versions'];
-
-        for (var j = $.selected.length; j--;) {
-            n = M.getNodeByHandle($.selected[j]);
-
-            if (n.rr && M.getNodeRoot(n.h) === M.RubbishID) {
-                items['.revert-item'] = 1;
-            }
-            else if (items['.revert-item']) {
-                delete items['.revert-item'];
-                break;
-            }
-        }
+    if (isSearch && $.selected.some(h => M.getNodeRoot(h) === M.RubbishID)) {
+        handleRubbishNodes();
     }
 
     // For multiple selections, should check all have the right permission.
@@ -505,6 +574,7 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
 
         if (!removeItemFlag) {
             delete items['.remove-item'];
+            delete items['.togglepausesync-item'];
             delete items['.move-item'];
         }
 
@@ -523,11 +593,11 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
     }
 
     const {useMegaSync} = window;
-    const $didi = $('.dropdown-item.download-item');
-    $didi.addClass('contains-submenu sprite-fm-mono-after icon-arrow-right-after').removeClass('msync-found');
 
     if (useMegaSync === 2 || useMegaSync === 3) {
-        $didi.removeClass('contains-submenu sprite-fm-mono-after icon-arrow-right-after').addClass('msync-found');
+        delete items['.download-standart-item'];
+        delete items['.zipdownload-item'];
+        items['.download-item'] = 1;
 
         if (useMegaSync === 2 && $.selected.length === 1 && selNode.t) {
             const {error, response} = await megasync.syncPossibleA(selNode.h).catch(dump) || false;
@@ -535,6 +605,10 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
                 items['.syncmegasync-item'] = 1;
             }
         }
+    }
+    else if (items['.download-item']) {
+        delete items['.download-item'];
+        items['.download-standart-item'] = 1;
     }
 
     if (M.currentdirid === 'file-requests' && !isTree) {
@@ -545,20 +619,22 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
         delete items['.embedcode-item'];
         delete items['.removelink-item'];
         delete items['.sh4r1ng-item'];
+        delete items['.transferit-item'];
         delete items['.send-to-contact-item'];
     }
 
     // If in MEGA Lite mode, temporarily hide any Download, Copy and Manage Share options while in the Shared area
     if (mega.lite.inLiteMode && (M.currentrootid === 'shares' || M.currentrootid === 'out-shares')) {
-        delete items['.download-item'];
+        // delete items['.download-item'];
         delete items['.copy-item'];
         delete items['.sh4r1ng-item'];
         delete items['.remove-item'];
+        delete items['.togglepausesync-item'];
     }
 
-    if (restrictedFolders || $.selected.length === 1
-        && sourceRoot === M.InboxID) {
+    if (restrictedFolders) {
 
+        delete items['.transferit-item'];
         delete items['.open-cloud-item'];
         delete items['.open-in-location'];
         delete items['.move-item'];
@@ -569,6 +645,7 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
 
         if (!self.vw) {
             delete items['.remove-item'];
+            delete items['.togglepausesync-item'];
         }
 
         let cl = new mega.Share.ExportLink();
@@ -581,13 +658,6 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
 
         if (cl.hasExportLink($.selected)) {
             items['.removelink-item'] = 1;
-        }
-
-        if (M.currentrootid === M.InboxID && $.selected.length === 1
-            && ((selNode.devid || selNode.drvid) && selNode.td > 0
-            || M.d[selNode.p].devid || M.d[selNode.p].drvid || selNode.h === M.BackupsId)) {
-
-            items['.view-in-bc-item'] = 1;
         }
 
         items['.getlink-item'] = 1;
@@ -611,16 +681,16 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
             items['.open-s4-item'] = 1;
         }
 
-        // Temporary block most of actions over the containers
+        // Block most of actions over the containers/keys/groups/policies
         if (s4Type === 'container' || !s4Type) {
-            delete items['.move-item'];
-            delete items['.rename-item'];
-            delete items['.add-star-item'];
-            delete items['.colour-label-items'];
-            delete items['.embedcode-item'];
-            delete items['.properties-versions'];
-            delete items['.clearprevious-versions'];
-            delete items['.remove-item'];
+            for (const item in items) {
+                delete items[item];
+            }
+
+            // Allow to remove multiple containers
+            if (s4Type === 'container' && s4.utils.getContainersList().length > 1) {
+                items['.remove-item'] = 1;
+            }
         }
         else if (s4Type === 'bucket') {
             delete items['.properties-item'];
@@ -631,6 +701,52 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
         }
     }
 
+    if (isHeaderContext) {
+        delete items['.open-item'];
+        if (sourceRoot === 'shares') {
+            delete items['.download-item'];
+            delete items['.download-standart-item'];
+            delete items['.zipdownload-item'];
+        }
+        if (sourceRoot === 's4') {
+            delete items['.settings-item'];
+        }
+        if (sourceRoot === 'out-shares' && selNode && this.getNodeShareUsers(selNode, 'EXP').length) {
+            items['.removeshare-item'] = 1;
+        }
+        if (M.currentrootid === 'file-requests' && mega.fileRequest.publicFolderExists(selNode.h)) {
+            delete items['.move-item'];
+            delete items['.copy-item'];
+            delete items['.getlink-item'];
+            delete items['.embedcode-item'];
+            delete items['.removelink-item'];
+            delete items['.sh4r1ng-item'];
+            delete items['.transferit-item'];
+            delete items['.send-to-contact-item'];
+        }
+        if (M.onDeviceCenter && mega.ui.secondaryNav) {
+            const node = mega.ui.secondaryNav.domNode.querySelector('.fm-share-folder');
+            if (node && !node.classList.contains('hidden')) {
+                delete items['.sh4r1ng-item'];
+                delete items['.transferit-item'];
+            }
+        }
+    }
+
+    const node = $.selected.length && M.d[$.selected[0]];
+    const parent = node && M.d[node.p];
+
+    if (parent && parent.devid || sourceRoot === M.InboxID || M.getNodeRoot($.selected[0]) === M.InboxID) {
+        delete items['.open-cloud-item'];
+        delete items['.move-item'];
+        delete items['.rename-item'];
+        delete items['.remove-item'];
+    }
+
+    if (!mega.xferit) {
+        delete items['.transferit-item'];
+    }
+
     return items;
 };
 
@@ -639,19 +755,14 @@ MegaData.prototype.menuItems = async function menuItems(isTree) {
  * @param {Event} e The event being dispatched
  * @param {Number} ll The type of context menu.
  * @param {String} items Requested items classes, i.e '.properties-item, ...'
- * @returns {void}
+ * @returns {boolean|void} For callers to consider event propagation or not
  */
 // eslint-disable-next-line complexity, sonarjs/cognitive-complexity
 MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
     "use strict";
 
-    var flt;
-    var asyncShow = false;
-    var m = $('.dropdown.body.files-menu');
-    var $contactDetails = m.find('.dropdown-contact-details');
-
-    // Selection of first child level ONLY of .dropdown-item in .dropdown.body
-    var menuCMI = '.dropdown.body.files-menu .dropdown-section > .dropdown-item';
+    let asyncShow = false;
+    let menuNode;
 
     // is contextmenu disabled
     if (localStorage.contextmenu) {
@@ -660,45 +771,33 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
     }
 
     // function to recuring repositioning for sub menus.
-    var findNewPosition = function() {
-        M.adjustContextMenuPosition(e, m);
-        m.find('.contains-submenu.opened').removeClass('opened');
-        m.find('.submenu.active').removeClass('active');
+    const findNewPosition = () => {
+        const res = M.adjustContextMenuPosition(e, menuNode);
+        if (!res) {
+            $.hideContextMenu();
+            return;
+        }
+        const subMenus = menuNode.querySelectorAll('.context-submenu');
+        for (const subMenu of subMenus) {
+            subMenu.classList.add('hidden');
+        }
     };
+    let finalItems = [];
 
-    var showContextMenu = function() {
+    const showContextMenu = () => {
+        menuNode = menuNode || mega.ui.contextMenu.show(finalItems);
         // This part of code is also executed when ll == 'undefined'
-        var v = m.children('.dropdown-section');
 
-        // Count all items inside section, and hide dividers if necessary
-        v.each(function() {
-            var $this = $(this);
-            var a = $this.find('a.dropdown-item');
-            var x = a.filter(function() {
-                return $(this).hasClass('hidden');
-            });
-            if (x.length === a.length || a.length === 0) {
-                $this.addClass('hidden');
-            }
-            else {
-                $this.removeClass('hidden');
-            }
-        });
-
-        M.adjustContextMenuPosition(e, m);
+        M.adjustContextMenuPosition(e, menuNode);
 
         M.disableCircularTargets('#fi_');
 
-        m.removeClass('hidden');
-
-        // Hide last divider
-        v.find('hr').removeClass('hidden');
-        m.find('.dropdown-section:visible:last hr').addClass('hidden');
+        menuNode.classList.remove('hidden');
 
         $(window).rebind('resize.ccmui', SoonFc(findNewPosition));
 
         // disable scrolling
-        var $psContainer = $(e.currentTarget).closest('.ps');
+        const $psContainer = $(e.currentTarget || e.target).closest('.ps');
         if ($psContainer.length) {
             Ps.disable($psContainer[0]);
             $.disabledContianer = $psContainer;
@@ -708,56 +807,18 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
     };
 
     $.hideContextMenu(e);
-    $contactDetails.addClass('hidden');
 
-    /**
-     * Adding context menu for share folder while you're on it
-     * @param {Object} n node
-     * @returns {void}
-     */
-    var shareContextMenu = function(n) {
-        // Hide shares context menu for root id, out shares and S4
-        const hideFrom = !['s4', 'out-shares', 'shares', 'file-requests'].includes(M.currentrootid)
-            && M.RootID !== M.currentdirid;
-
-        if (hideFrom) {
-            $.selected = [n.h];
-
-            $(menuCMI).filter('.cd-send-to-contact-item').removeClass('hidden');
-            $(menuCMI).filter('.cd-getlink-item').removeClass('hidden');
-            $(menuCMI).filter('.cd-sh4r1ng-item').removeClass('hidden');
-
-            onIdle(() => M.setContextMenuShareText());
-            onIdle(() => M.setContextMenuGetLinkText());
-        }
-
-        var cl = new mega.Share();
-        var hasExportLink = cl.hasExportLink(n.h);
-
-        if (hideFrom && hasExportLink) {
-            $(menuCMI).filter('.cd-removelink-item').removeClass('hidden');
-        }
-
-        if (hideFrom && M.getNodeShareUsers(n.h, 'EXP').length || M.ps[n.h]) {
-            $(menuCMI).filter('.cd-removeshare-item').removeClass('hidden');
-        }
-    };
-
-    // Used when right click is occured outside item, on empty canvas
+    // Used when right click is occurred outside item, on empty canvas
     if (ll === 2) {
         // to init megaSync, as the user may click of file/folder upload
         // the below event handler will setup the communication with MEGASYNC
-        var fupload = document.getElementById('fileselect1');
-        var mEvent = new MouseEvent('mouseover', {
+        const fupload = document.getElementById('fileselect1');
+        const mEvent = new MouseEvent('mouseover', {
             view: window,
             bubbles: true,
             cancelable: true
         });
         fupload.dispatchEvent(mEvent);
-
-        $(menuCMI).filter('.dropdown-item').addClass('hidden');
-        var itemsViewed = false;
-        var ignoreGrideExtras = false;
 
         if (M.currentdirid !== 'shares' && M.currentdirid !== 'out-shares') {
             // Enable upload item menu for clould-drive, don't show it for rubbish and rest of crew
@@ -770,18 +831,14 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
             if (nodeRights && M.currentrootid !== M.RubbishID && M.currentrootid !== M.InboxID
                 && nodeRoot !== M.InboxID) {
 
-                if (M.currentrootid === 'contacts') {
-                    $(menuCMI).filter('.addcontact-item').removeClass('hidden');
-                    ignoreGrideExtras = true;
-                }
-                else if (n.s4 && 'kernel' in s4 && s4.kernel.getS4NodeType(n) === 'container') {
-                    $(menuCMI).filter('.new-bucket-item').removeClass('hidden');
+                if (n.s4 && 'kernel' in s4 && s4.kernel.getS4NodeType(n) === 'container') {
+                    finalItems.push('.new-bucket-item');
                 }
                 else {
-                    $(menuCMI).filter('.fileupload-item,.newfolder-item').removeClass('hidden');
+                    finalItems.push('.fileupload-item', '.newfolder-item');
 
                     if (nodeRights > 0) {
-                        $(menuCMI).filter('.newfile-item').removeClass('hidden');
+                        finalItems.push('.newfile-item');
                     }
 
                     if ($.hasWebKitDirectorySupport === undefined) {
@@ -789,90 +846,48 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
                     }
 
                     if ($.hasWebKitDirectorySupport) {
-                        $(menuCMI).filter('.folderupload-item').removeClass('hidden');
+                        finalItems.push('.folderupload-item');
                     }
 
-                    if (nodeRoot !== 's4' && mega.rewind && mega.rewind.permittedRoots[M.currentrootid]) {
-                        $(menuCMI).filter('.rewind-item').removeClass('hidden');
-                        mega.rewind.bindContextMenu();
-                    }
-                    // Flag added for share folder while on it at context menu
-                    if (mega.flags.ab_ctxmenu_shares) {
-                        shareContextMenu(n);
-                        eventlog(500035);
+                    if (nodeRoot !== 's4' && mega.rewind && mega.rewind.permittedRoots[M.currentrootid]
+                        && !M.onDeviceCenter
+                    ) {
+                        finalItems.push('.rewind-item');
                     }
                 }
-                itemsViewed = true;
             }
+        }
+
+        if (M.currentdirid === 'out-shares') {
+            finalItems.push('.new-share-item');
+        }
+
+        if (M.currentdirid === 'file-requests') {
+            finalItems.push('.file-request-create');
+        }
+
+        if (M.currentdirid === 'public-links') {
+            finalItems.push('.new-link-item');
         }
 
         if (M.currentrootid === M.RubbishID && M.v.length) {
-            $('.files-menu.context .dropdown-item.clearbin-item').removeClass('hidden');
-            itemsViewed = true;
+            finalItems.push('.clearbin-item');
         }
 
-        if (!ignoreGrideExtras && M.viewmode) {
-            itemsViewed = true;
-            $('.files-menu.context .dropdown-item.sort-grid-item-main').removeClass('hidden');
-            if (M.currentdirid === 'shares') {
-                $('.files-menu.context .dropdown-item.sort-grid-item').addClass('hidden');
-                $('.files-menu.context .dropdown-item.sort-grid-item.s-inshare').removeClass('hidden');
-            }
-            else if (M.currentdirid === 'out-shares') {
-                $('.files-menu.context .dropdown-item.sort-grid-item').addClass('hidden');
-                $('.files-menu.context .dropdown-item.sort-grid-item.s-outshare').removeClass('hidden');
-            }
-            else {
-                $('.files-menu.context .dropdown-item.sort-grid-item').addClass('hidden');
-                $('.files-menu.context .dropdown-item.sort-grid-item.s-fm').removeClass('hidden');
-                if (folderlink) {
-                    $('.files-menu.context .dropdown-item.sort-grid-item.s-fm.sort-label').addClass('hidden');
-                    $('.files-menu.context .dropdown-item.sort-grid-item.s-fm.sort-fav').addClass('hidden');
-                }
-
-                if (M.currentrootid === M.RubbishID) {
-                    $('.files-menu.context .dropdown-item.sort-grid-item.s-fm.sort-fav').addClass('hidden');
-                }
-            }
+        if (M.currentrootid === 'albums') {
+            finalItems.push('.new-album-item');
         }
-        if (!itemsViewed) {
+
+        if (M.currentCustomView && M.currentCustomView.type === 's4' && M.currentCustomView.subType === 'container') {
+            finalItems.push('.s4-accsetting-item', '.new-bucket-item');
+        }
+
+        if (!finalItems.length) {
             return false;
         }
     }
-    else if (ll === 3) {// we want just the download menu
-        $(menuCMI).addClass('hidden');
-        m = $('.dropdown.body.download');
-        menuCMI = '.dropdown.body.download .dropdown-item';
-        $(menuCMI).removeClass('hidden');
-    }
-    else if (ll === 4 || ll === 5) {// contactUI
-        $(menuCMI).addClass('hidden');
-
-        asyncShow = true;
-        M.menuItems()
-            .then((items) => {
-
-                delete items['.download-item'];
-                delete items['.zipdownload-item'];
-                delete items['.copy-item'];
-                delete items['.open-item'];
-
-                if (ll === 5) {
-                    delete items['.properties-item'];
-                }
-
-                for (var item in items) {
-                    $(menuCMI).filter(item).removeClass('hidden');
-                }
-
-                // Hide Info item if properties dialog is opened
-                if ($.dialog === 'properties') {
-                    delete items['.properties-item'];
-                }
-
-                onIdle(showContextMenu);
-            })
-            .catch(dump);
+    else if (ll === 3) {
+        finalItems.push('.download-standart-item', '.zipdownload-item');
     }
     else if (ll === 7) { // Columns selection menu
         if (M && M.columnsWidth && M.columnsWidth.cloud) {
@@ -882,6 +897,7 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
             // and display correct ones based on the visible columns list.
             var $currMenuItems = $('.files-menu.context a.dropdown-item')
                 .addClass('hidden').filter('.visible-col-select');
+            finalItems.push('.sort-grid-item-main');
             for (var col in M.columnsWidth.cloud) {
                 if (M.columnsWidth.cloud[col] && M.columnsWidth.cloud[col].disabled) {
                     continue;
@@ -900,36 +916,35 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
         }
     }
     else if (ll === 8 && items) { // Passes requested items
-
-        $(menuCMI).addClass('hidden');
-
         asyncShow = true;
-        M.menuItems()
+        M.menuItems(e)
             .then(() => {
+                finalItems = (Array.isArray(items) ?
+                    items : typeof items === 'string' ? items.split(',') : Object.keys(items)).map(s => s.trim());
                 onIdle(showContextMenu);
-                $(menuCMI).filter(items).removeClass('hidden');
             })
             .catch(dump);
     }
+    else if (ll === 9) {
+        asyncShow = true;
+        finalItems = ['.fileupload-item', '.folderupload-item', '.app-dl-hint'];
+        onIdle(showContextMenu);
+    }
     else if (ll) {// Click on item
-
-        // Hide all menu-items
-        $(menuCMI).addClass('hidden');
-
-        var id;
-        var currNodeClass;
-        var $currentTarget = $(e.currentTarget);
+        let id;
+        let currNodeClass;
+        const $currentTarget = $(e.currentTarget);
         let isTree = false;
 
         // This event is context on selection bar
         if ($currentTarget.hasClass('js-statusbarbtn')) {
             id = $.selected[0];
-            currNodeClass = $.gridLastSelected ? $.gridLastSelected.className : false;
+            currNodeClass = $.gridLastSelected ? $.gridLastSelected.classList : false;
         }
         // This event is context on node itself
         else {
             id = $currentTarget.attr('id');
-            currNodeClass = $currentTarget.attr('class');
+            currNodeClass = $currentTarget.prop('classList');
         }
 
         if (id) {
@@ -945,251 +960,128 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
             else if (id.startsWith('pathbc-')) {
                 id = id.replace('pathbc-', '');
             }
-        }
-
-        /*if (id && !M.d[id]) {
-
-         // exist in node list
-         id = undefined;
-         }*/
-
-        // In case that id belongs to contact, 11 char length
-        if (id && (id.length === 11)) {
-            var $contactDetails = m.find('.dropdown-contact-details');
-            var username = M.getNameByHandle(id) || '';
-
-            flt = '.remove-contact, .share-folder-item, .set-nickname';
-
-            // Add .send-files-item to show Send files item
-            if (window.megaChatIsReady) {
-                flt += ',.startchat-item, .send-files-item';
-
-                if (megaChat.hasSupportForCalls) {
-                    flt += ',.startaudiovideo-item';
-                }
-            }
-            var $menuCmi = $(menuCMI);
-            $menuCmi.filter(flt).removeClass('hidden');
-
-            // Enable All buttons
-            $menuCmi.filter('.startaudiovideo-item, .send-files-item')
-                .removeClass('disabled disabled-submenu');
-
-            // disable remove for business accounts + business users
-            if (u_attr && u_attr.b && M.u[id] && M.u[id].b) {
-                $menuCmi.filter('.remove-contact').addClass('disabled');
-            }
-
-            // Show Detail block
-            $contactDetails.removeClass('hidden');
-
-            if (M.viewmode) {
-                $contactDetails.find('.view-profile-item').removeClass('hidden');
-                $contactDetails.find('.dropdown-avatar').addClass('hidden');
-                $contactDetails.find('.dropdown-user-name').addClass('hidden');
-            }
-            else {
-                $contactDetails.find('.view-profile-item').addClass('hidden');
-
-                // Set contact avatar
-                $contactDetails.find('.dropdown-avatar').removeClass('hidden')
-                    .find('.avatar').safeHTML(useravatar.contact(id, 'context-avatar'));
-
-                // Set username
-                $contactDetails.find('.dropdown-user-name').removeClass('hidden')
-                    .find('.name span').text(username);
-            }
-
-            // Set contact fingerprint
-            showAuthenticityCredentials(id, $contactDetails);
-
-            // Open contact details page
-            $contactDetails.rebind('click.opencontact', function() {
-                loadSubPage('fm/chat/contacts/' + id);
-            });
-
-            var verificationState = u_authring.Ed25519[id] || {};
-            var isVerified = (verificationState.method
-                >= authring.AUTHENTICATION_METHOD.FINGERPRINT_COMPARISON);
-
-            // Show the user is verified
-            if (isVerified) {
-                $contactDetails.addClass('verified');
-                $contactDetails.find('.dropdown-verify').removeClass('active');
-            }
-            else {
-                $contactDetails.removeClass('verified');
-                $contactDetails.find('.dropdown-verify').addClass('active')
-                    .rebind('click.verify', function(e) {
-                        e.stopPropagation();
-                        $.hideContextMenu(e);
-                        fingerprintDialog(id);
-                    });
+            // File manager header context item click
+            else if (id.startsWith('fmhead_')) {
+                id = id.replace('fmhead_', '');
             }
         }
-        else if (currNodeClass && (currNodeClass.indexOf('cloud-drive') > -1
-            || currNodeClass.indexOf('folder-link') > -1)) {
-            flt = '.properties-item';
+
+        // In case that id belongs to devices tree
+        if (currNodeClass && currNodeClass.contains('device-item')) {
+            finalItems = mega.devices.ui.contextMenu();
+        }
+        else if (currNodeClass && (currNodeClass.contains('cloud-drive') || currNodeClass.contains('folder-link'))) {
+            finalItems.push('.properties-item');
 
             if (folderlink) {
-                flt += ',.import-item';
-            }
-            else {
-                flt += ',.findupes-item';
-
-                if (mega.rewind) {
-                    flt += ',.rewind-item';
-                    mega.rewind.bindContextMenu();
+                finalItems.push('.import-item');
+                if (M.v.length) {
+                    finalItems.push('.zipdownload-item', '.download-standart-item');
+                    if (pfcol) {
+                        finalItems.push('.play-slideshow');
+                    }
+                }
+                if (!pfcol) {
+                    finalItems.push('.getlink-item');
                 }
             }
-            if (M.v.length && folderlink) {
-                flt += ',.zipdownload-item,.download-item';
+            else if (mega.rewind) {
+                finalItems.push('.rewind-item');
             }
             $.selected = [M.RootID];
-            $(menuCMI).filter(flt).removeClass('hidden');
         }
         else if (currNodeClass && $(e.currentTarget).hasClass('inbox')) {
             $.selected = [M.InboxID];
-            $(menuCMI).filter('.properties-item').removeClass('hidden');
+            finalItems.push('.properties-item');
         }
-        else if (currNodeClass && currNodeClass.indexOf('rubbish-bin') > -1) {
+        else if (currNodeClass && currNodeClass.contains('rubbish-bin')) {
             $.selected = [M.RubbishID];
-            $(menuCMI).filter('.properties-item').removeClass('hidden');
-            if (currNodeClass.indexOf('filled') > -1) {
-                $(menuCMI).filter('.clearbin-item').removeClass('hidden');
+            finalItems.push('.properties-item');
+            if (currNodeClass.contains('filled')) {
+                finalItems.push('.clearbin-item');
             }
         }
-        else if (currNodeClass && currNodeClass.indexOf('contacts-item') > -1) {
-            $(menuCMI).filter('.addcontact-item').removeClass('hidden');
-        }
-        else if (currNodeClass && currNodeClass.indexOf('messages-item') > -1) {
-            e.preventDefault();
-            return false;
-        }
         else if (pfcol) {
-            const $menuCMI = $(menuCMI);
             const albums = mega.gallery.albums;
             const selections = Object.keys(albums.grid.timeline.selections);
-            const oneImageSelected = selections.length === 1 && !!mega.gallery.isImage(M.d[selections[0]]);
-            const hasImageSelected = selections.some((h) => !!mega.gallery.isImage(M.d[h]));
-            const slideshowItem = $menuCMI.filter('.play-slideshow');
-            const previewItem = $menuCMI.filter('.preview-item');
-            const playItem = $menuCMI.filter('.play-item');
-            const importItem = $menuCMI.filter('.import-item');
+            const oneImageSelected = selections.length === 1 && !!M.isGalleryImage(M.d[selections[0]]);
+            const hasImageSelected = selections.some((h) => !!M.isGalleryImage(M.d[h]));
             const onlyPlayableVideosSelected = selections.every((h) => !!is_video(M.d[h]));
             const allowSlideshow = oneImageSelected
                 && mega.gallery.nodesAllowSlideshow(mega.gallery.albums.store[M.d[pfid].id].nodes);
 
-            slideshowItem.toggleClass('hidden', !allowSlideshow);
-            previewItem.toggleClass('hidden', !hasImageSelected);
-            $menuCMI.filter('.properties-item').removeClass('hidden');
-            importItem.removeClass('hidden');
+            finalItems.push('.properties-item', '.import-item');
+            if (allowSlideshow) {
+                finalItems.push('.play-slideshow');
+            }
+            if (hasImageSelected) {
+                finalItems.push('.preview-item');
+            }
+            if (onlyPlayableVideosSelected) {
+                finalItems.push('.play-item');
+            }
 
             $.selected = selections;
-
-            $('span', playItem).text(l.album_play_video);
-            $('span', importItem).text(u_type ? l.context_menu_import : l.btn_imptomega);
-
-            playItem.toggleClass('hidden', !onlyPlayableVideosSelected);
         }
         else if (currNodeClass
-            && (currNodeClass.includes('data-block-view') || currNodeClass.includes('folder'))
-            || String(id).length === 8) {
+            && (currNodeClass.contains('data-block-view') || currNodeClass.contains('folder') ||
+                currNodeClass.contains('mega-node')) || String(id).length === 8) {
 
             asyncShow = true;
-            const updateUIPerItems = ($menuCMI, items) => {
-                if (items['.getlink-item']) {
-                    onIdle(() => M.setContextMenuGetLinkText());
-                }
-                if (items['.sh4r1ng-item']) {
-                    onIdle(() => M.setContextMenuShareText());
-                }
-
-                if (items['.play-item']) {
-                    var $playItem = $menuCMI.filter('.play-item');
-
-                    if (is_audio(M.d[id])) {
-                        $('i', $playItem).removeClass('icon-video-call-filled').addClass('icon-play-small');
-                        $('span', $playItem).text(l[17828]);
-                    }
-                    else {
-                        $('i', $playItem).removeClass('icon-play-small').addClass('icon-video-call-filled');
-                        $('span', $playItem).text(l[16275]);
-                    }
-                }
-
-                if (items['.remove-item']) {
-                    $('span', $menuCMI.filter('.remove-item')).text(M.getSelectedRemoveLabel($.selected));
-                }
-
-                if (items['.import-item']) {
-                    const $importItem = $menuCMI.filter('.import-item');
-
-                    if (u_type) {
-                        $('i', $importItem)
-                            .removeClass('icon-mega-thin-outline')
-                            .addClass('icon-upload-to-cloud-drive');
-
-                        $('span', $importItem).text(l.context_menu_import);
-                    }
-                    else {
-                        $('i', $importItem)
-                            .removeClass('icon-upload-to-cloud-drive')
-                            .addClass('icon-mega-thin-outline');
-
-                        $('span', $importItem).text(l.btn_imptomega);
-                    }
-                }
-
-                if (items['.open-item']) {
-                    const $openItem = $menuCMI.filter('.open-item');
-                    const n = M.getNodeByHandle(id);
-
-                    if (n.s4 && 'kernel' in s4 && s4.kernel.getS4NodeType(n) === 'bucket') {
-                        $('i', $openItem).removeClass('icon-folder-open').addClass('icon-bucket');
-                    }
-                    else {
-                        $('i', $openItem).removeClass('icon-bucket').addClass('icon-folder-open');
-                    }
-                }
-
-                // We know the rewind-item is already active and passed the check
-                // We need to check the 2nd time if the source of event is on right location
-                if (items['.rewind-item']) {
-                    const fromCloudDriveTree = $currentTarget.closest('.js-myfile-tree-panel').length;
-                    if (!fromCloudDriveTree && M.currentrootid !== M.RootID) {
-                        $menuCMI.filter('.rewind-item').addClass('hidden');
-                    }
-                }
-            };
-
-            M.menuItems(isTree)
+            M.menuItems(e, isTree)
                 .then((items) => {
-                    const $menuCMI = $(menuCMI);
-
-                    for (const item in items) {
-                        $menuCMI.filter(item).removeClass('hidden');
-                    }
-
                     // Hide context menu items not needed for undecrypted nodes
+                    const takedownCount = $.selected.reduce((t, h) => {
+                        return M.getNodeShare(h).down === 1 ? t + 1 : t;
+                    }, 0);
                     if (missingkeys[id]) {
-                        $menuCMI.filter('.add-star-item').addClass('hidden');
-                        $menuCMI.filter('.download-item').addClass('hidden');
-                        $menuCMI.filter('.rename-item').addClass('hidden');
-                        $menuCMI.filter('.copy-item').addClass('hidden');
-                        $menuCMI.filter('.move-item').addClass('hidden');
-                        $menuCMI.filter('.getlink-item').addClass('hidden');
-                        $menuCMI.filter('.embedcode-item').addClass('hidden');
-                        $menuCMI.filter('.colour-label-items').addClass('hidden');
-                        $menuCMI.filter('.send-to-contact-item').addClass('hidden');
+                        delete items['.add-star-item'];
+                        delete items['.zipdownload-item'];
+                        delete items['.download-item'];
+                        delete items['.download-standart-item'];
+                        delete items['.rename-item'];
+                        delete items['.copy-item'];
+                        delete items['.move-item'];
+                        delete items['.getlink-item'];
+                        delete items['.embedcode-item'];
+                        delete items['.colour-label-items'];
+                        delete items['.send-to-contact-item'];
+                        delete items['.transferit-item'];
+                        delete items['.add-sensitive-item'];
+                        delete items['.sh4r1ng-item'];
+                        delete items['.removeshare-item'];
+                        delete items['.file-request-create'];
+                        delete items['.file-request-manage'];
+                        delete items['.file-request-copy-link'];
+                        delete items['.file-request-remove'];
+                        delete items['.import-item'];
+                        delete items['.edit-file-item'];
                     }
-                    else if (M.getNodeShare(id).down === 1) {
-                        $menuCMI.filter('.copy-item').addClass('hidden');
-                        $menuCMI.filter('.move-item').addClass('hidden');
-                        $menuCMI.filter('.send-to-contact-item').addClass('hidden');
+                    else if (takedownCount) {
+                        delete items['.zipdownload-item'];
+                        delete items['.download-item'];
+                        delete items['.download-standart-item'];
+                        delete items['.properties-item'];
+                        delete items['.rename-item'];
+                        delete items['.rewind-item'];
+                        delete items['.properties-versions'];
+                        delete items['.clearprevious-versions'];
+                        if (takedownCount === $.selected.length) {
+                            delete items['.copy-item'];
+                            delete items['.move-item'];
+                            delete items['.send-to-contact-item'];
+                        }
+                        else {
+                            items['.properties-item'] = 1;
+                        }
                     }
-                    else {
-                        updateUIPerItems($menuCMI, items);
+                    else if (items['.rewind-item']) {
+                        // We know the rewind-item is already active and passed the check
+                        // We need to check the 2nd time if the source of event is on right location
+                        const fromCloudDriveTree = $currentTarget.closest('.js-myfile-tree-panel').length;
+                        if (!fromCloudDriveTree && M.currentrootid !== M.RootID) {
+                            delete items['.rewind-item'];
+                        }
                     }
 
                     if (M.getNodeByHandle(id).su) {
@@ -1197,20 +1089,35 @@ MegaData.prototype.contextMenuUI = function contextMenuUI(e, ll, items) {
 
                         if (!(ed && ed.method >= authring.AUTHENTICATION_METHOD.FINGERPRINT_COMPARISON) &&
                             M.currentdirid !== `chat/contacts/${M.d[id].su}`) {
-                            $menuCMI.filter('.verify-credential').removeClass('hidden');
+                            items['.verify-credential'] = 1;
                         }
                     }
 
                     // Hide Info item if properties dialog is opened
                     if ($.dialog === 'properties') {
-                        $menuCMI.filter('.properties-item').addClass('hidden');
+                        delete items['.properties-item'];
                     }
 
                     // Hide items for selection Bar Options button
                     if (!$currentTarget.attr('id')) {
-                        $menuCMI.filter('.download-item, .sh4r1ng-item, .send-to-contact-item,' +
-                            '.getlink-item, .remove-item').addClass('hidden');
+                        const shownItems = mega.ui.secondaryNav && mega.ui.secondaryNav.selectionBarItems ?
+                            mega.ui.secondaryNav.selectionBarItems.flat() :
+                            ['.download-item', '.sh4r1ng-item', '.getlink-item', '.remove-item'];
+                        if ($.menuForcedItems && $.menuForcedItems.length) {
+                            const flat = $.menuForcedItems.flat();
+                            for (const menuItem of flat) {
+                                const idx = shownItems.indexOf(menuItem);
+                                if (idx > -1) {
+                                    shownItems.splice(idx, 1);
+                                }
+                            }
+                        }
+                        for (const item of shownItems) {
+                            delete items[item];
+                        }
                     }
+
+                    finalItems = Object.keys(items);
 
                     onIdle(showContextMenu);
                 })
@@ -1322,7 +1229,7 @@ MegaData.prototype.setContextMenuShareText = function() {
     // If the node has shares or pending shares, set to 'Manage share', else, 'Share folder'
     if (n && M.getNodeShareUsers(n, 'EXP').length || M.ps[n]) {
         getLinkText = l.manage_share;
-        getLinkIcon = 'sprite-mobile-fm-mono icon-settings-thin-outline';
+        getLinkIcon = 'sprite-fm-mono icon-settings-thin-outline';
         cdShareToggle('add');
     }
     else {
@@ -1351,151 +1258,288 @@ MegaData.prototype.setContextMenuShareText = function() {
 };
 
 /**
- * @param {jQuery.Event} e jQuery event
- * @param {Object} m Context menu jQuery object
+ * Position the context menuNode based on the event
+ *
+ * @param {Event} ev event
+ * @param {Element} menuNode Context menu DOM node
+ * @returns {boolean} True
  */
-MegaData.prototype.adjustContextMenuPosition = function(e, m) {
+MegaData.prototype.adjustContextMenuPosition = function(ev, menuNode) {
     "use strict";
 
     // mouse cursor, returns the coordinates within the application's client area
     // at which the event occurred (as opposed to the coordinates within the page)
-    var mX = e.clientX;
-    var mY = e.clientY;
+    const { clientX, clientY } = ev instanceof MegaDataEvent ? ev.originalEvent : ev;
 
-    var mPos;// menu position
-    if (e.type === 'click' && !e.calculatePosition) {// Clicked on file-settings-icon
-        var ico = { 'x': e.delegateTarget.clientWidth, 'y': e.delegateTarget.clientHeight };
-        var icoPos = getHtmlElemPos(e.delegateTarget);// Get position of clicked file-settings-icon
-        mPos = M.reCalcMenuPosition(m, icoPos.x, icoPos.y, ico);
+    // If a DOM element loses its children while ctx menu is opened from the ... menu,
+    // We need to search for the new `delegateTarget` to calculate offsets
+    // Currently only necessary for DC. Subject to change.
+    const getLostDelegate = (ev) => {
+        let { currentTarget, delegateTarget } = ev;
+        if (currentTarget instanceof MegaComponent) {
+            currentTarget = currentTarget.domNode;
+        }
+        const { id } = currentTarget;
+        if (id) {
+            const selector =
+                `.${[...(delegateTarget || currentTarget).classList]
+                    .filter(c => c !== 'active' && c !== 'ctx-source')
+                    .join('.')}`;
+            const del = document.getElementById(id);
+            if (del) {
+                const sameSel = del.querySelector(selector);
+                if (sameSel) {
+                    return sameSel;
+                }
+                return del;
+            }
+            return false;
+        }
+    };
+
+    let mPos;
+    if (ev.type === 'click' && !ev.calculatePosition) {
+        // left click
+        let delegate = ev.delegateTarget || ev.currentTarget;
+        if (delegate instanceof MegaComponent) {
+            delegate = delegate.domNode;
+        }
+        const ico = { x: delegate.clientWidth, y: delegate.clientHeight };
+        if (!ico.x && !ico.y && !document.contains(delegate)) {
+            delegate = getLostDelegate(ev);
+            if (delegate) {
+                ico.x = delegate.clientWidth;
+                ico.y = delegate.clientHeight;
+            }
+            else {
+                return false;
+            }
+        }
+        delegate.classList.add('ctx-source', 'active');
+        const icoPos = getHtmlElemPos(delegate);
+        mPos = M.reCalcMenuPosition(menuNode, icoPos.x, icoPos.y, ico);
     }
-    else {// right click
-        mPos = M.reCalcMenuPosition(m, mX, mY);
+    else {
+        // right click
+        mPos = M.reCalcMenuPosition(menuNode, clientX, clientY);
     }
 
-    m.css({ 'top': mPos.y, 'left': mPos.x });// set menu position
+    // set menu position
+    menuNode.style.top = `${mPos.y}px`;
+    menuNode.style.left = `${mPos.x}px`;
 
     return true;
 };
 
+/** * Finalise submenu calculations for context menu positioning
+ * @param {Element} menuNode The parent menu node, which hover to show submenu
+ * @param {Element} subMenuNode The submenu node to position
+ * @param {Object} options The options object containing positioning data
+ * @param {Number} options.maxX The maximum X coordinate for the submenu, usually right edge of window
+ * @param {Number} options.maxY The maximum Y coordinate for the submenu, usually bottom edge of window
+ * @param {Number} options.wMax coordinate of context menu right edge
+ * @param {Number} options.nmW The width of the submenu
+ * @param {Number} options.nmH The height of the submenu
+ * @param {Number} options.minX The minimum X coordinate for the submenu
+ * @param {Number} options.x The X coordinate of the parent menu
+ * @param {Number} options.y The Y coordinate of the parent menu
+ * @param {Number} options.wW The width of the window
+ * @param {Number} options.SIDE_MARGIN The side margin for the submenu
+ * @returns {Object|boolean} Returns an object with the final position or true if the submenu overlaps the parent menu
+ */
+MegaData.prototype.finaliseSubmenuCalcs = function(menuNode, subMenuNode, options) {
+    'use strict';
+
+    let left = '100%';
+    let right = 'auto';
+    const { maxX, maxY, wMax, nmW, nmH, minX, x, y, wW, SIDE_MARGIN } = options;
+
+    const style = window.getComputedStyle(subMenuNode);
+    const nTop = parseInt(style.getPropertyValue('padding-top'), 10);
+    const tB = parseInt(style.getPropertyValue('border-top-width'), 10);
+    const pScrollTop = (subMenuNode.closest('#cm_scroll') || {}).scrollTop || 0;
+    const b = y - pScrollTop + nmH - nTop - tB; // bottom of submenu
+
+    let difference = 0;
+
+    if (b > maxY) {
+        difference += b - maxY + pScrollTop - 12;
+    }
+    else {
+        difference += pScrollTop;
+    }
+    const top = `${menuNode.offsetTop - tB - nTop - difference}px`;
+
+    const overlapParentMenu = (nextNode) => {
+        const tre = wW - wMax; // to right edge
+        const tle = x - minX - SIDE_MARGIN; // to left edge
+
+        nextNode.style.top = top;
+        if (tre >= tle) {
+            nextNode.classList.add('overlap-right');
+            nextNode.style.left = `${maxX - x - nmW}px`;
+        }
+        else {
+            nextNode.classList.add('overlap-left');
+            nextNode.style.right = `${wMax - nmW - minX}px`;
+        }
+    };
+
+    const rtl = document.body.classList.contains('rtl');
+
+    const showLeft = minX <= x - nmW;
+    const showRight = maxX >= wMax + nmW;
+    if (rtl) {
+        if (menuNode.closest('.right-position')) {
+            if (showRight) {
+                subMenuNode.classList.add('right-position');
+            }
+            else if (showLeft) {
+                left = '100%';
+                right = 'auto';
+            }
+            else {
+                overlapParentMenu(subMenuNode);
+                return true;
+            }
+            return { top, left, right };
+        }
+        if (showLeft) {
+            left = '100%';
+            right = 'auto';
+        }
+        else if (showRight) {
+            subMenuNode.classList.add('right-position');
+        }
+        else {
+            overlapParentMenu(subMenuNode);
+            return true;
+        }
+        return { top, left, right };
+    }
+    if (menuNode.closest('.left-position')) {
+        if (showLeft) {
+            subMenuNode.classList.add('left-position');
+        }
+        else if (showRight) {
+            left = 'auto';
+            right = '100%';
+        }
+        else {
+            overlapParentMenu(subMenuNode);
+            return true;
+        }
+        return { top, left, right };
+    }
+    if (showRight) {
+        left = 'auto';
+        right = '100%';
+    }
+    else if (showLeft) {
+        subMenuNode.classList.add('left-position');
+    }
+    else {
+        overlapParentMenu(subMenuNode);
+        return true;
+    }
+    return { top, left, right };
+};
+
 /**
  * Calculates coordinates where context menu will be shown
- * @param {Object} m jQuery object of context menu or child class
+ * @param {Element} menuNode DOM element of context menu or child class
  * @param {Number} x Coordinate x of cursor or clicked element
  * @param {Number} y Coordinate y of cursor or clicked element
  * @param {Object} ico JSON {x, y} width and height of element clicked on
  * @returns {Object} Coordinates {x, y} where context menu will be drawn
  */
-MegaData.prototype.reCalcMenuPosition = function(m, x, y, ico) {
+MegaData.prototype.reCalcMenuPosition = function(menuNode, x, y, ico) {
     "use strict";
 
-    var TOP_MARGIN = 12;
-    var SIDE_MARGIN = 12;
+    const TOP_MARGIN = 12;
+    const SIDE_MARGIN = 12;
 
     let hiddenUpdate;
 
     // make it as visitble hidden for temporary to get context size to avoid 'display: none!important' return size 0 bug
     // Somehow 'display: none' with '!important' causing jQuery offsetWidth and offsetHeight malfunction.
-    if (m.hasClass('hidden')) {
-        m.removeClass('hidden').addClass('v-hidden');
+    if (menuNode.classList.contains('hidden')) {
+        menuNode.classList.add('v-hidden');
+        menuNode.classList.remove('hidden');
         hiddenUpdate = true;
     }
 
-    var cmW = m.outerWidth();// dimensions without margins calculated
-    var cmH = m.outerHeight();// dimensions without margins calculated
+    // dimensions without margins calculated
+    let { width: cmW, height: cmH } = menuNode.getBoundingClientRect();
 
     if (hiddenUpdate) {
-        m.removeClass('v-hidden').addClass('hidden');
+        menuNode.classList.add('hidden');
+        menuNode.classList.remove('v-hidden');
     }
 
-    var wH = window.innerHeight;
-    var wW = window.innerWidth;
-    var maxX = wW - SIDE_MARGIN;// max horizontal coordinate, right side of window
-    var maxY = wH - TOP_MARGIN;// max vertical coordinate, bottom side of window
+    const wH = window.innerHeight;
+    const wW = window.innerWidth;
+    const maxX = wW - SIDE_MARGIN; // max horizontal coordinate, right side of window
+    const maxY = wH - TOP_MARGIN; // max vertical coordinate, bottom side of window
 
     // min horizontal coordinate, left side of right panel
-    var minX = SIDE_MARGIN + $('nav.nw-fm-left-icons-panel').outerWidth();
-    var minY = TOP_MARGIN;// min vertical coordinate, top side of window
-    var wMax = x + cmW;// coordinate of context menu right edge
-    var hMax = y + cmH;// coordinate of context menu bottom edge
+    const minX = SIDE_MARGIN;
+    const wMax = x + cmW; // coordinate of context menu right edge
+    const hMax = y + cmH; // coordinate of context menu bottom edge
 
-    var top = 'auto';
-    var left = '100%';
-    var right = 'auto';
+    let nmH;
+    let nmW;
 
-    var overlapParentMenu = function(n) {
-        var tre = wW - wMax;// to right edge
-        var tle = x - minX - SIDE_MARGIN;// to left edge
-
-        if (tre >= tle) {
-            n.addClass('overlap-right');
-            n.css({'top': top, 'left': (maxX - x - nmW) + 'px'});
+    const handleSmall = (dPos) => {
+        let dropSections = menuNode.querySelectorAll('.dropdown-section');
+        if (dropSections.length) {
+            const wrap = mCreateElement('div', { class: 'context-scrolling-block', id: 'cm_scroll'});
+            dropSections[0].parentNode.prepend(wrap);
+            wrap.append(...dropSections);
         }
         else {
-            n.addClass('overlap-left');
-            n.css({'top': top, 'right': (wMax - nmW - minX) + 'px'});
+            dropSections = menuNode.querySelector('.fm-context-body');
+            dropSections.classList.add('context-scrolling-block');
+            dropSections.id = 'cm_scroll';
         }
-    };
-
-    /**
-     * Calculates top position of submenu
-     * Submenu is relatively positioned to the first sibling element
-     * @param {Object} n jQuery object, submenu of hovered element
-     * @returns {String} top Top coordinate in pixels for submenu
-     */
-    var horPos = function(n) {
-        var top;
-        var nTop = parseInt(n.css('padding-top'));
-        var tB = parseInt(n.css('border-top-width'));
-        var pPos = m.position();
-        var b = y + nmH - (nTop - tB);// bottom of submenu
-        var mP = m.closest('.dropdown.body.submenu');
-        var pT = 0;
-        var bT = 0;
-        var pE = { top: 0 };
-
-        if (mP.length) {
-            pE = mP.offset();
-            pT = parseInt(mP.css('padding-top'));
-            bT = parseInt(mP.css('border-top-width'));
+        if (!menuNode.classList.contains('mega-height')) {
+            mCreateElement('span', { class: 'context-top-arrow' }, menuNode);
+            mCreateElement('span', { class: 'context-bottom-arrow' }, menuNode);
         }
-
-        var difference = 0;
-
-        if (b > maxY) {
-            difference = b - maxY;
-        }
-        top = pPos.top - tB - difference + 'px';
-
-        return top;
-    };
-
-    var handleSmall = function(dPos) {
-        m.find('> .dropdown-section').wrapAll('<div id="cm_scroll" class="context-scrolling-block"></div>');
-        m.append('<span class="context-top-arrow"></span><span class="context-bottom-arrow"></span>');
-        m.addClass('mega-height');
+        menuNode.classList.add('mega-height');
         cmH = wH - TOP_MARGIN * 2;
-        m.css({ 'height': wH - TOP_MARGIN * 2 + 'px' });
-        m.on('mousemove', M.scrollMegaSubMenu);
+        menuNode.style.height = `${wH - TOP_MARGIN * 2}px`;
+        menuNode.addEventListener('mousemove', M.scrollMegaSubMenu);
         dPos.y = wH - cmH;
     };
 
-    var removeMegaHeight = function() {
-        if (m.hasClass('mega-height')) {
+    const removeMegaHeight = () => {
+        if (menuNode.classList.contains('mega-height')) {
             // Cleanup for scrollable context menu upon resizing window.
-            var cnt = $('#cm_scroll').contents();
-            $('#cm_scroll').replaceWith(cnt);// Remove .context-scrollable-block
-            m.removeClass('mega-height');
-            m.find('> .context-top-arrow').remove();
-            m.find('> .context-bottom-arrow').remove();
-            m.css({ 'height': 'auto' });// In case that window is enlarged
+            const scroll = document.getElementById('cm_scroll');
+            if (scroll.classList.contains('fm-context-body')) {
+                scroll.classList.remove('context-scrolling-block');
+                scroll.id = '';
+            }
+            else {
+                const parent = scroll.parentNode;
+                while (scroll.firstChild) {
+                    parent.insertBefore(scroll.firstChild, scroll);
+                }
+                parent.removeChild(scroll);
+            }
+            menuNode.classList.remove('mega-height');
+            menuNode.querySelector('.context-top-arrow').remove();
+            menuNode.querySelector('.context-bottom-arrow').remove();
+            menuNode.style.height = 'auto'; // In case that window is enlarged
         }
     };
 
-    var dPos;// new context menu position
-    var rtl = $('body').hasClass('rtl');
+    let dPos; // new context menu position
+    const rtl = document.body.classList.contains('rtl');
 
     if (typeof ico === 'object') {// draw context menu relative to file-settings-icon
-        dPos = { 'x': x , 'y': y + ico.y + 4 };// position for right-bot
+        dPos = { x , y: y + ico.y + 4 }; // position for right-bot
 
         // draw to the left
         if (wMax > maxX) {
@@ -1516,94 +1560,60 @@ MegaData.prototype.reCalcMenuPosition = function(m, x, y, ico) {
         }
     }
     else if (ico === 'submenu') {// submenues
-        var n = m.next('.dropdown.body.submenu');
-        var nmW = n.outerWidth();// margin not calculated
-        var nmH = n.outerHeight();// margins not calculated
+        const next = (elem, selector) => {
+            const nextElem = elem.nextElementSibling;
+            if (!selector) {
+                return nextElem;
+            }
+            if (nextElem && nextElem.matches(selector)) {
+                return nextElem;
+            }
+            return null;
+        };
+        const nextNode = next(menuNode, '.dropdown.body.submenu') || next(menuNode, '.context-submenu');
+        // margin not calculated
+        ({ width: nmW, height: nmH } = nextNode.getBoundingClientRect());
         if (nmH >= (maxY - TOP_MARGIN)) {// Handle huge menu
             nmH = maxY - TOP_MARGIN;
-            var tmp = document.getElementById('csb_' + String(m.attr('id')).replace('fi_', ''));
+            const tmp = document.getElementById(`csb_${String(menuNode.id).replace('fi_', '')}`);
             if (tmp) {
-                $(tmp).addClass('context-scrolling-block');
+                tmp.classList.add('context-scrolling-block');
                 tmp.addEventListener('mousemove', M.scrollMegaSubMenu.bind(this));
 
                 // add scrollable context menu.
-                n.addClass('mega-height');
-                n.css({'height': nmH + 'px'});
+                nextNode.classList.add('mega-height');
+                nextNode.style.height = `${nmH}px`;
             }
         }
 
-        top = horPos(n);
-
-        if (rtl) {
-            if (m.parent().parent('.right-position').length === 0) {
-                if (minX <= (x - nmW)) {
-                    left = '100%';
-                    right = 'auto';
-                }
-                else if (maxX >= (wMax + nmW)) {
-                    n.addClass('right-position');
-                }
-                else {
-                    overlapParentMenu(n);
-
-                    return true;
-                }
+        return this.finaliseSubmenuCalcs(
+            menuNode,
+            nextNode,
+            {
+                maxX,
+                maxY,
+                wMax,
+                nmH,
+                nmW,
+                minX,
+                x,
+                y,
+                wW,
+                SIDE_MARGIN
             }
-            else {
-                if (maxX >= (wMax + nmW)) {
-                    n.addClass('right-position');
-                }
-                else if (minX <= (x - nmW)) {
-                    left = '100%';
-                    right = 'auto';
-                }
-                else {
-                    overlapParentMenu(n);
-
-                    return true;
-                }
-            }
-        }
-        else {
-            if (m.parent().parent('.left-position').length === 0) {
-                if (maxX >= (wMax + nmW)) {
-                    left = 'auto';
-                    right = '100%';
-                }
-                else if (minX <= (x - nmW)) {
-                    n.addClass('left-position');
-                }
-                else {
-                    overlapParentMenu(n);
-
-                    return true;
-                }
-            }
-            else {
-                if (minX <= (x - nmW)) {
-                    n.addClass('left-position');
-                }
-                else if (maxX >= (wMax + nmW)) {
-                    left = 'auto';
-                    right = '100%';
-                }
-                else {
-                    overlapParentMenu(n);
-
-                    return true;
-                }
-            }
-        }
-
-        return {'top': top, 'left': left, 'right': right};
+        );
     }
     else {// right click
 
         if (rtl) {
-            dPos = { 'x': x - 10 - m.outerWidth(), 'y': y + 10 };
+            dPos = { x: x - 10 - cmW, y: y + 10 };
+            if (dPos.x < minX) {
+                // Flip to other side
+                dPos.x = minX;
+            }
         }
         else {
-            dPos = { 'x': x + 10, 'y': y + 10 };
+            dPos = { x: x + 10, y: y + 10 };
         }
 
         if (cmH + 24 >= wH) {// Handle small windows height
@@ -1624,136 +1634,49 @@ MegaData.prototype.reCalcMenuPosition = function(m, x, y, ico) {
         }
     }
 
-    return { 'x': dPos.x, 'y': dPos.y };
+    return { x: dPos.x, y: dPos.y };
 };
 
 // Scroll menus which height is bigger then window.height
-MegaData.prototype.scrollMegaSubMenu = function(e) {
+MegaData.prototype.scrollMegaSubMenu = function(ev) {
     "use strict";
 
-    var c = $(e.target).closest('.dropdown.body.mega-height');
-    var pNode = c.children(':first')[0];
+    const { target, pageY: ey, clientX, clientY } = ev;
+    if (
+        document.elementsFromPoint(clientX, clientY).some(elm =>
+            elm.classList.contains('submenu-button') || elm.classList.contains('context-submenu'))
+    ) {
+        return;
+    }
+    const heightNode = target.closest('.mega-height');
+    let pNode = heightNode ? heightNode.firstChild : false;
 
-    if (typeof pNode === 'undefined') {
-        pNode = c[0];
+    if (!pNode) {
+        pNode = heightNode;
     }
 
-    if (typeof pNode !== 'undefined') {
-        var ey = e.pageY;
-        var h = pNode.offsetHeight;
-        var dy = h * 0.1;// 10% dead zone at the begining and at the bottom
-        var pos = getHtmlElemPos(pNode, true);
-        var py = (ey - pos.y - dy) / (h - dy * 2);
+    if (pNode) {
+        const h = pNode.offsetHeight;
+        const dy = h * 0.1; // 10% dead zone at the begining and at the bottom
+        const pos = getHtmlElemPos(pNode, true);
+        let py = (ey - pos.y - dy) / (h - dy * 2);
 
+        const topArr = heightNode.querySelector('.context-top-arrow');
+        const bottomArr = heightNode.querySelector('.context-bottom-arrow');
         if (py > 1) {
             py = 1;
-            c.children('.context-bottom-arrow').addClass('disabled');
+            bottomArr.classList.add('disabled');
         }
         else if (py < 0) {
             py = 0;
-            c.children('.context-top-arrow').addClass('disabled');
+            topArr.classList.add('disabled');
         }
         else {
-            c.children('.context-bottom-arrow,.context-top-arrow').removeClass('disabled');
+            topArr.classList.remove('disabled');
+            bottomArr.classList.remove('disabled');
         }
         pNode.scrollTop = py * (pNode.scrollHeight - h);
     }
-};
-
-MegaData.prototype.labelSortMenuUI = function(event, rightClick) {
-    "use strict";
-
-    var $menu = $('.colour-sorting-menu');
-    var $menuItems = $('.colour-sorting-menu .dropdown-colour-item');
-    var x = 0;
-    var y = 0;
-    var $sortMenuItems = $('.dropdown-item', $menu).removeClass('active');
-    var $selectedItem;
-    var type = this.currentLabelType;
-    var sorting = M.sortmode || {n: 'name', d: 1};
-
-    var dirClass = sorting.d > 0 ? 'icon-up' : 'icon-down';
-
-    // Close label filtering sorting menu on second Name column click
-    if ($menu.is(':visible') && !rightClick) {
-        $menu.addClass('hidden');
-        return false;
-    }
-
-    $('.colour-sorting-menu .dropdown-colour-item').removeClass('active');
-    if (M.filterLabel[type]) {
-        for (var key in M.filterLabel[type]) {
-            if (key) {
-                $menuItems.filter('[data-label-id=' + key + ']').addClass('active');
-            }
-        }
-    }
-
-    $selectedItem = $sortMenuItems
-        .filter('*[data-by=' + sorting.n + ']')
-        .addClass('active');
-
-    var tmpFn = function() {
-        x = event.clientX;
-        y = event.clientY;
-
-        $menu.css('left', x + 'px');
-        $menu.css('top', y + 'px');
-    };
-
-    if (rightClick) {// FM right mouse click on node
-        M.adjustContextMenuPosition(event, $menu);
-    }
-    else {
-        tmpFn();
-    }
-
-    delay('render:search_breadcrumbs', () => M.renderSearchBreadcrumbs());
-    $.hideTopMenu();
-    $.hideContextMenu();
-    $menu.removeClass('hidden');
-
-    $('.colour-sorting-menu').off('click', '.dropdown-item');
-    $('.colour-sorting-menu').on('click', '.dropdown-item', function() {
-        // dont to any if it is static
-        if ($(this).hasClass('static')){
-            return false;
-        }
-
-        if (d){
-            console.log('fm sorting start');
-        }
-
-        var data = $(this).data();
-        var dir = 1;
-
-        if ($(this).hasClass('active')) {// Change sort direction
-            dir = sorting.d * -1;
-        }
-
-        $('.colour-sorting-menu').addClass('hidden');
-
-        var lbl = function(el) {
-            return el.lbl;
-        };
-        if (data.by === 'label' && !M.v.some(lbl)) {
-            return false;
-        }
-
-        M.doSort(data.by, dir);
-        M.renderMain();
-
-        return false;
-    });
-
-    return false;
-};
-
-MegaData.prototype.resetLabelSortMenuUI = function() {
-    "use strict";
-
-    $('.colour-sorting-menu .dropdown-item').removeClass('active asc desc');
-    return false;
 };
 
 MegaData.prototype.getSelectedRemoveLabel = (handlesArr) => {

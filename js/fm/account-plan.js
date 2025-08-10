@@ -214,7 +214,7 @@ accountUI.plan = {
                 $planDetails.removeClass('paid').attr('subid', '');
                 $('.account.plan-info.accounttype span', $planContent).text(l[1150]);
                 $('.account .plan-icon', $planContent).addClass('free');
-                $('.account.plan-info.expiry', $planContent).removeClass('red').text(l[436]);
+                $('.account.plan-info.expiry span', $planContent).removeClass('red').text(l[436]);
                 $('.sub-container.subscription:not(.feature)', $planContent).addClass('hidden');
                 if (account.mxfer) {
                     $('.account.plan-info.bandwidth', $planContent).parent().removeClass('hidden');
@@ -251,11 +251,11 @@ accountUI.plan = {
             featureBlock.className = `feature-details ${feature}`;
 
             const isTrial = featurePlan.is_trial;
-
+            const surveyAl = pro[`ACCOUNT_LEVEL_FEATURE_${feature.toUpperCase()}`];
             const sections = [
                 {
                     label: l[16166],
-                    value: pro.getProPlanName(pro[`ACCOUNT_LEVEL_FEATURE_${feature.toUpperCase()}`]),
+                    value: pro.getProPlanName(surveyAl),
                     isTrial
                 },
                 {
@@ -275,7 +275,7 @@ accountUI.plan = {
             if (featurePlan.next) {
                 const section = this.renderSubBtnSection(() => {
                     if (featurePlan.gwid === 2 || featurePlan.gwid === 3) {
-                        msgDialog('warninga', l[7179], l[16501]);
+                        msgDialog('warninga', l[7179], l.double_billing_sub_cancel);
                         return;
                     }
 
@@ -287,7 +287,7 @@ accountUI.plan = {
                             // l.vpn_keep_plan
                             // l.pwm_keep_plan
                             label: l[`${feature}_keep_plan`],
-                            callback: nop
+                            callback: eventlog.bind(null, 500647, surveyAl)
                         },
                         cancel: {
                             label: l.cancel_pro_continue,
@@ -295,6 +295,8 @@ accountUI.plan = {
                                 if (status === false) {
                                     return;
                                 }
+
+                                eventlog(500648, surveyAl);
 
                                 delay('megaFeatureCancel', () => {
                                     const { cancelSubscriptionDialog } = accountUI.plan.accountType;
@@ -304,7 +306,7 @@ accountUI.plan = {
                         },
                         setContent() {
                             const div = document.createElement('div');
-                            div.className = 'cancel-subscription-benefits-content px-6';
+                            div.className = 'cancel-subscription-benefits-content mob-px-6';
 
                             // String keys:
                             // l.vpn_trial_cancel_confirm
@@ -387,6 +389,7 @@ accountUI.plan = {
                     });
 
                     dialog.show();
+                    eventlog(500416, surveyAl);
                 }, isTrial);
 
                 featureBlock.appendChild(section);
@@ -540,7 +543,7 @@ accountUI.plan = {
 
                 const btnSection = this.renderSubBtnSection(() => {
                     if (gwid === 2 || gwid === 3) {
-                        msgDialog('warninga', l[7179], l[16501]);
+                        msgDialog('warninga', l[7179], l.double_billing_sub_cancel);
                         return;
                     }
 
@@ -595,7 +598,7 @@ accountUI.plan = {
                 // Tell them they need to cancel their plan off-site and don't show the feedback dialog
                 $subscriptionBlock.removeClass('hidden');
                 $cancelSubscriptionButton.rebind('click', () => {
-                    msgDialog('warninga', l[7179], l[16501]);
+                    msgDialog('warninga', l[7179], l.double_billing_sub_cancel);
                 });
             }
 
@@ -607,7 +610,7 @@ accountUI.plan = {
                         sub,
                         document.querySelector('.accounttype .plan-details')
                     );
-                    eventlog(500416);
+                    eventlog(500416, sub.al);
                 });
             }
 
@@ -644,6 +647,8 @@ accountUI.plan = {
             $cancelReason: null,
             $expiryTextBlock: null,
             $expiryDateBlock: null,
+            subOptions: null,
+            subOptionSwitcher: null,
 
             /**
              * Initialise the dialog
@@ -654,6 +659,8 @@ accountUI.plan = {
             init(subscription, expContainer) {
 
                 'use strict';
+
+                this.skipSurvey = true;
 
                 // Cache some selectors
                 this.$benefitsCancelDialog = $('.cancel-subscription-benefits');
@@ -673,39 +680,35 @@ accountUI.plan = {
                 this.$expiryDateBlock = $(expContainer.querySelector('.acc-renew-date-info .plan-info'));
 
                 const accountLevel = subscription && subscription.al || M.account.slevel;
+                const surveyAl = accountLevel === pro.ACCOUNT_LEVEL_FEATURE
+                    ? accountLevel + pro.getStandaloneBits(subscription.features)
+                    : accountLevel;
 
-                this.canAnswerSurvey = pro.filter.simple.canSeeCancelSubsSurvey.has(accountLevel);
+                this.canAnswerSurvey = surveyAl === pro.ACCOUNT_LEVEL_FEATURE_VPN
+                    || pro.filter.simple.canSeeCancelSubsSurvey.has(accountLevel);
 
-                const options = {
-                    temp_plan: 1,
-                    too_expensive: 2,
-                    too_much_storage_quota: 3,
-                    lack_of_features: 4,
-                    switching_provider: 5,
-                    difficult_to_use: 6,
-                    poor_support: 7,
-                    cant_afford: 9,
-                    no_sub: 10,
-                };
-
-                // Shuffle the options
-                const optionArray = Object.keys(options);
-                for (let i = optionArray.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [optionArray[i], optionArray[j]] = [optionArray[j], optionArray[i]];
-                }
+                const options = this.getOptionsBySubscription(subscription);
+                const optionArray = array.randomize(Object.keys(options));
 
                 const $template = $('.cancel-subscription-radio-template', this.$dialog);
                 const $optionArea = $('.content-block form.cancel-options', this.$dialog);
-                $optionArea.children('.built-option').remove();
+                $optionArea.children('.built-option, .radios-wrapper').remove();
 
-                for (let i = 0; i < optionArray.length; i++) {
+                for (let i = optionArray.length - 1; i >= 0; i--) {
                     const $radio = $template.clone().removeClass('hidden cancel-subscription-radio-template');
                     $('#subcancel_div', $radio).removeAttr('id');
                     $('#subcancel', $radio).val(options[optionArray[i]]).removeAttr('id');
                     $('.radio-txt', $radio).text(l[`cancel_sub_${optionArray[i]}_reason`]);
+                    if (this.subOptions[options[optionArray[i]]]) {
+                        $optionArea.safePrepend('<div class="hidden cancel-option-'
+                            + options[optionArray[i]] + ' radios-wrapper"></div>');
+                    }
                     $optionArea.safePrepend($radio.prop('outerHTML'));
+                    $optionArea.children()[0].getElementsByTagName('input')[0].dataset.pos = i + 1;
                 }
+
+                document.getElementById('subcancel8').dataset.pos = optionArray.length + 1;
+                this.updateSurveyHeaders(surveyAl);
 
                 this.$options = this.$dialog.find('.label-wrap');
                 this.$allowContactOptions = $('.allow-contact-wrapper', this.$dialog);
@@ -734,12 +737,141 @@ accountUI.plan = {
                 this.checkReasonEnteredIsValid();
                 this.initClickReason();
                 this.initClickContactConfirm();
-                this.initCloseAndDontCancelButtons();
+                this.initCloseAndDontCancelButtons(surveyAl);
+                this.initSecondaryOptions();
 
                 this.$continueButton.rebind('click', () => {
                     this.sendSubCancelRequestToApi(subscription && subscription.id || null);
-                    eventlog(500421);
+                    eventlog(this.canAnswerSurvey && this.skipSurvey ? 500649 : 500421, surveyAl);
                 });
+            },
+
+            initSecondaryOptions() {
+                'use strict';
+
+                const elementParents = [];
+
+                const switcherElements = {
+                    onElementChange: () => {
+                        for (const $parent of elementParents) {
+                            const $children = $('.suboption-radio', $parent);
+                            const hideElement = !!(!$children.length || $children.filter('.hidden').length);
+                            $parent.toggleClass('hidden', hideElement);
+                        }
+                    },
+                };
+
+                for (const key in this.subOptions) {
+                    switcherElements[key] = {
+                        $element: mega.templates.getTemplate('cancel-suboption-wrapper-temp'),
+                        $target: $('.cancel-option-' + key, this.$dialog),
+                        onElementAppend: ($element, extras) => {
+                            const $radioTemplate = $('.template', $element);
+                            for (let i = 0; i < extras.length; i++) {
+                                const $radio = $radioTemplate.clone().removeClass('hidden template');
+                                $('input', $radio).val(extras[i].val);
+                                $('.radio-txt', $radio).text(extras[i].text);
+                                $element.safeAppend($radio.prop('outerHTML'));
+                                $element.children('.label-wrap:not(.template)')[i]
+                                    .getElementsByTagName('input')[0].dataset.pos = String.fromCharCode(97 + i);
+                            }
+                            $radioTemplate.remove();
+
+                            $('.label-wrap', $element).rebind('click', (e) => {
+
+                                $element.closest('.radios-wrapper').removeClass('error');
+
+                                const $option = $(e.currentTarget);
+                                $('.radioOn', $element).addClass('radioOff').removeClass('radioOn');
+                                $('.suboption', $option).addClass('radioOn').removeClass('radioOff');
+                            });
+                        },
+                        extras: this.subOptions[key],
+                    };
+
+                    elementParents.push(switcherElements[key].$target);
+                }
+                this.subOptionSwitcher = this.subOptionSwitcher && this.subOptionSwitcher.remove();
+                this.subOptionSwitcher = mega.elementSwitcher(
+                    switcherElements, undefined, 'cancel-suboptions-switcher', true);
+            },
+
+            /**
+             * Updating headers based on account level
+             * @param {Number} al Account level
+             * @returns {void}
+             */
+            updateSurveyHeaders(al) {
+                'use strict';
+
+                let title = l[6822];
+                let txt = l[6996];
+                let subTxt = '';
+
+                if (al === pro.ACCOUNT_LEVEL_FEATURE_VPN) {
+                    title = l.vpn_cancel_survey_title;
+                    txt = l.vpn_cancel_survey_txt;
+                    subTxt = l.vpn_cancel_survey_subtxt;
+                }
+
+                $('#cancel-subscription-st1-title', this.$dialog).text(title);
+                $('.fm-dialog-top-text', this.$dialog).text(txt);
+                $('.cancel-option-info', this.$dialog).text(subTxt);
+            },
+
+            /**
+             * Compose the cancellation reasons for the survey
+             * @param {Object} subscription Subscription details
+             * @returns {Object.<String, Number>}
+             */
+            getOptionsBySubscription(subscription) {
+                'use strict';
+
+                this.subOptions = {};
+                const r = [];
+                r[1] = 'temp_plan';
+                r[2] = 'too_expensive';
+                r[3] = 'too_much_storage_quota';
+                r[4] = 'lack_of_features';
+                r[5] = 'switching_provider';
+                r[6] = 'difficult_to_use';
+                r[7] = 'poor_support';
+                r[9] = 'cant_afford';
+                r[10] = 'no_sub';
+                r[11] = 'vpn_conn';
+                r[12] = 'vpn_speed';
+                r[13] = 'vpn_tmp';
+                r[14] = 'vpn_servers';
+                r[15] = 'vpn_difficult';
+                r[16] = 'vpn_security';
+
+                const getReasons = (...args) => args.reduce((acc, i) => {
+                    acc[r[i]] = i;
+                    return acc;
+                }, {});
+
+                if (subscription && subscription.al === pro.ACCOUNT_LEVEL_FEATURE && subscription.features.vpn) {
+                    return getReasons(11, 12, 13, 14, 15, 16);
+                }
+
+                this.subOptions = array.randomize({
+                    1: [
+                        {
+                            text: l.c_s_o_donwload_files_only,
+                            val: 'a',
+                        },
+                        {
+                            text: l.c_s_o_store_files_temp,
+                            val: 'b',
+                        },
+                        {
+                            text: l.c_s_o_share_files_only,
+                            val: 'c',
+                        },
+                    ],
+                }, 2);
+
+                return getReasons(1, 2, 3, 4, 5, 6, 7, 9, 10);
             },
 
             /**
@@ -774,6 +906,9 @@ accountUI.plan = {
                 this.$textarea.val('');
                 $('.cancel-option', this.$options).addClass('radioOff').removeClass('radioOn');
                 $('.contact-option', this.$allowContactOptions).addClass('radioOff').removeClass('radioOn');
+
+                this.skipSurvey = true;
+                this.$continueButton.text(l.skip_and_cancel);
             },
 
             async fillBenefits($keepPlanBtn) {
@@ -811,6 +946,17 @@ accountUI.plan = {
                     const proTransfer = bytesToSize(plan[pro.UTQA_RES_INDEX_TRANSFER] * 1073741824, 0);
                     const rewindTxt = mega.icu.format(l.pr_up_to_days, pro.filter.simple.ninetyDayRewind
                         .has(plan[pro.UTQA_RES_INDEX_ACCOUNTLEVEL]) ? 90 : 180);
+
+                    const banner = $cancelDialog[0].querySelector('.over-storage-banner');
+                    if (M.account.cstrg > mega.bstrg) {
+                        banner.classList.remove('hidden');
+                        banner.querySelector('span').textContent = l.cancel_sub_oq_banner
+                            .replace('%1', bytesToSize(M.account.cstrg))
+                            .replace('%2', freeStorage);
+                    }
+                    else {
+                        banner.classList.add('hidden');
+                    }
 
                     $('.pro-storage', $cancelDialog).text(proStorage);
                     $('.free-storage', $cancelDialog).text(freeStorage);
@@ -868,9 +1014,10 @@ accountUI.plan = {
 
             /**
              * Close the dialog when either the close or "Don't cancel" buttons are clicked
+             * @param {Number} accountLevel The account level to assign the survey to
              * @returns {void}
              */
-            initCloseAndDontCancelButtons() {
+            initCloseAndDontCancelButtons(accountLevel) {
                 'use strict';
 
                 var self = this;
@@ -878,12 +1025,27 @@ accountUI.plan = {
                 const closeSurvey = (eventId) => {
                     self.$dialog.addClass('hidden');
                     self.$backgroundOverlay.addClass('hidden').removeClass('payment-dialog-overlay');
-                    eventlog(eventId);
+                    eventlog(eventId, accountLevel);
                 };
 
                 // Close main dialog
                 $('button.dont-cancel', self.$dialog).rebind('click.logEvent', () => closeSurvey(500420));
                 $('button.js-close', self.$dialog).rebind('click.logEvent', () => closeSurvey(500422));
+            },
+
+            /**
+             * Setting survey to mandatory in case it is needed
+             * @returns {void}
+             */
+            setSurveyToMandatory() {
+                'use strict';
+
+                if (!this.skipSurvey) {
+                    return;
+                }
+
+                this.skipSurvey = false;
+                this.$continueButton.text(l.submit_and_cancel);
             },
 
             /**
@@ -911,6 +1073,8 @@ accountUI.plan = {
                     this.$textareaAndErrorDialog.toggleClass('hidden', !valueIsOtherOption);
                     this.$dialog.toggleClass('textbox-open', valueIsOtherOption);
 
+                    this.setSurveyToMandatory();
+
                     if (valueIsOtherOption) {
                         this.$invalidDetailsDialog.toggleClass('hidden', !(this.$cancelReason.hasClass('error')));
 
@@ -920,6 +1084,13 @@ accountUI.plan = {
                     else {
                         this.$invalidDetailsDialog.addClass('hidden');
                         this.$textarea.trigger('blur');
+                    }
+
+                    if (this.subOptions[value] && this.subOptionSwitcher && !$option.hasClass('cancel-option')) {
+                        this.subOptionSwitcher.showElement(value);
+                    }
+                    else {
+                        this.subOptionSwitcher.hide();
                     }
                 });
             },
@@ -943,6 +1114,8 @@ accountUI.plan = {
 
                     this.$selectCanContactError.addClass('hidden');
                     this.$dialog.removeClass('error-select-contact');
+
+                    this.setSurveyToMandatory();
                 });
             },
 
@@ -1016,46 +1189,61 @@ accountUI.plan = {
             sendSubCancelRequestToApi(subscriptionId) {
                 'use strict';
 
-                let reason;
+                const reasons = [];
                 let canContactUser;
 
                 // Check the user has answered all the survey questions
-                if (this.canAnswerSurvey) {
-                    const $optionSelected = $('.cancel-option.radioOn', this.$options);
-                    const isReasonSelected = $optionSelected.length;
-
+                if (this.canAnswerSurvey && !this.skipSurvey) {
+                    const $optionsSelected = $('div.cancel-option.radioOn', this.$options);
                     const $selectedContactOption = $('.contact-option.radioOn', this.$allowContactOptions);
-                    const isContactOptionSelected = $selectedContactOption.length;
 
-                    if (!isReasonSelected || !isContactOptionSelected) {
-                        if (!isReasonSelected) {
-                            this.$selectReasonDialog.removeClass('hidden');
-                            this.$dialog.addClass('error-select-reason');
-                        }
-                        if (!isContactOptionSelected) {
-                            this.$selectCanContactError.removeClass('hidden');
-                            this.$dialog.addClass('error-select-contact');
-                        }
+                    if (!$selectedContactOption.length) {
+                        this.$selectCanContactError.removeClass('hidden');
+                        this.$dialog.addClass('error-select-contact');
                         return;
                     }
 
-                    const value = $('input', $optionSelected).val();
-                    const radioText = $('.radio-txt', $optionSelected.parent()).text().trim();
-                    canContactUser = $('input', $selectedContactOption).val() | 0;
+                    canContactUser = $('input', $selectedContactOption).val();
 
-                    // The cancellation reason (r) sent to the API is the radio button text, or
-                    // when the chosen option is "Other (please provide details)" it is
-                    // what the user enters in the text field
-                    if (value === "8") {
-                        reason = this.$textarea.val().trim();
+                    if ($optionsSelected.length) {
+                        for (let i = 0; i < $optionsSelected.length; i++) {
+                            const input = $('input', $optionsSelected[i])[0];
+                            const r = input.value;
+                            const p = input.dataset.pos;
 
-                        if (!reason.length || reason.length > 1000) {
-                            this.showTextareaError(!reason.length);
-                            return;
+                            if (this.subOptions[r]) {
+                                const $subOptionArea = $(`.cancel-option-${r}`, this.$dialog);
+                                const $chosenSubOption = $('input.radioOn', $subOptionArea);
+
+                                if ($chosenSubOption.length === 1) {
+                                    reasons.push({
+                                        r: `${r}.${$chosenSubOption.val()}`,
+                                        p: `${p}.${$chosenSubOption.data('pos')}`
+                                    });
+                                }
+                                else {
+                                    $subOptionArea.addClass('error');
+                                    return;
+                                }
+                            }
+                            else if (r === '8') {
+                                const t = this.$textarea.val().trim();
+
+                                if (!t.length || t.length > 1000) {
+                                    this.showTextareaError(!t.length);
+                                    return;
+                                }
+                                reasons.push({ r, p, t });
+                            }
+                            else {
+                                reasons.push({ r, p });
+                            }
                         }
                     }
                     else {
-                        reason = `${value} - ${radioText}`;
+                        this.$selectReasonDialog.removeClass('hidden');
+                        this.$dialog.addClass('error-select-reason');
+                        return;
                     }
                 }
 
@@ -1065,15 +1253,19 @@ accountUI.plan = {
                 loadingDialog.show();
 
                 // Setup standard request to 'cccs' = Credit Card Cancel Subscriptions
-                const ccReq = { a: 'cccs' };
+                const ccReq = { a: 'cccs', m: '0' }; // m stands for mobile
                 const requests = [ccReq];
 
-                if (reason) {
-                    ccReq.r = reason;
+                if (!this.skipSurvey) {
+                    if (reasons) {
+                        ccReq.r = reasons;
+                    }
+
+                    if (canContactUser !== undefined) {
+                        ccReq.cc = canContactUser;
+                    }
                 }
-                if (typeof canContactUser !== 'undefined') {
-                    ccReq.cc = canContactUser;
-                }
+
                 if (subscriptionId) {
                     ccReq.sub = subscriptionId;
                 }
@@ -1102,7 +1294,7 @@ accountUI.plan = {
                         accountUI();
 
                         // Notify any other open tabs of the cancelled subscription
-                        mBroadcaster.crossTab.notify('cancelSub', 1);
+                        watchdog.notify('refresh-account-ui');
                     }, 1e3);
                 });
             }
@@ -1138,7 +1330,7 @@ accountUI.plan = {
 
             // check if we should show the section (uq response)
             if (this.validateUser(account)) {
-                api.req({ a: 'cci' }).then(({ result: res }) => {
+                api.req({ a: 'cci', v: 2 }).then(({ result: res }) => {
                     if (typeof res === 'object' && this.validateCardResponse(res)) {
                         return this.render(res);
                     }
@@ -1224,7 +1416,7 @@ accountUI.plan = {
 
                     eventlog(500486);
 
-                    $('.fm-account-overlay, .fm-purchase-voucher, .fm-voucher-button')
+                    $('.fm-account-overlay, .fm-voucher-button')
                         .add('.fm-voucher-popup button.js-close')
                         .rebind('click.closeDialog', () => {
                             $('.fm-account-overlay').addClass('hidden');
@@ -1273,11 +1465,6 @@ accountUI.plan = {
                             msgDialog('warninga', l[135], ex, sub);
                         }
                     });
-            });
-
-            $('.fm-purchase-voucher, button.topup').rebind('click', () => {
-                mega.redirect('mega.io', 'resellers', false, false, false);
-                eventlog(500485);
             });
         }
     },

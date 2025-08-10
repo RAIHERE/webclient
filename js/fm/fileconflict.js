@@ -41,12 +41,32 @@
             var breakOP = false;
             var foldersRepeatAction = null;
 
-            // this is special if for copying from chat
-            // 1- must be 1 item
-            // 2- must be to 1 target.
-            // --> no need to consider in all logical space of file/folder conflicts
-            if (M.d[target] && M.d[target].name === M.myChatFilesFolder.name) {
+            /**
+             * Special case 1: Copying from chat
+             *
+             * 1. must be 1 item
+             * 2. must be to 1 target.
+             * --> no need to consider in all logical space of file/folder conflicts
+             */
+            const copyingFromChat = M.d[target] && M.d[target].name === M.myChatFilesFolder.name;
+
+            /**
+             * Special case 2: "Moving" stopped backups to inshares requires a copy + remove
+             *
+             * The copy could prompt a fileconflict dialog, the resolution of which
+             * we keep consistent with that of the 'move stopped backup to CD' action
+             */
+            const copyingBackupToInshares =
+                files.length && M.getNodeRoot(files[0]) === M.InboxID && !!sharer(target)
+                && mega.devices.ui && typeof mega.devices.ui.getFolderInPath === 'function'
+                && mega.devices.ui.getFolderInPath(M.getPath(files[0])).h === files[0];
+
+            if (copyingFromChat || copyingBackupToInshares) {
                 defaultAction = ns.KEEPBOTH;
+
+                if (copyingBackupToInshares) {
+                    defaultActionFolders = ns.KEEPBOTH;
+                }
             }
 
             for (var i = files.length; i--;) {
@@ -200,7 +220,10 @@
                                 }
                             }
                             else {
-                                self.prompt(op, file, node, a.length, node.p || target)
+                                const remaining = file.t === 1 ?
+                                    a.filter(n => n[1].t === 1).length :
+                                    a.filter(n => n[1].t === 0).length;
+                                self.prompt(op, file, node, remaining, node.p || target)
                                     .always(function(file, name, action, checked) {
                                         if (file === -0xBADF) {
                                             result = [];
@@ -259,6 +282,142 @@
             }
 
             return promise;
+        },
+
+        async checkImport(tree, t) {
+            const conflictRoots = [];
+            const decrNodes = Object.create(null);
+            const nodeMap = Object.create(null);
+            await dbfetch.get(t);
+            for (let i = tree.length; i--;) {
+                const n = tree[i];
+                const tmp = {...n};
+                crypto_procattr(tmp, tmp.k);
+                if (n.p) {
+                    if (!decrNodes[n.p]) {
+                        decrNodes[n.p] = [];
+                    }
+                    decrNodes[n.p].push(tmp);
+                }
+                else {
+                    const exist = this.getNodeByName(t, M.getSafeName(tmp.name));
+                    if (exist) {
+                        conflictRoots.push([tmp, exist]);
+                    }
+                }
+                nodeMap[n.h] = n;
+            }
+            let remain = conflictRoots.length;
+            eventlog(500886, JSON.stringify([1, tree.length, remain]));
+            let repeatAction = false;
+
+            const promptProc = async(impNode, exist, t, remain, skipRepeat) => {
+                let res;
+                if (!skipRepeat && repeatAction) {
+                    res = {
+                        name: repeatAction === ns.KEEPBOTH ? this.findNewName(impNode.name, t) : impNode.name,
+                        action: repeatAction,
+                        checked: true,
+                    };
+                }
+                else {
+                    const { promise } = mega;
+                    this.prompt('import', impNode, exist, Math.max(remain || 0, 0), t)
+                        .always((file, name, action, checked) => {
+                            promise.resolve({ name, action, file, checked });
+                        });
+                    res = await promise;
+                }
+                const { name, action, checked, file } = res;
+                if (file === -0xBADF) {
+                    return false;
+                }
+                if (!skipRepeat && checked) {
+                    repeatAction = action;
+                }
+                if (action === ns.REPLACE) {
+                    nodeMap[impNode.h]._replaces = exist.h;
+                }
+                else if (action === ns.KEEPBOTH) {
+                    impNode.name = name;
+                    nodeMap[impNode.h].a = ab_to_base64(crypto_makeattr(impNode));
+                }
+                else {
+                    delete nodeMap[impNode.h];
+                    if (decrNodes[impNode.h]) {
+                        const stack = [...decrNodes[impNode.h]];
+                        while (stack.length) {
+                            const n = stack.pop();
+                            delete nodeMap[n.h];
+                            if (decrNodes[n.h]) {
+                                stack.push(...decrNodes[n.h]);
+                            }
+                        }
+                    }
+                }
+                return action;
+            };
+            const newCopy = Object.create(null);
+            const processFolderMerge = async(stack) => {
+                while (stack.length) {
+                    const { exist, node } = stack.pop();
+                    if (decrNodes[node.h]) {
+                        if (!newCopy[exist.h]) {
+                            newCopy[exist.h] = [];
+                        }
+                        await dbfetch.get(exist.h);
+                        for (let i = decrNodes[node.h].length; i--;) {
+                            const next = decrNodes[node.h][i];
+                            const match = this.getNodeByName(exist.h, next.name);
+                            if (match && match.t) {
+                                stack.push({ exist: match, node: next });
+                            }
+                            else if (match) {
+                                const res = await promptProc(next, match, exist.h, 0, true);
+                                if (res === false) {
+                                    return [];
+                                }
+                                if (res !== ns.DONTCOPY) {
+                                    delete nodeMap[next.h].p;
+                                    newCopy[exist.h].push(nodeMap[next.h]);
+                                    delete nodeMap[next.h];
+                                }
+                            }
+                            else {
+                                delete nodeMap[next.h].p;
+                                newCopy[exist.h].push(nodeMap[next.h]);
+                                delete nodeMap[next.h];
+                            }
+                        }
+                    }
+                    delete nodeMap[node.h];
+                }
+            };
+            for (let i = conflictRoots.length; i--;) {
+                const [root, exist] = conflictRoots[i];
+                const action = await promptProc(root, exist, t, --remain);
+                if (!action) {
+                    throw EBLOCKED;
+                }
+                if (exist.t) {
+                    if (action === ns.REPLACE) {
+                        const stack = [{ exist, node: root }];
+                        await processFolderMerge(stack);
+                    }
+                    else {
+                        delete decrNodes[root.h];
+                    }
+                }
+            }
+            // Process merges
+            for (const [t, tree] of Object.entries(newCopy)) {
+                tree._importPart = true;
+                await M.copyNodes(tree.map(n => n.h), t, false, tree);
+            }
+            // Pass back rest to caller to finish copying.
+            const res = Object.values(nodeMap).reverse();
+            res._importPart = true;
+            return res;
         },
 
         filesFolderConfilicts: function _filesFolderConfilicts(nodesToCopy, target) {
@@ -363,7 +522,7 @@
                     .safeHTML(escapeHTML(l[17550]).replace('%1', '<strong>' + name + '</strong>'));
             }
             else {
-                $icons.addClass(is_mobile ? fileIcon(node) : `icon-${fileIcon(node)}-90`);
+                $icons.addClass(`icon-${fileIcon(node)}-90`);
 
                 // Check whether the user have full-access to the target, required to replace or create versions
                 if (M.getNodeRights(target) < 2) {
@@ -456,11 +615,20 @@
                     $('.light-grey', $a3).text(l[16493]);
                     break;
                 case 'import':
-                    $('.red-header', $a1).text(l[17558]);
                     $('.red-header', $a2).text(l[17559]);
                     $('.red-header', $a3).text(l[17560]);
-                    $('.light-grey', $a3).text(l[17561]);
-                    $('.light-grey', $a1).safeHTML(l[17097]);
+                    if (file.t) {
+                        $('.red-header', $a1).text(l.conflict_import_merge);
+                        $('.light-grey', $a1).text(l.conflict_import_merge_note);
+                        $('.light-grey', $a2).text(l[19598]);
+                        $('.light-grey', $a3).text(l.conflict_import_rename_folder);
+                        $a3.removeClass('hidden');
+                    }
+                    else {
+                        $('.red-header', $a1).text(l[17558]);
+                        $('.light-grey', $a3).text(l[17561]);
+                        $('.light-grey', $a1).safeHTML(l[17097]);
+                    }
                     break;
             }
 
@@ -478,6 +646,9 @@
                     if (dupsNB > 2 || M.currentrootid === 'shares') {
                         $a2.addClass('hidden');
                     }
+                }
+                else if (op === 'import') {
+                    $('.file-name', $a3).text(this.findNewName(file.name, target));
                 }
             }
             else {
@@ -545,21 +716,25 @@
             });
 
             $('#duplicates-checkbox', $dialog)
-                .switchClass('checkboxOn', 'checkboxOff')
+                .removeClass('checkboxOn').addClass('checkboxOff')
                 .parent()
-                .switchClass('checkboxOn', 'checkboxOff');
+                .removeClass('checkboxOn').addClass('checkboxOff');
 
-            var $aside = $('aside', $dialog).addClass('hidden');
+            let $node = $('aside', $dialog).addClass('hidden');
 
             if (remaining) {
                 var remainingConflictText = remaining > 1 ?
                     escapeHTML(l[16494]).replace('%1', '<span>' + remaining + '</span>') :
                     l[23294];
-                $aside.removeClass('hidden');
-                $('label', $aside).safeHTML(remainingConflictText);
+                $node.removeClass('hidden');
+                $('label', $node).safeHTML(remainingConflictText);
                 this.customRemaining($dialog);
             }
 
+            const content = $('.content', $dialog)[0];
+            if (content) {
+                $node = new PerfectScrollbar(content);
+            }
             loadingDialog.phide();
             uiCheckboxes($dialog);
             this.showDialog($dialog);

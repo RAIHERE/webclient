@@ -2,13 +2,10 @@
     border-radius: var(--border-radius);
     height: auto;
     min-height: 10px;
-    overflow: hidden;
-    width: 560px;
+    width: 630px;
 }
 .mega-dialog.share-dialog .share-dialog-bottom {
     background: var(--surface-grey-1);
-    -webkit-padding-end: 0;
-    padding-inline-end: 0;
 }
 
 .mega-dialog.share-dialog > header {
@@ -29,6 +26,466 @@
     position: relative;
 }
 
+.mega-dialog.share-dialog .share-dialog-invite-background {
+    background: var(--surface-grey-2);
+    border-radius: 4px;
+    display: inline-flex;
+    flex-grow: 1;
+    margin-right: 8px;
+    width: 75%;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container {
+    margin-top: 20px;
+    display: flex;
+    width: 100%;
+    flex-flow: row wrap;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .contact-search-block {
+    position: relative;
+    vertical-align: middle;
+    width: 100%;
+    min-width: 0;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container {
+    background: var(--surface-grey-2);
+    border-radius: 4px;
+    border: solid 1px var(--stroke-grey-2);
+    padding: 2px 10px;
+    cursor: text;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background .selected-contacts-container {
+    border: none;
+    overflow-y: auto;
+    max-height: 152px;
+    position: relative;
+    z-index: 11;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background.dropdown-visible .contact-search-block.empty .selected-contacts-container {
+    background: var(--dropdown-background-color);
+    box-shadow: 0 2px 14px rgb(0 0 0 / 0.3);
+    border-radius: 12px 12px 0 0;
+    padding: 8px;
+    position: absolute;
+    top: -5px;
+    width: 100%;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background.dropdown-visible .contact-search-block.empty .selected-contacts-container.empty {
+    border-radius: 12px;
+    padding: 8px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background.dropdown-visible .contact-search-block.empty .contact-dropdown-container {
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 10px 13px rgb(0 0 0 / 0.3);
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background.overflow {
+    visibility: hidden;
+    gap: 8px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background.overflow .contact-search-block,
+.mega-dialog.share-dialog .share-dialog-invite-background.overflow .permissions-dropdown-button,
+.mega-dialog.share-dialog .share-dialog-invite-background.overflow .invite-contact-button {
+    visibility: visible;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background.dropdown-visible .selected-contacts-container input {
+    border-radius: 4px;
+    width: 100%;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-background.dropdown-visible .contact-search-block.empty .selected-contacts-container input {
+    padding-left: 16px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container.input-error .share-dialog-invite-background.overflow .contact-search-block {
+    background: var(--surface-grey-2);
+    border: 1px solid var(--banner-border-error);
+    border-radius: 4px;
+    padding-right: 1px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container.input-error .share-dialog-invite-background {
+    border: 1px solid var(--banner-border-error);
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container.input-error .error-message {
+    display: block;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .error-message {
+    background: var(--banner-background-error);
+    border: 1px solid var(--banner-border-error);
+    border-radius: 4px;
+    color: var(--banner-text-error);
+    display: none;
+    font-size: 14px;
+    line-height: 20px;
+    margin-top: 7px;
+    padding: 2px 16px;
+    text-align: center;
+    width: 100%;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item {
+    display: inline-flex;
+    align-items: center;
+    background: var(--chips-fill);
+    border: var(--chips-border);
+    border-radius: 4px;
+    padding: 3px;
+    z-index: 2;
+    position: relative;
+    margin: 2px;
+    max-width: 98%;
+    color: var(--text-color-high);
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item .avatar-container {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item .small-rounded-avatar img {
+    width: 24px;
+    height: 24px;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item .avatar-wrapper {
+    font-size: 11px;
+    height: 24px;
+    line-height: 18px;
+    width: 24px;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item .avatar-wrapper .verified_icon {
+    width: 8px;
+    height: 8px;
+    background-position: -9.3px -1355px;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item .selected-contact-name {
+    display: inline-block;
+    margin: 0 5px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item .remove-contact-button {
+    background: none;
+    border: 0 none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.mega-dialog.share-dialog .contact-selected-item-input {
+    background: transparent;
+    flex-grow: 1;
+    max-width: 100%;
+    padding: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.mega-dialog.share-dialog .contact-selected-item-input .contact-search-input {
+    background: var(--surface-grey-2);
+    color: var(--text-color-high);
+    border: 0 none;
+    font-size: 13px;
+    height: 36px;
+    margin: 0;
+    position: relative;
+    z-index: 3;
+    width: 100%;
+}
+
+.mega-dialog.share-dialog .contact-selected-item-input .contact-search-input::placeholder {
+    font-size: 13px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-button,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-button,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-button {
+    background: var(--surface-grey-2);
+    border-radius: 4px;
+    padding: 8px;
+    position: relative;
+    vertical-align: top;
+    white-space: nowrap;
+    height: 41px;
+}
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-button.read-only,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-button.read-only,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-button.read-only {
+    padding: 8px 15px;
+}
+
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-button,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-button {
+    background: none;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-button .button-option,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-button .button-option,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-button .button-option {
+    display: none;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-button .button-option.selected,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-button .button-option.selected,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-button .button-option.selected {
+    display: inline-block;
+    vertical-align: middle;
+    color: var(--text-color-high);
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-button .down-arrow,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-button .down-arrow,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-button .down-arrow {
+    --icon-size: 24px;
+    cursor: pointer;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-button.read-only .down-arrow,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper.read-only .permissions-dropdown-button .down-arrow,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper.read-only .permissions-dropdown-button .down-arrow  {
+    display: none;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container {
+    background: var(--surface-main);
+    border: var(--dropdown-border);
+    box-shadow: 0 8px 11px rgb(0 0 0 / 0.3);
+    border-radius: 12px;
+    padding: 8px;
+    position: absolute;
+    top: 42px;
+    width: 312px;
+    z-index: 11;
+    right: 0;
+    white-space: normal;
+}
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container {
+    position: fixed;
+    z-index: 1024;
+}
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container.top,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container.top {
+    top: -230px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option {
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option.selected,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option.selected,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option.selected {
+    position: relative;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option.selected,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option.selected,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option.selected,
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option:hover,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option:hover,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option:hover {
+    --mask-color: var(--icon-active);
+    color: var(--text-color-high);
+    background: var(--button-hover);
+    border-radius: 4px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option .title,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option .title,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option .title {
+    color: var(--text-color-medium);
+    font-style: normal;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 20px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option .description,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option .description,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option .description {
+    color: var(--text-color-low);
+    font-style: normal;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 20px;
+    margin-top: 4px;
+    padding-right: 20px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option .selected-check,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option .selected-check,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option .selected-check {
+    display: none;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .permissions-dropdown-container .dropdown-option.selected .selected-check,
+.mega-dialog.share-dialog .share-dialog-bottom-body .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option.selected .selected-check,
+.mega-dialog.share-access-contacts-dialog .access-node-permission-wrapper .permissions-dropdown-container .dropdown-option.selected .selected-check {
+    --mask-color: var(--switch-handle-active-icon);
+    display: block;
+    position: absolute;
+    right: 5px;
+    top: calc(50% - 8px);
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .invite-contact-button {
+    float: right;
+    margin-right: 5px;
+    height: 41px;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container {
+    background: var(--dropdown-background-color);
+    border-radius: 12px;
+    border: 1px solid var(--dropdown-border);
+    box-shadow: 0 5px 13px rgb(0 0 0 / 0.3);
+    display: none;
+    padding: 8px;
+    position: absolute;
+    top: 100%;
+    width: 100%;
+    z-index: 11;
+    max-height: 320px;
+    padding-inline-end: 0;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-dropdown-container-wrapper {
+    height: 100%;
+    max-height: 305px;
+    min-height: 49px;
+    position: relative;
+    overflow-y: auto;
+}
+
+.mega-dialog.share-dialog .dropdown-visible .contact-dropdown-container {
+    display: block;
+}
+
+.mega-dialog.share-dialog .dropdown-visible .contact-input-container {
+    margin: 0 10px;
+    width: calc(100% - 20px);
+    z-index: 2;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-item {
+    display: grid;
+    justify-content: start;
+    position: relative;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 6px 12px 6px 8px;
+    align-items: center;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-item.email-only {
+    background: var(--button-hover);
+    border-radius: 8px;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-item.email-only .avatar-container,
+.mega-dialog.share-dialog .contact-dropdown-container .contact-item.email-only .contact-name {
+    display: none;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-item.email-only .contact-email {
+    color: var(--text-color-high);
+    margin-inline-start: initial;
+    overflow: hidden;
+    pointer-events: none;
+    text-overflow: ellipsis;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-item:hover {
+    --mask-color: var(--icon-active);
+    color: var(--text-color-high);
+    background: var(--button-hover);
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container-wrapper.ps .contact-item {
+    width: 96%;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-item.selected {
+    display: none;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .avatar-container {
+    grid-row: 1 / 3;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .avatar-container .avatar-wrapper {
+    border-radius: 4px;
+    height: 40px;
+    width: 40px;
+    text-align: center;
+    vertical-align: middle;
+    line-height: 40px;
+}
+
+.mega-dialog.share-dialog .selected-contacts-container .contact-selected-item .avatar-wrapper {
+    border-radius: 4px;
+    line-height: 26px;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-name {
+    grid-row: 1 / 2;
+    margin-inline-start: 8px;
+    line-height: 17px;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container .contact-email {
+    grid-row: 2 / 3;
+    margin-inline-start: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mega-dialog.share-dialog .contact-dropdown-container-wrapper.ps div.contact-item.email-only {
+    margin-bottom: 0;
+    height: 44px;
+    text-align: left;
+    vertical-align: middle;
+    line-height: 44px;
+}
+
+.mega-dialog.share-dialog .share-dialog-invite-container .invite-note {
+    background: var(--surface-grey-2);
+    border: 0 none;
+    border-radius: 4px;
+    color: var(--text-color-high);
+    display: block;
+    font: var(--text-body1);
+    margin: 10px 0;
+    padding: 10px 18px;
+    width: 100%;
+}
+
+
+/* Older styles */
 .mega-dialog.share-dialog .share-dialog-permissions-menu {
     transition: opacity 200ms;
 }
@@ -48,14 +505,12 @@
     /* display: inline-block; */
     display: none;
     float: right;
-    -webkit-padding-end: 4px;
     padding-inline-end: 4px;
     vertical-align: middle;
 }
 
 .share-dialog-top-body .share-dialog-copy-link-msg {
     padding-top: 12px;
-    -webkit-padding-end: 4px;
     padding-inline-end: 4px;
     text-align: right;
 }
@@ -66,7 +521,6 @@
     background-repeat: no-repeat;
     display: inline-block;
     height: 16px;
-    -webkit-padding-start: 8px;
     padding-inline-start: 8px;
     vertical-align: middle;
     width: 16px;
@@ -79,7 +533,6 @@
 
 .share-dialog-top-body .item-type-icon-90 {
     display: inline-block;
-    -webkit-margin-end: 8px;
     margin-inline-end: 8px;
     --icon-size: 48px;
     vertical-align: middle;
@@ -108,18 +561,21 @@
 
 .share-dialog-bottom-body .share-dialog-access-title {
     color: var(--text-color-high);
-    font-family: var(--text-font-family-semibold);
+    font-family: var(--text-font-family);
+    font-weight: 600;
     letter-spacing: 0;
     margin-bottom: 16px;
-    -webkit-margin-end: 12px;
     margin-inline-end: 12px;
 }
 
 .share-dialog-bottom-body .share-dialog-access-list {
-    max-height: 300px;
-    overflow: hidden;
+    max-height: 320px;
     padding: 0;
     position: relative;
+}
+
+.share-dialog-bottom-body .share-dialog-access-list.ps-disabled {
+    overflow: unset !important;
 }
 
 .share-dialog-bottom-body .share-dialog-access-add {
@@ -127,20 +583,19 @@
     margin-top: 12px;
 }
 
-.share-dialog-bottom-body .share-dialog-access-node {
+.share-dialog-bottom-body .share-dialog-access-node,
+.share-access-contacts-dialog .share-dialog-access-list .share-dialog-access-node {
     height: 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    overflow: hidden;
 }
 
 .share-dialog-access-node .access-node-info-block {
     display: inline-block;
     vertical-align: middle;
-    width: 428px;
+    width: 100%;
     min-width: 0;
-    -webkit-margin-end: auto;
     margin-inline-end: auto;
 }
 
@@ -167,6 +622,32 @@
     line-height: 24px;
     vertical-align: middle;
     width: 24px;
+}
+
+.share-dialog-access-node .multiple-avatar {
+    display: inline-block;
+    position: relative;
+    margin-inline-end: 8px;
+}
+
+.share-dialog-access-node .access-node-avatar.top {
+    z-index: 2;
+}
+
+.share-dialog-access-node .access-node-avatar.bottom {
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    z-index: 1;
+}
+
+.share-dialog-access-node.pending .access-node-avatar {
+    border: 1px dotted var(--text-color-low);
+    background: linear-gradient(225deg, #9AEAFF 0%, #D2D2D2 0.01%, #F8F8F8 100%);
+    color: transparent;
+}
+.share-dialog-access-node.pending .access-node-username {
+    color: var(--text-color-low);
 }
 
 .share-dialog-access-node .access-node-username {
@@ -197,7 +678,8 @@
     display: inline-block;
 }
 
-.share-dialog-access-node.owner .access-node-permission-wrapper {
+.share-dialog-access-node.owner .access-node-permission-wrapper,
+.share-dialog-access-node .access-node-permission-wrapper.read-only {
     cursor: default;
 }
 
@@ -229,21 +711,23 @@
     --mask-color: var(--text-color-medium);
     cursor: pointer;
     display: inline-block;
-    -webkit-margin-end: 20px;
-    margin-inline-end: 20px;
-    -webkit-margin-start: 3px;
     margin-inline-start: 3px;
-    opacity: 0;
+    opacity: 1;
+    cursor: pointer;
 }
 .share-dialog-access-node .access-node-remove:hover {
     --mask-color: var(--text-color-high);
 }
-
-.share-dialog-access-node:not(.owner):hover .access-node-remove {
-    cursor: pointer;
-    opacity: 1;
+.share-dialog-access-node.all i.icon-dropdown {
+    transform: rotate(270deg);
+    --icon-size: 24px;
 }
-
+.share-dialog-access-node.all .access-node-username {
+    max-width: 87%;
+}
+.share-dialog-access-node .user-card-presence {
+    vertical-align: middle;
+}
 /* Warning banner */
 
 .mega-dialog.share-dialog .mega-banner {
@@ -253,7 +737,6 @@
     margin: 6px 0 0;
     padding: 2px 8px;
     text-align: start;
-    width: calc(100% - 48px);
 }
 
 .mega-dialog.share-dialog .mega-banner.contact-verify-warning {
@@ -274,14 +757,12 @@
     --mask-color: var(--secondary-orange);
     color: var(--secondary-orange);
     display: inline-block;
-    -webkit-margin-start: 2px;
     margin-inline-start: 2px;
     vertical-align: middle;
 }
 
 .share-dialog-bottom-body .remove-share,
 .share-add-dialog-bottom-body .cancel-add-share {
-    -webkit-margin-end: 12px;
     margin-inline-end: 12px;
 }
 
@@ -290,13 +771,25 @@
 }
 
 .mega-dialog.dialog-template-main.share-dialog > footer .footer-container {
+    align-items: center;
+    border-radius: 0 0 24px 24px;
+    justify-content: space-between;
     padding: 16px 48px;
+}
+
+.mega-dialog.dialog-template-main.share-dialog > footer .footer-container.empty {
+    justify-content: right;
+}
+
+.mega-dialog.dialog-template-main.share-dialog > footer .footer-container button {
+    margin-bottom: 15px;
 }
 
 .mega-dialog.share-dialog .share-dialog-bottom-msg {
     background: var(--surface-grey-1);
     text-align: center;
     padding: 8px 0 16px;
+    display: none;
 }
 
 .mega-dialog.share-add-dialog {
@@ -327,7 +820,6 @@
     border-radius: 9px;
     display: inline-block;
     line-height: 18px;
-    -webkit-margin-start: 10px;
     margin-inline-start: 10px;
     margin-top: -3px;
     padding: 0 5px;
@@ -386,7 +878,6 @@
 }
 
 .share-add-dialog-bottom .add-share {
-    -webkit-margin-start: 8px;
     margin-inline-start: 8px;
 }
 .share-add-dialog-bottom .multiple-input i {
@@ -461,7 +952,6 @@
 }
 
 .mega-dialog.share-add-dialog .contacts-search-subsection .contacts-search-list {
-    -webkit-padding-end: 12px;
     padding-inline-end: 12px;
     width: 336px;
 }
@@ -509,7 +999,6 @@
 
 .mega-dialog.share-add-dialog .contacts-search-list .user-card-data {
     padding-top: 4px;
-    -webkit-padding-start: 32px;
     padding-inline-start: 32px;
 }
 
@@ -527,7 +1016,6 @@
 
 .mega-dialog.share-add-dialog .contacts-search-list .user-card-status {
     display: inline;
-    -webkit-margin-start: 5px;
     margin-inline-start: 5px;
 }
 
@@ -537,7 +1025,6 @@
 
 .mega-dialog.share-add-dialog .chat-contactspicker-no-contacts .fm-empty-contacts-bg {
     margin-top: 63px;
-    -webkit-margin-end: 12px;
     margin-inline-end: 12px;
 }
 
@@ -589,4 +1076,106 @@
     .mega-dialog.share-add-dialog .chat-contactspicker-no-contacts.searching .fm-empty-contacts-bg {
         margin: 16px auto 0 auto;
     }
+}
+
+/* Dialog to alert the user they are sharing with unverified contacts after clicking the Share dialog Invite button */
+.mega-dialog.share-with-unverified-contacts .contact-items {
+    margin-top: 16px;
+    max-height: 238px;
+    overflow-y: auto;
+    padding-bottom: 16px;
+    padding-top: 16px;
+}
+.mega-dialog.share-with-unverified-contacts .contact-items.visible-dividers {
+    border-bottom: 1px solid var(--divider-color);
+    border-top: 1px solid var(--divider-color);
+    padding-right: 20px;
+}
+body.rtl .mega-dialog.share-with-unverified-contacts .contact-items.visible-dividers {
+    padding-left: 20px;
+}
+.mega-dialog.share-with-unverified-contacts .contact-item {
+    align-items: center;
+    display: flex;
+}
+.mega-dialog.share-with-unverified-contacts .contact-item:not(:first-child) {
+    margin-top: 12px;
+}
+.mega-dialog.share-with-unverified-contacts .contact-item .contact-name {
+    color: var(--text-color-high);
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+    margin-inline-start: 8px;
+}
+.mega-dialog.share-with-unverified-contacts .contact-item .verify-credentials-button,
+.mega-dialog.share-with-unverified-contacts .contact-item .share-without-verifying-button {
+    color: var(--label-blue);
+    cursor: pointer;
+    font-size: 12px;
+    margin-inline-start: 16px;
+    text-decoration: underline;
+    white-space: nowrap;
+}
+.mega-dialog.share-with-unverified-contacts .contact-item .avatar-wrapper {
+    border-radius: 4px;
+    font-size: 11px;
+    height: 24px;
+    line-height: 24px;
+    width: 24px;
+}
+.mega-dialog.share-with-unverified-contacts .contact-item .small-rounded-avatar img {
+    height: 24px;
+    width: 24px;
+    border-radius: 4px;
+}
+
+/* Share access contact list dialog */
+.mega-dialog.share-access-contacts-dialog header {
+    padding: 20px 48px 16px 16px;
+}
+.mega-dialog.share-access-contacts-dialog header .icon-arrow-left-thin {
+    --icon-size: 20px;
+    font-weight: bolder;
+    margin-inline-end: 10px;
+    line-height: 24px;
+}
+.mega-dialog.share-access-contacts-dialog .share-dialog-access-list {
+    max-height: 312px;
+    height: 100%;
+    padding: 0 22px;
+    margin-bottom: 30px;
+}
+.mega-dialog.share-dialog .share-dialog-access-list .icon-dropdown ,
+.mega-dialog.share-access-contacts-dialog header .icon-arrow-left-thin {
+    cursor: pointer;
+}
+.mega-dialog.share-access-contacts-dialog section {
+    padding: 0 18px;
+}
+.mega-dialog.share-dialog .share-dialog-invite-container .mega-textarea.invite-note {
+    padding-inline-end: 0;
+}
+.mega-textarea.invite-note .textarea-scroll {
+    margin: 0;
+    padding-inline-end: 14px;
+}
+.mega-textarea.invite-note textarea.invite-note-textarea {
+    background: var(--surface-grey-2);
+    min-height: 20px;
+    padding: 0;
+}
+.mega-textarea.invite-note .textarea-clone {
+    min-height: 20px;
+}
+.mega-dialog.share-dialog .ps.ps__rtl.ps--active-y .ps__rail-y {
+    margin-right: 8px;
+}
+.mega-dialog.share-with-unverified-contacts .ps.ps__rtl.ps--active-y .ps__rail-y {
+    margin-right: 10px;
+}
+.mega-dialog .contact-dropdown-container .small-rounded-avatar img {
+    height: 40px;
+    width: 40px;
 }

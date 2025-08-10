@@ -203,12 +203,10 @@ var redeem = {
      */
     showErrorDialog: function(message) {
         'use strict';
-        if (message < 0) {
-            message = message === ETOOMANY ? l.redeem_etoomany : `${api_strerror(message)} (${message})`;
-        }
+        message = message === ETOOMANY ? l.redeem_etoomany : '';
         // Show 'Oops, that does not seem to be a valid voucher code.' if none given
         // With buttons, 'Contact Support' & 'Cloud Drive'
-        this.showDialog(l[20416], l[473], String(message || ''), [l[18148], l[19266]], true)
+        this.showDialog(l[20416], l[473], message, [l[18148], l[19266]], true)
             .then(function() {
                 redeem.goToCloud();
             })
@@ -566,13 +564,12 @@ var redeem = {
         var price = vd.price;
         var currency = vd.currency;
         var gatewayId = 0;                                  // Prepay / account balance
-        var aff = mega.affid;
 
         // Start loading spinner
         loadingDialog.show();
 
         // User Transaction Sale API call
-        api.screq({a: 'uts', it: 0, si: apiId, p: price, c: currency, aff})
+        api.screq({a: 'uts', it: 0, si: apiId, p: price, c: currency})
             .then(({result: saleId}) => {
 
                 // User Transaction Complete API call
@@ -1130,7 +1127,9 @@ var redeem = {
                     else {
                         redeem();
                     }
-                    loadingDialog.hide();
+                    if (!pro.propay.onPropayPage() || data.promotional) {
+                        loadingDialog.hide();
+                    }
                 })
                 .catch(function(ex) {
                     if (ex) {

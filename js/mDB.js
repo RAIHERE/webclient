@@ -71,9 +71,6 @@ function FMDB(plainname, schema, channelmap) {
     // whether multi-table transactions work (1) or not (0) (Apple, looking at you!)
     this.cantransact = -1;
 
-    // a flag to know if we have sn set in database. -1 = we don't know, 0 = not set, 1 = is set
-    this.sn_Set = -1;
-
     // @see {@link FMDB.compare}
     this._cache = Object.create(null);
 
@@ -99,7 +96,9 @@ function FMDB(plainname, schema, channelmap) {
         'LOG':   '#5b5352'
     };
 
-    // if (d) Dexie.debug = "dexie";
+    if (self.d > 7 || 'rad' in mega) {
+        Dexie.debug = "dexie";
+    }
 }
 
 tryCatch(function() {
@@ -147,6 +146,7 @@ FMDB.prototype.init = async function(wipe) {
         this.logger.log('Collecting database names...');
     }
     this.opening = true;
+    const bcSetupPromise = mBroadcaster.setup().catch(reportError);
 
     return Promise.race([tSleep(3, EEXPIRED), Dexie.getDatabaseNames()])
         .then((r) => {
@@ -180,9 +180,9 @@ FMDB.prototype.init = async function(wipe) {
             this.db.version(1).stores(this.schema);
             this.tables = Object.keys(this.schema);
 
-            return Promise.race([tSleep(15, ETEMPUNAVAIL), this.get('_sn').catch(dump)]);
+            return Promise.all([tSleep.race(15, this.get('_sn').catch(dump)), bcSetupPromise]);
         })
-        .then((res) => {
+        .then(([res, ctOwner]) => {
             if (res === ETEMPUNAVAIL) {
                 if (d) {
                     this.logger.warn('Opening the database timed out.');
@@ -197,23 +197,20 @@ FMDB.prototype.init = async function(wipe) {
                 }
                 return sn;
             }
-            if (!mBroadcaster.crossTab.owner || this.crashed) {
-
-                throw new Error(`unusable (${this.crashed | 0})`);
-            }
-
             if (d) {
                 this.logger.log("No sn found in DB, wiping...");
+            }
+            if (!ctOwner || this.crashed) {
+                throw new Error(`Write-protection, cannot wipe DB... state=${ctOwner}/${this.crashed}`);
             }
 
             // eslint-disable-next-line local-rules/open -- no, this is not a window.open() call.
             return this.db.delete().then(() => this.db.open());
         })
         .catch((ex) => {
-            const {db, logger} = this;
-
-            onIdle(() => db.delete().catch(nop));
-            logger.warn('Marking DB as crashed.', ex);
+            if (self.d) {
+                this.logger.warn(`Marking DB as crashed... ${ex && ex.message || ex}`, [ex]);
+            }
 
             this.db = false;
             this.crashed = 2;
@@ -479,10 +476,45 @@ FMDB.prototype._transactionErrorHandled = function(ch, ex) {
     return res;
 };
 
+Object.defineProperty(FMDB.prototype, 'iStateDump', {
+    get() {
+        'use strict';
+        const {
+            head,
+            tail,
+            state,
+            commit,
+            crashed,
+            pending,
+            writing,
+            inflight,
+            cantransact
+        } = this;
+        const {_sn} = pending[0][tail[0]] || !1;
+
+        return JSON.stringify({
+            head,
+            tail,
+            state,
+            commit,
+            crashed,
+            writing,
+            inflight,
+            cantransact,
+            sn: _sn || 'n/a'
+        });
+    }
+});
+
+
 // FIXME: auto-retry smaller transactions? (need stats about transaction failures)
 // ch - channel to operate on
 FMDB.prototype.writepending = function fmdb_writepending(ch) {
     "use strict";
+
+    if (self.d > 1 || 'rad' in mega) {
+        this.logger.warn('writepending(%s%s)', ch, (typeof ch)[0], this.iStateDump);
+    }
 
     // exit loop if we ran out of pending writes or have crashed
     if (this.inflight || ch < 0 || this.crashed || this.writing) {
@@ -513,34 +545,20 @@ FMDB.prototype.writepending = function fmdb_writepending(ch) {
 
     var fmdb = this;
 
-    if (d > 1) {
-        fmdb.logger.warn('writepending()', ch, fmdb.state,
-            Object(fmdb.pending[0][fmdb.tail[0]])._sn, fmdb.cantransact);
-    }
-
     if (!ch && fmdb.state < 0 && fmdb.cantransact) {
 
+        if (d) {
+            fmdb.logger.group("Transaction started", self.currsn, fmdb.pending[0][fmdb.tail[0]]._sn);
+            fmdb.logger.time('fmdb-transaction');
+        }
         // if the write job is on channel 0 and already complete (has _sn set),
         // we execute it in a single transaction without first clearing sn
         fmdb.state = 1;
         fmdb.writing = 1;
         fmdb.db.transaction('rw!', fmdb.tables, () => {
-            if (d) {
-                fmdb.logger.info("Transaction started");
-                console.time('fmdb-transaction');
-            }
             fmdb.commit = false;
             fmdb.cantransact = 1;
-
-            if (fmdb.sn_Set && !fmdb.pending[0][fmdb.tail[0]]._sn && currsn) {
-                fmdb.db._sn.clear().then(function() {
-                    fmdb.sn_Set = 0;
-                    dispatchputs();
-                });
-            }
-            else {
-                dispatchputs();
-            }
+            dispatchputs();
         }).then(() => {
             // transaction completed: delete written data
             delete fmdb.pending[0][fmdb.tail[0]++];
@@ -552,13 +570,16 @@ FMDB.prototype.writepending = function fmdb_writepending(ch) {
             fmdb.state = -1;
             if (d) {
                 fmdb.logger.info("Transaction committed");
-                console.timeEnd('fmdb-transaction');
+                fmdb.logger.timeEnd('fmdb-transaction');
+                fmdb.logger.groupEnd();
             }
             fmdb.writing = 0;
             fmdb.writepending(ch);
         }).catch((ex) => {
             if (d) {
-                console.timeEnd('fmdb-transaction');
+                fmdb.logger.warn('Transaction failure', ex);
+                fmdb.logger.timeEnd('fmdb-transaction');
+                fmdb.logger.groupEnd();
             }
 
             if (this.inval_cb && ex.name === 'DatabaseClosedError') {
@@ -593,45 +614,13 @@ FMDB.prototype.writepending = function fmdb_writepending(ch) {
             // write without transaction"
             fmdb.state = 0;
 
-            if (ch) {
-                // non-transactional channel: go ahead and write
-
-                dispatchputs();
-            }
-            else {
-                // mark db as "writing" until the sn cleaning have completed,
-                // this flag will be reset on dispatchputs() once fmdb.commit is set
+            // if non-transactional channel, go ahead and write - otherwise,
+            // mark db as "writing", this flag will be reset on dispatchputs() once fmdb.commit is set
+            if (!ch) {
                 fmdb.writing = 2;
-                // we clear the sn (the new sn will be written as the last action in this write job)
-                // unfortunately, the DB will have to be wiped in case anything goes wrong
-                var sendOperation = function() {
-                    fmdb.commit = false;
-                    fmdb.writing = 3;
-
-                    dispatchputs();
-                };
-                if (currsn) {
-                    fmdb.db._sn.clear().then(
-                        function() {
-                            if (d) {
-                                console.error('channel 1 + Sn cleared');
-                            }
-                            fmdb.sn_Set = 0;
-                            sendOperation();
-                        }
-                    ).catch(function(e) {
-                        fmdb.logger.error("SN clearing failed, marking DB as crashed", e);
-                        fmdb.state = -1;
-                        fmdb.invalidate();
-
-                        fmdb.evento(`$wpsn:${e}`);
-                    });
-                }
-                else {
-                    sendOperation();
-                }
-
+                fmdb.commit = false;
             }
+            dispatchputs();
         }
     }
 
@@ -704,7 +693,6 @@ FMDB.prototype.writepending = function fmdb_writepending(ch) {
                 // request a commit after the operation completes.
                 if (ch || table[0] == '_') {
                     fmdb.commit = true;
-                    fmdb.sn_Set = 1;
                 }
 
                 // record what we are sending...
@@ -817,13 +805,7 @@ FMDB.prototype.writepending = function fmdb_writepending(ch) {
             // in non-transactional loop back when the browser is idle so that we'll
             // prevent unnecessarily hanging the main thread and short writes...
             if (!fmdb.commit) {
-                if (loadfm.loaded) {
-                    onIdle(dispatchputs);
-                }
-                else {
-                    tSleep(3).then(dispatchputs);
-                }
-                return;
+                return scheduler.yield().then(dispatchputs);
             }
         }
 
@@ -996,6 +978,9 @@ FMDB.prototype.stripnode = Object.freeze({
 
         if (f.fav !== undefined && !(f.fav | 0)) {
             delete f.fav;
+        }
+        if (f.sen !== undefined && !(f.sen | 0)) {
+            delete f.sen;
         }
         if (f.lbl !== undefined && !(f.lbl | 0)) {
             delete f.lbl;
@@ -1328,15 +1313,15 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
     'use strict';
     let bulk = false;
     let options = false;
-    if (typeof index !== 'string') {
-        options = index;
-        index = options.index;
+    if (!index || typeof index !== 'string') {
+        options = index || {};
         anyof = anyof || options.anyof;
         where = where || options.where;
         limit = limit || options.limit;
+        index = options.index || table === 'f' && 'h';
     }
 
-    if (this.crashed > 1 || anyof && !anyof[1].length) {
+    if (anyof && !anyof[1].length) {
         return [];
     }
 
@@ -1346,7 +1331,7 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
     const debug = d && (x => (m, ...a) => this.logger.warn(`[${x}] ${m}`, ...a))(Math.random().toString(28).slice(-7));
 
     if (debug) {
-        debug(`Fetching table ${table}...${writing ? '\u26a1' : ''}`, options || where || anyof && anyof.flat());
+        debug(`Fetching table ${table}...${writing ? '\u26a1' : ''}`, options, where || anyof && anyof.flat());
     }
 
     let i = 0;
@@ -1354,24 +1339,46 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
 
     if (!index) {
         // No index provided, fallback to primary key
-        index = t.schema.primKey.keyPath;
+        index = t && t.schema.primKey.keyPath;
     }
 
-    if (table === 'f' && index === 'h' && mega.infinity) {
+    if (table === 'f' && index === 'h' && !options.localOnly && (this.crashed > 1 || mega.infinity) && (t || anyof)) {
         p = [];
 
         if (anyof && (anyof[0] === 'p' || anyof[0] === 'h')) {
-            p.push(...anyof[1]);
+
+            p[p.t = anyof[0]] = 1;
         }
     }
+    else if (this.crashed > 1) {
+        return [];
+    }
+
+    /**
+    if (debug && anyof && anyof[0] === 'h') {
+        for (let i = anyof[1].length; i--;) {
+            if (M.d[anyof[1][i]]) {
+                debug(`> Node already on memory: ${anyof[1][i]}`);
+            }
+        }
+    }
+    /**/
 
     if (anyof) {
         // encrypt all values in the list
         for (i = anyof[1].length; i--;) {
-            anyof[1][i] = this.toStore(anyof[1][i]);
+            if (typeof anyof[1][i] === 'string') {
+                if (p.t) {
+                    p.push(anyof[1][i]);
+                }
+                anyof[1][i] = this.toStore(anyof[1][i]);
+            }
         }
 
-        if (anyof[1].length > 1) {
+        if (!t) {
+            t = false;
+        }
+        else if (anyof[1].length > 1) {
             if (!limit && anyof[0] === t.schema.primKey.keyPath) {
                 bulk = true;
                 t = t.bulkGet(anyof[1]);
@@ -1400,9 +1407,6 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
         for (let k = where.length; k--;) {
             // encrypt the filter values (logical AND is commutative, so we can reverse the order)
             if (typeof where[k][1] === 'string') {
-                if (p && where[k][0] === 'p') {
-                    p.push(where[k][1]);
-                }
                 if (!this._cache[where[k][1]]) {
                     this._cache[where[k][1]] = this.toStore(where[k][1]);
                 }
@@ -1422,15 +1426,20 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
         }
     }
 
-    if (options.offset) {
-        t = t.offset(options.offset);
-    }
+    if (t) {
+        if (options.offset) {
+            t = t.offset(options.offset);
+        }
 
-    if (limit) {
-        t = t.limit(limit);
-    }
+        if (limit) {
+            t = t.limit(limit);
+        }
 
-    t = options.sortBy ? t.sortBy(options.sortBy) : t.toArray ? t.toArray() : t;
+        t = options.sortBy ? t.sortBy(options.sortBy) : t.toArray ? t.toArray() : t;
+    }
+    else {
+        t = Promise.resolve([]);
+    }
 
     // eslint-disable-next-line complexity
     const r = await t.then((r) => {
@@ -1453,9 +1462,11 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
                 }
             }
         }
-        const dbRecords = !!r.length;
+        const dbRecords = r.dbRecords = r.length;
 
-        console.time(`dirty-${pending.length}`);
+        if (debug) {
+            this.logger.time(`pending-read${pending.length}~${options.i || ''}`);
+        }
 
         // iterate transactions in reverse chronological order
         for (let tid = pending.length; tid--;) {
@@ -1551,7 +1562,10 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
                 }
             }
         }
-        console.timeEnd(`dirty-${pending.length}`);
+
+        if (debug) {
+            this.logger.timeEnd(`pending-read${pending.length}~${options.i || ''}`);
+        }
 
         // scan the result for updates/deletions/additions arising out of the matches found
         if (match) {
@@ -1579,7 +1593,7 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
             }
 
             // now add newly written records
-            for (t in matches) {
+            for (const t in matches) {
                 if (matches[t]) {
                     r.push(this.clone(matches[t]));
                 }
@@ -1611,28 +1625,69 @@ FMDB.prototype.getbykey = async function fmdb_getbykey(table, index, anyof, wher
         if (debug && !this.crashed) {
             debug("Read operation failed, marking DB as read-crashed", ex);
         }
+        this.invalidate(1).catch(dump);
+        return [];
     });
 
-    if (!r) {
-        await this.invalidate(1);
-    }
-    else if (p.length) {
+    if (p.length) {
+
+        if (self.d) {
+            this.logger.group('Checking and requesting missing nodes to API...', p.t, `${p}`, p, r);
+        }
 
         // prepare to request missing nodes.
+        // @todo API-side support for getting the parent folder contents of specified single file-nodes
         for (let x, i = r.length; i--;) {
             const n = r[i];
 
-            if ((x = p.indexOf(n.h)) >= 0) {
-                p.splice(x, 1);
+            if (p.p) {
+                if ((x = p.indexOf(n.p)) >= 0 && !options.ptf) {
+                    p.splice(x, 1);
+                }
             }
-
-            if ((x = p.indexOf(n.p)) >= 0) {
+            else if ((x = p.indexOf(n.h)) >= 0) {
                 p.splice(x, 1);
             }
         }
 
         if (p.length) {
-            await api.tree(p);
+            await api.tree(p).catch(dump);
+
+            /**
+            if (debug) {
+                for (let i = p.length; i--;) {
+                    const h = p[i];
+                    const n = M.d[h];
+                    if (p.h ? n : n && n.t && M.c[h]) {
+                        debug(`< Node misplaced on memory: ${h}`, n.t, p.t);
+                    }
+                }
+            }
+            /**/
+
+            if (anyof) {
+                anyof = [p.t, [...p]];
+                const res = await this.getbykey(table, {...options, localOnly: 1, anyof}, anyof, where, limit);
+
+                if (p.h) {
+                    p = new Set();
+                    for (let i = res.length; i--;) {
+                        p.add(res[i].p);
+                    }
+
+                    if (p.size) {
+                        await api.tree([...p]).catch(dump);
+                    }
+                }
+
+                while (res.length) {
+                    r.push(...res.splice(0, 0xffff));
+                }
+            }
+        }
+
+        if (self.d) {
+            this.logger.groupEnd();
         }
     }
     return r || [];
@@ -1652,6 +1707,11 @@ FMDB.prototype.getchunk = async function(table, options, onchunk) {
         options.offset = -options.limit;
     }
 
+    // Keep track of the last 'f' node received;
+    // we may leave the loop running while nothing retrieved from
+    // DB but rather from the in-memory pending cache, otherwise.
+    let last = null;
+
     while (true) {
         if (mng) {
             options.offset += options.limit;
@@ -1665,6 +1725,22 @@ FMDB.prototype.getchunk = async function(table, options, onchunk) {
 
         if (r.length < limit) {
             break;
+        }
+
+        if (r.dbRecords === 0 && table === 'f') {
+            const h = r[0] && r[0].h;
+            if (!last) {
+                last = h;
+            }
+            else if (last === h) {
+                if (self.d) {
+                    this.logger.warn(`[getchunk] Received ${r.length} nodes, but none from DB, aborting...`);
+                }
+                break;
+            }
+            else {
+                last = null;
+            }
         }
     }
 };
@@ -2111,15 +2187,6 @@ FMDB.prototype.invalidate = promisify(function(resolve, reject, readop) {
         }
     };
 });
-
-
-function mDBcls() {
-    if (fmdb && fmdb.db) {
-        fmdb.db.close();
-    }
-    fmdb = null;
-}
-
 
 // --------------------------------------------------------------------------
 
@@ -3114,7 +3181,7 @@ Object.defineProperty(self, 'dbfetch', (function() {
             }
 
             // fetch all top-level nodes
-            emplace(await fmdb.getbykey('f', 'h', ['p', [M.RootID, M.InboxID, M.RubbishID]]));
+            emplace(await fmdb.getbykey('f', {localOnly: true}, ['p', [M.RootID, M.InboxID, M.RubbishID]]));
         },
 
         /**
@@ -3199,7 +3266,7 @@ Object.defineProperty(self, 'dbfetch', (function() {
                 const opts = {
                     limit: 4,
                     offset: 0,
-                    where: [['p', handle]]
+                    anyof: ['p', [handle]]
                 };
                 const ack = (res) => {
                     if (ready) {
@@ -3299,30 +3366,23 @@ Object.defineProperty(self, 'dbfetch', (function() {
          * same as fetchchildren/dbfetch.get, but takes an array of handles.
          *
          * @param {Array} handles ufs-node handles
+         * @param {Object} [options] options to pass through to {@link fmdb.getbykey}
          * @returns {Promise} settle
          * @memberOf dbfetch
          */
-        async geta(handles) {
+        async geta(handles, options) {
+            handles = this.filter(handles);
             let bulk = handles.filter(h => !M.d[h]);
 
             if (bulk.length) {
-                if (fmdb.hasPendingWrites('f')) {
-                    if (d) {
-                        fmdb.logger.warn('Holding data retrieval until there are no pending writes...', bulk);
-                    }
-                    // @todo we have to do something about the dirty-reads procedure becoming a nefarious bottleneck
-                    do {
-
-                        await tSleep(4);
-                    }
-                    while (fmdb.hasPendingWrites('f'));
-                }
-                emplace(await fmdb.getbykey('f', 'h', ['h', bulk]), true);
+                await this.flushed();
+                emplace(await fmdb.getbykey('f', options, ['h', bulk]), true);
             }
 
             bulk = handles.filter(h => M.d[h] && M.d[h].t && !M.c[h]);
             if (bulk.length) {
-                await this.tree(bulk, 0);
+                await this.flushed();
+                await this.tree(bulk, {...options, level: 0});
             }
 
             bulk = new Set();
@@ -3339,7 +3399,7 @@ Object.defineProperty(self, 'dbfetch', (function() {
          * Fetch entire subtree.
          *
          * @param {Array} parents  Node handles
-         * @param {Number} [level] Recursion level, optional
+         * @param {Number|*} [level] Recursion level, or {@link fmdb.getbykey} options.
          * @returns {Promise}
          * @memberOf dbfetch
          */
@@ -3349,6 +3409,16 @@ Object.defineProperty(self, 'dbfetch', (function() {
             }
             const inflight = new Set();
             const {promise} = mega;
+
+            // ptf = partial tree fetching.
+            // Under Infinity, upon requesting a file-node, we will get their
+            // parent nodes back to root from API, placing them on memory as they
+            // do arrive, which may do prevent fully retrieving folder contents...
+            const options = {ptf: true};
+            if (typeof level !== 'number') {
+                Object.assign(options, level);
+                level = 'level' in options ? options.level | 0 : -1;
+            }
 
             // check which parents have already been fetched - no need to fetch those
             // (since we do not purge loaded nodes, the presence of M.c for a node
@@ -3369,7 +3439,7 @@ Object.defineProperty(self, 'dbfetch', (function() {
                 if (p.length) {
 
                     // fetch children of all unfetched parents
-                    const r = await fmdb.getbykey('f', 'h', ['p', [...p]]);
+                    const r = await fmdb.getbykey('f', options, ['p', [...p]]);
 
                     // store fetched nodes
                     for (let i = p.length; i--;) {
@@ -3441,6 +3511,44 @@ Object.defineProperty(self, 'dbfetch', (function() {
 
                 await this.geta(handles);
                 node_inflight.lock = false;
+            }
+        },
+
+        /**
+         * Wait for DB rows to have been flushed to disk.
+         * @param {Number} [int] Iteration interval.
+         * @param {String} [table] DB Table.
+         * @returns {Promise<*>} void
+         */
+        async flushed(int = 3, table = 'f') {
+            if (fmdb.pwh) {
+                return fmdb.pwh;
+            }
+            if (fmdb.hasPendingWrites(table)) {
+                const p = fmdb.pwh = mega.promise;
+
+                // @todo we have to do something about the dirty-reads procedure becoming a nefarious bottleneck
+                fmdb.logger.warn('Holding data retrieval until there are no pending writes...');
+
+                let max = int << 2;
+
+                do {
+
+                    await tSleep(int);
+                }
+                while (--max && fmdb.hasPendingWrites(table));
+
+                if (max < 1) {
+                    // a failure in fmdb's head/tail handling can lead to misbehavior here, so...
+                    fmdb.logger.warn('Holding data retrieval ran for too long, suppressing further calls...');
+                    fmdb.pwh = -1;
+                }
+                else {
+                    delete fmdb.pwh;
+                }
+
+                p.resolve();
+                return p;
             }
         },
 
@@ -3525,6 +3633,44 @@ Object.defineProperty(self, 'dbfetch', (function() {
                 delete options.limit;
                 return fmdb.getbykey('f', options);
             }
+        },
+
+        /**
+         * Check for and validate (ufs) node-handles needed to retrieve out of FMDB.
+         * Unexpected values would lead to IDBKeyRange.bound() exceptions, otherwise...
+         * @param {Array} handles node-handles to validate.
+         * @returns {*[]} valid node-handles array to pass through {@link fmdb.getbykey}
+         */
+        filter(handles) {
+            const res = [];
+
+            if (!Array.isArray(handles)) {
+                console.assert(handles);
+                handles = handles ? [handles] : [];
+            }
+
+            for (let i = handles.length; i--;) {
+                let v = handles[i];
+
+                if (v) {
+                    if (typeof v === 'object') {
+                        if (!(v instanceof MegaNode)) {
+                            dump('dbfetch received a non-string, non-meganode object...', v);
+                        }
+                        v = v.h;
+                    }
+
+                    if (typeof v === 'string' && v.length === 8) {
+                        res.push(v);
+                        continue;
+                    }
+                }
+                if (self.d) {
+                    console.warn('dbfetch received invalid node...', v);
+                }
+                handles.splice(i, 1);
+            }
+            return res;
         },
 
         /**

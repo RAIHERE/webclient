@@ -5,6 +5,7 @@
     ],
     "ignoreFiles": ["css/chat-bundle.css"],
     "rules": {
+        "color-function-alias-notation": null,
         "declaration-no-important": null,
         "rule-empty-line-before": null,
         "no-descending-specificity": null,
@@ -13,7 +14,7 @@
         "declaration-empty-line-before": null,
         "selector-class-pattern": null,
         "no-irregular-whitespace": true,
-        "property-disallowed-list": [ "text-transform" ],
+        "property-disallowed-list": [ "text-transform", "/^-webkit-(margin|padding)-(start|end)/" ],
         "selector-not-notation": "simple",
         "media-feature-range-notation": "prefix",
         "length-zero-no-unit": [
@@ -39,6 +40,7 @@
                     "css-gradients",
                     "css-masks",
                     "multicolumn",
+                    "css-scrollbar",
                     "css-sticky",
                     "intrinsic-width"
                 ],
@@ -90,6 +92,12 @@
             true,
             {
                 "ignoreProperties": ["user-select"]
+            }
+        ],
+        "declaration-block-no-redundant-longhand-properties": [
+            true,
+            {
+                "ignore": ["inset"]
             }
         ]
     }

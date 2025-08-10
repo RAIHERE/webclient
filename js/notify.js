@@ -45,6 +45,9 @@ var notify = {
     dynamicNotifs: {},
     lastSeenDynamic: undefined,
 
+    newNotifications: 0,
+    lastFavicoState: false,
+
     /**
      * Initialise the notifications system
      */
@@ -390,6 +393,11 @@ var notify = {
             return false;
         }
 
+        if (previousNotification.data.ver !== currentNotification.data.ver) {
+            notify.notifications.unshift(currentNotification);
+            return false;
+        }
+
         // Get details about the current notification
         var currentNotificationParentHandle = currentNotification.data.n;
         var currentNotificationNodes = currentNotification.data.f;
@@ -496,9 +504,10 @@ var notify = {
             $popup.addClass('hidden').text(newNotifications);
             $(document.body).trigger('onMegaNotification', false);
         }
+        this.newNotifications = newNotifications;
 
         // Update page title
-        megatitle();
+        notify.updateNotificationIndicator();
     },
 
     /**
@@ -534,7 +543,8 @@ var notify = {
         notify.$popupNum.html(0);
 
         // Update page title
-        megatitle();
+        this.newNotifications = 0;
+        notify.updateNotificationIndicator();
 
         // Send 'set last acknowledged' API request to inform it which notifications have been seen
         // up to this point then they won't show these notifications as new next time they are fetched
@@ -598,6 +608,9 @@ var notify = {
         'use strict';
         if (notify.$popup !== null && this.$popup.closest('.js-dropdown-notification').hasClass('show')) {
             this.$popup.closest('.js-dropdown-notification').removeClass('show');
+            if (mega.ui.header && typeof mega.ui.header.closeNotifMenu === 'function') {
+                mega.ui.header.closeNotifMenu();
+            }
             notify.markAllNotificationsAsSeen();
         }
         notify.dynamicNotifCountdown.removeDynamicNotifCountdown();
@@ -965,7 +978,7 @@ var notify = {
                 loadSubPage(`fm/chat/${chatId}`);
                 if ($(e.currentTarget).attr('data-desc') === '1') {
                     delay(`showSchedDescDialog-${chatId}`, () => {
-                        megaChat.chats[chatId].trigger('openSchedDescDialog');
+                        megaChat.chats[chatId].trigger('openDescriptionDialog');
                     }, 1500);
                 }
 
@@ -1470,7 +1483,11 @@ var notify = {
         const fileText = mega.icu.format(l.file_count, fileCount);
 
         // Set wording of the title
-        if (folderCount >= 1 && fileCount >= 1) {
+        if (notification.data.ver && folderCount === 0 && fileCount > 0) {
+            title = email ? mega.icu.format(l.user_file_updated_count, fileCount).replace('[X]', email)
+                : mega.icu.format(l.file_updated_count, fileCount);
+        }
+        else if (folderCount >= 1 && fileCount >= 1) {
             title = email ? mega.icu.format(l.user_item_added_count, folderCount + fileCount).replace('[X]', email) :
                 mega.icu.format(l.item_added_count, folderCount + fileCount);
         }
@@ -1584,27 +1601,50 @@ var notify = {
 
                 const newPlan = pro.getProPlanName(newPlanLevel);
                 const currentPlan = pro.getProPlanName(u_attr.p);
-                const plansEndingAfterPurchase = getPlansEndingAfterPurchase();
-                const bodyText = plansEndingAfterPurchase < 2
-                    ? l.welcome_dialog_active_until
-                    : l.welcome_dialog_active_check;
+
+                let bodyText = l.welcome_dialog_active_check;
+                if (getPlansEndingAfterPurchase() < 2) {
+                    bodyText = l.welcome_dialog_active_until;
+
+                    if (!purchaseEndTime) {
+                        console.assert(account.stype === 'S' || !account.srenew);
+
+                        if (account.srenew) {
+                            purchaseEndTime = account.srenew[0];
+                        }
+                        else {
+                            const data = pro.proplan.planData;
+                            if (data) {
+                                purchaseEndTime = data.nextplan ? data.nextplan.t : data.suntil;
+                            }
+                        }
+                    }
+                    purchaseEndTime = purchaseEndTime && time2date(purchaseEndTime, 1);
+
+                    console.assert(purchaseEndTime);
+                    bodyText = bodyText.replace('%3', purchaseEndTime || '');
+                }
+
                 msgDialog('warninga', '',
                           l.welcome_dialog_thanks_for_sub.replace('%1', newPlan),
                           bodyText
                               .replace('%1', currentPlan)
-                              .replace('%3', time2date(purchaseEndTime || account.srenew[0], 1))
                               .replace('%2', newPlan));
                 return;
             }
 
             pro.loadMembershipPlans(() => {
 
-                const plan = pro.getPlanObj(newPlanLevel, account.purchases[0][6]);
+                const plan = pro.getPlanObj(newPlanLevel, 1);
+
+                if (!plan) {
+                    return;
+                }
 
                 $('header', $dialog).text(l.welcome_dialog_header.replace('%1', plan.name));
-                $('.more-quota .info-text', $dialog).text(l.welcome_dialog_quota_details
+                $('.thanks-text', $dialog).text(l.pro_welcome_dialog_quota_brief
                     .replace('%1', bytesToSize(plan.storage, 3, 4))
-                    .replace('%2', bytesToSize(plan.transfer, 3, 4)));
+                    .replace('%2', bytesToSize(plan.transfer * account.purchases[0][6], 3, 4)));
                 $('button', $dialog).rebind('click', () => {
                     closeDialog();
                 });
@@ -2230,5 +2270,39 @@ var notify = {
                 }
             }
         }
+    },
+
+    updateNotificationIndicator() {
+        'use strict';
+        if (!this.favico) {
+            assert(Favico, 'Favico.js is missing.');
+
+            const link = document.querySelector('link[rel="icon"]');
+            if (link) {
+                link.href = `${location.hostname === 'mega.nz' ? 'https://mega.nz/' : bootstaticpath}favicon.ico`;
+            }
+
+            this.favico = new Favico({
+                type: 'circle',
+                animation: 'popFade',
+                bgColor: '#31D0FE',
+                textColor: '#FFF',
+            });
+        }
+        const show = !!(this.newNotifications || (window.megaChat && megaChat._lastUnreadCount));
+        if (this.lastFavicoState !== show) {
+            delay('notifFavicoUpd', tryCatch(() => {
+                this.favico.reset();
+                if (show) {
+                    // Show if any notifications from this or chat.
+                    this.favico.badge(' ');
+                }
+                else {
+                    this.favico.badge('');
+                }
+                this.lastFavicoState = show;
+            }));
+        }
+
     }
 };

@@ -3,8 +3,9 @@
     height: 100%;
 }
 .section.conversations {
-    height: calc(100% - 48px);
     transition: 200ms linear;
+    height: calc(100% - 65px);
+    padding-top: 65px;
 }
 .section.conversations .fm-right-files-block {
     height: 100%;
@@ -63,7 +64,7 @@
     -webkit-box-sizing: border-box;
     -moz-box-sizing: border-box;
     box-sizing: border-box;
-    background-color: var(--stroke-main);
+    background-color: var(--mobile-page-background);
     position: absolute;
     right: 0;
 }
@@ -106,8 +107,6 @@
     height: 16px;
     padding: 0 6px;
     margin: 2px 0 0 0;
-    -moz-border-radius: 4px;
-    -webkit-border-radius: 4px;
     border-radius: 4px;
     color: white;
     font-size: 11px;
@@ -135,8 +134,6 @@
     padding: 0;
 }
 .short .small-rounded-avatar {
-    -moz-border-radius: 4px;
-    -webkit-border-radius: 4px;
     border-radius: 4px;
     width: 32px;
     height: 32px;
@@ -164,14 +161,13 @@
     flex: 1 1 auto;
     font-size: 0;
     line-height: 0;
-    overflow: hidden;
 }
 .chat-topic-block .small-rounded-avatar {
     margin: 8px 0;
 }
 .chat-topic-block .contacts-info .user-card-data {
     overflow: hidden;
-    padding: 0 0 0 12px;
+    padding-inline-start: 12px;
 }
 .chat-topic-block .contacts-info .user-card-data .user-card-name {
     max-width: 100%;
@@ -233,9 +229,7 @@
 .contacts-info .user-card-data {
     line-height: 0;
     padding-inline-start: 10px;
-    -webkit-padding-start: 10px;
     padding-inline-end: 15px;
-    -webkit-padding-end: 15px;
 }
 .rtl .contacts-info .user-card-data {
     max-width: 74%;
@@ -360,8 +354,6 @@
     -webkit-box-sizing: border-box;
     -moz-box-sizing: border-box;
     box-sizing: border-box;
-    -moz-border-radius: 100%;
-    -webkit-border-radius: 100%;
     border-radius: 100%;
     -webkit-box-shadow: 0px 1px 2px 0px rgba(0,0,0,0.1);
     -moz-box-shadow: 0px 1px 2px 0px rgba(0,0,0,0.1);
@@ -378,7 +370,6 @@
     float: right;
     margin-top: 5px;
     margin-inline-end: 4px;
-    -webkit-margin-end: 4px;
 }
 .rtl .contacts-info .contacts-icon {
     float: left;
@@ -396,9 +387,7 @@
     height: 32px;
     line-height: 32px;
     margin-inline-end: 15px;
-    -webkit-margin-end: 15px;
     padding-inline-end: 0;
-    -webkit-padding-end: 0;
 }
 .chat-heading-area {
     height: 36px;
@@ -448,8 +437,6 @@
     height: 16px;
     padding: 0 6px;
     margin: 2px 0 0 0;
-    -moz-border-radius: 4px;
-    -webkit-border-radius: 4px;
     border-radius: 4px;
     color: #666;
     border: 1px solid #777;
@@ -579,9 +566,7 @@
 .chat-dropdown .link-button.light span,
 .chat-dropdown .dropdown-item.link-button.light span {
     padding-inline-start: 35px;
-    -webkit-padding-start: 35px;
     padding-inline-end: 0;
-    -webkit-padding-end: 0;
 }
 .rtl .chat-dropdown .link-button.light span {
     text-align: right;
@@ -669,8 +654,6 @@
     width: 36px;
     height: 36px;
         margin: 9px 0 0 0;
-    -moz-border-radius: 4px;
-    -webkit-border-radius: 4px;
     border-radius: 4px;
     overflow: hidden;
     float: left;
@@ -1046,7 +1029,6 @@ button.fm-empty-button {
 }
 .main-start-chat-dropdown.lhp-contact-selector .button-wrapper .button-title {
     padding-inline-start: 8px;
-    -webkit-padding-start: 8px;
 }
 
 .dropdown.body.popup.contacts-search > div {
@@ -1131,6 +1113,7 @@ button.fm-empty-button {
 .mega-dialog.meetings-call-ended-dialog header > div > .avatar {
     transform: scale(1.2);
 }
+
 .chat-links-logo-header {
     display: block;
     height: 44px;
@@ -1138,13 +1121,54 @@ button.fm-empty-button {
     overflow: visible;
     margin-top: 4px;
 }
+.chat-links-blocked {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.chat-links-blocked h2 {
+    font: var(--mobile-font-heading-h2);
+    color: var(--mobile-text-primary);
+    margin: 0;
+}
+.chat-links-blocked p {
+    font: var(--text-body1);
+    color: var(--text-color-low);
+    margin: 8px auto 16px;
+}
+.chat-links-blocked i {
+    width: 52px;
+    height: 52px;
+    margin: 0 0 30px
+}
+
+.chat-links-blocked .chat-links-blocked-btn-block {
+    display: flex;
+    flex-direction: column;
+    height: 140px;
+    padding: 0 40px 30px;
+    justify-content: space-around;
+    align-items: center;
+    text-align: center;
+}
+
+.chat-links-blocked .chat-links-blocked-btn-block a {
+    font: var(--text-h3);
+    text-decoration: underline;
+    color: var(--text-color-high);
+}
+
 .chat-links-preview,
 .chat-links-preview .chat-app-container {
     height: 100%;
 }
 
 .fm-right-files-block.in-chat.chatlink {
-    -webkit-margin-start: 0;
     margin-inline-start: 0;
 }
 .chat-links-preview {
@@ -1265,7 +1289,6 @@ button.fm-empty-button {
 .chat-occurrences-list-inner {
     padding-top: 5px;
     padding-inline-end: 12px;
-    -webkit-padding-end: 12px;
 }
 
 .chat-occurrences-list-inner .loading-sketch {
@@ -1352,7 +1375,6 @@ button.fm-empty-button {
 .chat-occurrence-control {
     float: left;
     margin-inline-end: 8px;
-    -webkit-margin-end: 8px;
     cursor: pointer;
 }
 
@@ -1371,7 +1393,6 @@ button.fm-empty-button {
 }
 .mega-dialog.scheduled-description-dialog .description-scroller {
     padding-inline-end: 26px;
-    -webkit-padding-end: 26px;
 }
 .mega-dialog.scheduled-description-dialog span {
     overflow-wrap: break-word;
@@ -1400,9 +1421,13 @@ button.fm-empty-button {
 .dropdown.input-sources .dropdown-item {
     padding: 0 4px;
 }
+.dropdown.input-sources .dropdown-item > div {
+    display: flex;
+    align-items: center;
+}
 .dropdown.input-sources .dropdown-item i {
-    float: right;
     --icon-size: 16px;
+    margin-inline-start: 8px;
 }
 .dropdown.input-sources hr {
     --divider-color: var(--stroke-grey-2);
@@ -1417,10 +1442,9 @@ button.fm-empty-button {
     padding: 0 4px;
 }
 .dropdown.input-sources div.av-device-name {
-    display: inline-block;
     overflow: hidden;
     text-overflow: ellipsis;
-    width: calc(100% - 32px);
+    width: auto;
 }
 
 .conversation-panel .call-user-limit-banner {

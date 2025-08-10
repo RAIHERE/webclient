@@ -6,7 +6,6 @@ var slideshowid;
 (function _imageViewerSlideShow(global) {
     "use strict";
 
-    var zoom_mode;
     var origImgWidth;
     var slideshowplay;
     var slideshowpause;
@@ -23,6 +22,7 @@ var slideshowid;
     var preselection;
     const broadcasts = [];
     const MOUSE_IDLE_TID = 'auto-hide-previewer-controls';
+    let zoomPan = false;
 
     const onConfigChange = (name) => {
         if (name === 'speed') {
@@ -66,7 +66,8 @@ var slideshowid;
         const backward = [];
 
         let slideShowItemCount = window.dl_node ? 2 : 0;
-        const slideShowModeFilter = !slideShowItemCount && mega.slideshow.utils.filterNodes(undefined, true);
+        const slideShowModeFilter = !slideShowItemCount &&
+            (mega.slideshow.utils && mega.slideshow.utils.filterNodes(undefined, true) || (() => true));
 
         let current;
         let pos = [];
@@ -164,7 +165,7 @@ var slideshowid;
         var step = dir === 'next' ? 'forward' : 'backward';
         $.videoAutoFullScreen = $(document).fullScreen();
 
-        for (const i in dl_queue) {
+        for (const i in self.dl_queue) {
             if (dl_queue[i].id === h && dl_queue[i].preview) {
                 valid = false;
                 return false;
@@ -178,9 +179,25 @@ var slideshowid;
         steps = steps || slideshowsteps();
         if (steps[step].length > 0) {
             const newShownHandle = steps[step][0];
-            if ($.videoAutoFullScreen && is_video(M.getNodeByHandle(newShownHandle))) {
+            if (!newShownHandle) {
+                return;
+            }
+            else if ($.videoAutoFullScreen && is_video(M.getNodeByHandle(newShownHandle))) {
                 // Autoplay the next/prev video if it's in full screen mode
                 $.autoplay = newShownHandle;
+            }
+            else if (slideshowplay < 0 && !previews[newShownHandle]) {
+                if (d) {
+                    console.warn('Waiting for %s to have loaded, cur=%s...', newShownHandle, slideshowid, steps);
+                }
+                slideshowplay = newShownHandle;
+                if (!preqs[newShownHandle]) {
+                    if (d) {
+                        console.error('%s is not being fetched, forcefully doing so... debug & fix..', newShownHandle);
+                    }
+                    fetchsrc(newShownHandle);
+                }
+                return;
             }
 
             mBroadcaster.sendMessage(`slideshow:${dir}`, steps);
@@ -189,7 +206,7 @@ var slideshowid;
             if (is_mobile) {
                 mobile.appBanner.updateBanner(newShownHandle);
             }
-            else {
+            else if (mega.ui.mInfoPanel) {
                 // Rerender info panel when moving to next/previous at slide show.
                 mega.ui.mInfoPanel.reRenderIfVisible([newShownHandle]);
             }
@@ -260,19 +277,21 @@ var slideshowid;
         }
     }
 
-    function slideshow_favourite(n, $overlay) {
+    function slideshowNodeAttributes(n, $overlay) {
         var $favButton = $('.context-menu .favourite', $overlay);
+        const $senBtn = $('.context-menu .set-sensitive', $overlay);
         var root = M.getNodeRoot(n && n.h || false);
 
         if (!n
             || !n.p
             || root === M.InboxID
             || root === 'shares'
-            || folderlink
+            || self.pfid
             || root === M.RubbishID
             || (M.getNodeByHandle(n.h) && !M.getNodeByHandle(n.h).u && M.getNodeRights(n.p) < 2)
         ) {
             $favButton.addClass('hidden');
+            $senBtn.addClass('hidden');
         }
         else {
             $favButton.removeClass('hidden');
@@ -315,6 +334,20 @@ var slideshowid;
                 $('span', $favButton).text(l[5871]);
                 $('i', $favButton).removeClass().addClass('sprite-fm-mono icon-favourite');
             }
+
+            const sen = mega.sensitives.getSensitivityStatus([n.h]);
+            if (sen) {
+                $senBtn.removeClass('hidden');
+                const toHide = sen === 1;
+                mega.sensitives.applyMenuItemStyle($senBtn, toHide);
+
+                $senBtn.rebind('click.mediaviewer.sensitive_toggle', () => {
+                    mega.sensitives.toggleStatus([n.h], !$senBtn.hasClass('sensitive-added'));
+                });
+            }
+            else {
+                $senBtn.addClass('hidden');
+            }
         }
     }
 
@@ -349,7 +382,7 @@ var slideshowid;
         var root = M.getNodeRoot(n && n.h || false);
         const $sendToChatButton = $('.context-menu .send-to-chat', $overlay);
 
-        if (!n || !n.p || root === M.InboxID || (root === 'shares' && M.getNodeRights(n.p) < 2) || folderlink ||
+        if (!n || !n.p || root === M.InboxID || (root === 'shares' && M.getNodeRights(n.p) < 2) || self.pfid ||
             (M.getNodeByHandle(n.h) && !M.getNodeByHandle(n.h).u && M.getNodeRights(n.p) < 2) || M.chat) {
 
             $removeButton.addClass('hidden');
@@ -405,7 +438,7 @@ var slideshowid;
         if (is_video(n)) {
             $removeButton.addClass('mask-color-error');
             $('span', $removeButton).addClass('color-error');
-            if (fminitialized && !folderlink && u_type === 3 && M.currentrootid !== M.RubbishID) {
+            if (self.fminitialized && !self.pfid && u_type === 3 && M.currentrootid !== M.RubbishID) {
                 $sendToChatButton.removeClass('hidden');
                 $sendToChatButton.closest('li').prev('.divider').removeClass('hidden');
             }
@@ -419,6 +452,25 @@ var slideshowid;
             $('span', $removeButton).removeClass('color-error');
             $sendToChatButton.addClass('hidden');
             $sendToChatButton.closest('li').prev('.divider').addClass('hidden');
+        }
+    }
+
+    function slideshow_addToAlbum(n, $overlay) {
+        const $addToAlbumButton = $('.context-menu .add-to-album', $overlay);
+        const $divider = $addToAlbumButton.closest('li').prev('.divider');
+
+        if (M.getNodeRoot(n.h) === M.RootID && mega.gallery
+            && mega.gallery.canShowAddToAlbum() && M.isGalleryNode(n)) {
+            $addToAlbumButton.removeClass('hidden');
+            $divider.removeClass('hidden');
+
+            $addToAlbumButton.rebind('click.mediaviewer', () => {
+                mega.gallery.albums.addToAlbum([n.h]);
+            });
+        }
+        else {
+            $addToAlbumButton.addClass('hidden');
+            $divider.addClass('hidden');
         }
     }
 
@@ -442,13 +494,8 @@ var slideshowid;
                 || !n.p
                 || root === 'shares'
                 || root === M.RubbishID
-                || (pfcol)
-                || (
-                    !folderlink
-                    && M.getNodeByHandle(n.h)
-                    && !M.getNodeByHandle(n.h).u
-                    && M.getNodeRights(n.p) < 2
-                )
+                || self.pfid
+                || !M.getNodeByHandle(n.h).u && M.getNodeRights(n.p) < 2
             ) {
                 $getLinkBtn.addClass('hidden');
             }
@@ -459,6 +506,7 @@ var slideshowid;
                     if ($getLinkBtn.hasClass('disabled')) {
                         return;
                     }
+
                     $getLinkBtn.addClass('disabled');
                     tSleep(3).then(() => $getLinkBtn.removeClass('disabled'));
 
@@ -495,10 +543,12 @@ var slideshowid;
         slideshow_aborttimer();
 
         if (slideshowplay && !slideshowpause) {
-
             (slideshowTimer = tSleep(mega.slideshow.settings.speed.getValue() / 1e3))
                 .then(() => {
-                    slideshow_next();
+                    if (slideshowplay) {
+                        slideshowplay = -1;
+                        slideshow_next();
+                    }
                 })
                 .catch(dump);
 
@@ -509,57 +559,6 @@ var slideshowid;
             }
         }
     }
-
-    function slideshow_zoomSlider(value = 100) {
-
-        if (is_mobile) {
-            mega.ui.viewerOverlay.zoom = value;
-            return;
-        }
-
-        const container = document.querySelector('.media-viewer-container');
-        const wrapper = container && container.querySelector('.zoom-slider-wrap');
-        const $elm = $('.zoom-slider', wrapper);
-        const setValue = tryCatch(() => {
-            wrapper.dataset.perc = value;
-            $elm.slider('value', value);
-        });
-
-        if (!wrapper) {
-            if (d) {
-                console.error('zoom-slider-wrap not found.');
-            }
-            return;
-        }
-
-        if ($elm.slider('instance')) {
-            // Update existing slider.
-            return setValue();
-        }
-
-        // Init zoom slider
-        $elm.slider({
-            min: 1,
-            max: 1000,
-            range: 'min',
-            step: 0.01,
-            change: function(e, ui) {
-                $('.ui-slider-handle .mv-zoom-slider', this).text(formatPercentage(ui.value / 100));
-                wrapper.dataset.perc = ui.value;
-            },
-            slide: function(e, ui) {
-                $('.ui-slider-handle .mv-zoom-slider', this).text(formatPercentage(ui.value / 100));
-                slideshow_zoom(container, false, ui.value);
-            },
-            create: () => {
-                setValue();
-                $('.ui-slider-handle', $elm).safeAppend(
-                    `<div class="mv-zoom-slider dark-direct-tooltip"></div>
-                    <i class="mv-zoom-slider-arrow sprite-fm-mono icon-tooltip-arrow"></i>`
-                );
-            }
-        });
-    };
 
     // Inits Image viewer bottom control bar
     function slideshow_imgControls(slideshow_stop, close) {
@@ -573,8 +572,6 @@ var slideshowid;
         var $pauseButton = $('.sl-btn.playpause', $slideshowControls);
         var $prevButton = $('.sl-btn.previous', $slideshowControls);
         var $nextButton = $('.sl-btn.next', $slideshowControls);
-        var $zoomInButton = $('.v-btn.zoom-in', $imageControls);
-        var $zoomOutButton = $('.v-btn.zoom-out', $imageControls);
 
         if (slideshow_stop) {
             $viewerTopBar.removeClass('hidden');
@@ -582,7 +579,6 @@ var slideshowid;
             $prevNextButtons.removeClass('hidden');
             $slideshowControls.addClass('hidden');
             $slideshowControlsUpper.addClass('hidden');
-            $overlay.removeClass('slideshow').off('mousewheel.imgzoom');
             slideshow_play(false, close);
             slideshowpause = false;
             $pauseButton.attr('data-state', 'pause');
@@ -592,7 +588,9 @@ var slideshowid;
             $(window).off('blur.slideshowLoseFocus');
             slideshowsteps(); // update x of y counter
 
-            M.noSleep(true).catch(dump);
+            if (M.noSleep) {
+                M.noSleep(true).catch(dump);
+            }
 
             return false;
         }
@@ -626,12 +624,17 @@ var slideshowid;
             $slideshowControls.removeClass('hidden');
             $slideshowControlsUpper.removeClass('hidden');
             $prevNextButtons.addClass('hidden');
-            zoom_mode = false;
 
-            M.noSleep().catch(dump);
+            if (zoomPan) {
+                zoomPan.reset();
+            }
+
+            if (M.noSleep) {
+                M.noSleep().catch(dump);
+            }
 
             if (is_mobile) {
-                eventlog(99835);
+                eventlog(pfcol ? 500841 : 99835);
                 if (is_ios) {
                     // Due to the handling of the onload event with the previous image in iOS,
                     // force the call to img position
@@ -672,30 +675,6 @@ var slideshowid;
             return false;
         });
 
-        // Bind ZoomIn button
-        $zoomInButton.rebind('click.mediaviewer', function() {
-            slideshow_zoom($overlay);
-            return false;
-        });
-
-        // Bind ZoomOut button
-        $zoomOutButton.rebind('click.mediaviewer', function() {
-            slideshow_zoom($overlay, 1);
-            return false;
-        });
-
-        // Allow mouse wheel to zoom in/out
-        $('.media-viewer', $overlay).rebind('mousewheel.imgzoom', function(e) {
-            var delta = Math.max(-1, Math.min(1, (e.wheelDelta || e.deltaY || -e.detail)));
-
-            if (delta > 0) {
-                $zoomInButton.trigger('click.mediaviewer');
-            }
-            else {
-                $zoomOutButton.trigger('click.mediaviewer');
-            }
-        });
-
         // Bind Slideshow Close button
         $('.sl-btn.close', is_mobile ? $slideshowControls : $slideshowControlsUpper).rebind('click.mediaviewer', () => {
             slideshowplay_close();
@@ -708,195 +687,89 @@ var slideshowid;
         });
     }
 
-    // Inits Pick and pan mode if image doesn't fit into the container
-    function slideshow_pickpan($overlay, close) {
-        var $imgWrap = $('.img-wrap', $overlay);
-        var $img = $('img.active', $imgWrap);
-        var wrapWidth = $imgWrap.outerWidth();
-        var wrapHeight = $imgWrap.outerHeight();
-        var imgWidth = switchedSides ? $img.height() : $img.width();
-        var imgHeight = switchedSides ? $img.width() : $img.height();
-        var dragStart = 0;
-        var lastPos = {x: null, y: null};
+    function getWH(id, viewerWidth, viewerHeight, imgWidth, imgHeight) {
+        const wp = viewerWidth / origImgWidth;
+        const hp = viewerHeight / origImgHeight;
 
-        if (close) {
-            $imgWrap.off('mousedown.pickpan touchstart.pickpan');
-            $imgWrap.off('mouseup.pickpan mouseout.pickpan touchend.pickpan');
-            $imgWrap.off('mousemove.pickpan touchmove.pickpan');
-            return false;
+        // Set minHeight, minWidth if image is bigger then browser window
+        // Check if height fits browser window after reducing width
+        if ((origImgWidth > viewerWidth && origImgHeight * wp <= viewerHeight)
+            || (fitToWindow[id] && origImgHeight < viewerHeight
+                && origImgWidth < viewerWidth && origImgHeight * wp <= viewerHeight)) {
+
+            imgWidth = viewerWidth;
+            imgHeight = origImgHeight * wp;
         }
+        // Check if width fits browser window after reducing height
+        else if ((origImgWidth > viewerWidth && origImgHeight * wp > viewerHeight)
+            || (origImgWidth < viewerWidth && origImgHeight > viewerHeight)
+            || (fitToWindow[id] && imgHeight < viewerHeight
+                && origImgWidth < viewerWidth && origImgWidth * hp <= viewerWidth)) {
 
-        // Get cursor last position before dragging
-        $imgWrap.rebind('mousedown.pickpan touchstart.pickpan', function(event) {
-            dragStart = (!event.touches || event.touches.length === 1) | 0; // double finger should not treated as drag
-            lastPos = {x: event.pageX, y: event.pageY};
-            $(this).addClass('picked');
-        });
-
-        // Stop dragging
-        $imgWrap.rebind('mouseup.pickpan mouseout.pickpan touchend.pickpan', function() {
-            dragStart = 0;
-            $(this).removeClass('picked');
-        });
-
-        // Drag image if it doesn't fit into the container
-        $imgWrap.rebind('mousemove.pickpan touchmove.pickpan', event => {
-            if (dragStart) {
-
-                const {pageX, pageY} = event.type === 'touchmove' ? event.touches[0] : event;
-
-                var currentPos = {x: pageX, y: pageY};
-                var changeX = currentPos.x - lastPos.x;
-                var changeY = currentPos.y - lastPos.y;
-
-                /* Save mouse position */
-                lastPos = currentPos;
-
-                var imgTop = $img.position().top;
-                var imgLeft = $img.position().left;
-                var imgTopNew = imgTop + changeY;
-                var imgLeftNew = imgLeft + changeX;
-
-                // Check if top and left do not fall outside the image
-                if (wrapHeight >= imgHeight) {
-                    imgTopNew = (wrapHeight - imgHeight) / 2;
-                }
-                else if (imgTopNew > 0) {
-                    imgTopNew = 0;
-                }
-                else if (imgTopNew < (wrapHeight - imgHeight)) {
-                    imgTopNew = wrapHeight - imgHeight;
-                }
-                if (wrapWidth >= imgWidth) {
-                    imgLeftNew = (wrapWidth - imgWidth) / 2;
-                }
-                else if (imgLeftNew > 0) {
-                    imgLeftNew = 0;
-                }
-                else if (imgLeftNew < (wrapWidth - imgWidth)) {
-                    imgLeftNew = wrapWidth - imgWidth;
-                }
-
-                $img.css({
-                    'left': imgLeftNew + 'px',
-                    'top': imgTopNew + 'px'
-                });
-
-                return false;
-            }
-        });
+            imgWidth = origImgWidth * hp;
+            imgHeight = viewerHeight;
+        }
+        else {
+            imgWidth = origImgWidth;
+            imgHeight = origImgHeight;
+        }
+        return [imgWidth, imgHeight];
     }
 
-    // Zoom In/Out function
-    function slideshow_zoom($overlay, zoomout, value) {
-        const $img = $('.img-wrap img.active', $overlay);
-        const $percLabel = $('.zoom-slider-wrap', $overlay);
-        let newPerc = parseFloat($percLabel.attr('data-perc')) || 1;
-        let newImgWidth;
-        let zoomStep;
-
-        if (value) {
-            newPerc = parseFloat(value);
-        }
-        else if (zoomout) {
-            zoomStep = (newPerc * 0.9).toFixed(2);
-            newPerc = zoomStep >= 1 ? zoomStep : 1;
-        }
-        else if (!zoomout) {
-            zoomStep = (newPerc * 1.2).toFixed(2);
-            newPerc = zoomStep <= 1000 ? zoomStep : 1000;
-        }
-
-        newPerc /= devicePixelRatio * 100;
-        newImgWidth = origImgWidth * newPerc;
-
-        $img.css({
-            'width': newImgWidth
-        });
-
-        zoom_mode = true;
-
-        // Set zoom, position values and init pick and pan
-        slideshow_imgPosition($overlay);
-    }
-
-    // Sets zoom percents and image position
+    // Sets scale value and image position
     function slideshow_imgPosition($overlay) {
         const $imgWrap = $('.img-wrap', $overlay);
         const $img = $('img.active', $overlay);
+
+        if ($img.length === 0) {
+            return false;
+        }
+
+        let imgWidth, imgHeight;
         const id = $imgWrap.attr('data-image');
         const viewerWidth = $imgWrap.width();
         const viewerHeight = $imgWrap.height();
-        let imgWidth = 0;
-        let imgHeight = 0;
-        let w_perc = 0;
-        let h_perc = 0;
-        let newImgWidth = 0;
 
-        if (zoom_mode) {
+        $img.attr('draggable', false);
+
+        if (zoomPan.zoomMode) {
             imgWidth = switchedSides ? $img.height() : $img.width();
             imgHeight = switchedSides ? $img.width() : $img.height();
-
-            // Init pick and pan mode if Image larger its wrapper
-            if (imgWidth > viewerWidth || imgHeight > viewerHeight) {
-                slideshow_pickpan($overlay);
-            }
-            else {
-                slideshow_pickpan($overlay, 1);
-            }
         }
         else {
-            w_perc = viewerWidth / origImgWidth;
-            h_perc = viewerHeight / origImgHeight;
             $img.removeAttr('style');
+
             imgWidth = (switchedSides ? $img.height() : $img.width()) || origImgWidth;
             imgHeight = (switchedSides ? $img.width() : $img.height()) || origImgHeight;
 
-            // Set minHeight, minWidth if image is bigger then browser window
-            // Check if height fits browser window after reducing width
-            if (origImgWidth > viewerWidth && origImgHeight * w_perc <= viewerHeight) {
-                imgWidth = viewerWidth;
-                imgHeight = origImgHeight * w_perc;
-                newImgWidth = switchedSides ? imgHeight : imgWidth;
-            }
-            // Check if width fits browser window after reducing height
-            else if ((origImgWidth > viewerWidth && origImgHeight * w_perc > viewerHeight)
-                || (origImgWidth < viewerWidth && origImgHeight > viewerHeight)) {
-
-                imgWidth = origImgWidth * h_perc;
-                imgHeight = viewerHeight;
-                newImgWidth = switchedSides ? imgHeight : imgWidth;
-            }
-            // Check if preview and original imgs are loading and height fits browser window after increasing width
-            else if (fitToWindow[id] && origImgHeight < viewerHeight
-                && origImgWidth < viewerWidth && origImgHeight * w_perc <= viewerHeight) {
-
-                imgWidth = viewerWidth;
-                imgHeight = origImgHeight * w_perc;
-                newImgWidth = switchedSides ? imgHeight : imgWidth;
-            }
-            // Check if preview and original imgs are loading and width fits browser window after increasing height
-            else if (fitToWindow[id] && imgHeight < viewerHeight
-                && origImgWidth < viewerWidth && origImgWidth * h_perc <= viewerWidth) {
-
-                imgWidth = origImgWidth * h_perc;
-                imgHeight = viewerHeight;
-                newImgWidth = switchedSides ? imgHeight : imgWidth;
-            }
-            else {
-                newImgWidth = switchedSides ? origImgHeight : origImgWidth;
-            }
+            [imgWidth, imgHeight] = getWH(id, viewerWidth, viewerHeight, imgWidth, imgHeight);
 
             $img.css({
-                'width': newImgWidth
+                'width': switchedSides ? imgHeight : imgWidth
             });
+
+            $img[0].dataset.initScale = imgWidth / origImgWidth * devicePixelRatio;
+
+            // Init zoom and pan
+            if (!zoomPan) {
+                zoomPan = new MegaZoomPan({
+                    domNode: $img[0],
+                    slider: !(is_mobile && self.is_transferit) // only for mega desktop
+                });
+            }
+            else if (!(is_mobile && self.is_transferit)) {
+                zoomPan.setSliderValue();
+            }
         }
 
         $img.css({
             'left': (viewerWidth - imgWidth) / 2,
             'top': (viewerHeight - imgHeight) / 2,
         });
-        slideshow_zoomSlider(imgWidth / origImgWidth * 100 * devicePixelRatio);
+
+        if (is_mobile && mega.ui.viewerOverlay) {
+            mega.ui.viewerOverlay.zoom = imgWidth / origImgWidth * devicePixelRatio * 100;
+        }
     }
 
     // Mobile finger gesture
@@ -1008,7 +881,6 @@ var slideshowid;
             options.onPinchZoom = function(ev, mag) {
 
                 mega.ui.viewerOverlay.zoom *= mag;
-                slideshow_zoom($(elm), 0, mega.ui.viewerOverlay.zoom);
             };
         }
         else if (type === 'DOCX') {
@@ -1039,7 +911,7 @@ var slideshowid;
             video.pause();
         }
         $.noOpenChatFromPreview = true;
-        openCopyDialog('conversations');
+        openSendToChatDialog();
 
         mBroadcaster.sendMessage('trk:event', 'preview', 'send-chat');
     }
@@ -1073,9 +945,12 @@ var slideshowid;
         }
 
         if (close) {
+            if (window.selectionManager) {
+
+                selectionManager.restoreResetTo();
+            }
             sessionStorage.removeItem('previewNode');
             sessionStorage.removeItem('previewTime');
-            zoom_mode = false;
             switchedSides = false;
             slideshowid = false;
             $.videoAutoFullScreen = false;
@@ -1117,7 +992,11 @@ var slideshowid;
                 fullScreenManager.destroy();
                 fullScreenManager = null;
             }
-            for (var i in dl_queue) {
+            if (zoomPan) {
+                zoomPan.destroy();
+                zoomPan = false;
+            }
+            for (const i in self.dl_queue) {
                 if (dl_queue[i] && dl_queue[i].id === id) {
                     if (dl_queue[i].preview) {
                         dlmanager.abort(dl_queue[i]);
@@ -1132,7 +1011,9 @@ var slideshowid;
             mBroadcaster.sendMessage('slideshow:close');
             slideshow_freemem();
             $(window).off('blur.slideshowLoseFocus');
-            M.noSleep(true).catch(dump);
+            if (M.noSleep) {
+                M.noSleep(true).catch(dump);
+            }
 
             if (is_mobile) {
                 if (mega.ui.viewerOverlay) {
@@ -1173,7 +1054,7 @@ var slideshowid;
             if (page !== 'download' && (!history.state || history.state.view !== id)) {
                 pushHistoryState();
 
-                if (n.p && !folderlink && M.getNodeRoot(n.p) !== M.RubbishID) {
+                if (n.p && !self.pfid && M.getNodeRoot(n.p) !== M.RubbishID && mega.ui.searchbar) {
                     onIdle(() => mega.ui.searchbar.recentlyOpened.addFile(id, false));
                 }
             }
@@ -1182,7 +1063,7 @@ var slideshowid;
 
         slideshowid = n.ch || n.h;
         if (window.selectionManager) {
-            selectionManager.resetTo(n.h);
+            selectionManager.wantResetTo(n.h);
         }
         else {
             $.selected = [n.h];
@@ -1190,20 +1071,21 @@ var slideshowid;
         mBroadcaster.sendMessage('slideshow:open', n);
 
         if (page !== 'download') {
-            sessionStorage.setItem('previewNode', id);
+            tryCatch(() => sessionStorage.setItem('previewNode', id))();
             pushHistoryState(true, Object.assign({subpage: page}, history.state, {view: slideshowid}));
         }
 
         // Clear previousy set data
-        zoom_mode = false;
         switchedSides = false;
         $('header .file-name', $overlay).text(n.name);
+        $('header .file-size', $overlay).text(bytesToSize(n.s || 0));
         $('.viewer-error, #pdfpreviewdiv1, #docxpreviewdiv1', $overlay).addClass('hidden');
         $('.viewer-progress', $overlay).addClass('vo-hidden');
 
         if (!is_mobile) {
             $imageControls.addClass('hidden');
         }
+        $zoomSlider.addClass('hidden');
         $prevNextButtons.addClass('hidden');
         $playVideoButton.addClass('hidden');
         $watchAgainButton.addClass('hidden');
@@ -1234,6 +1116,12 @@ var slideshowid;
         $('button.subtitles i', $videoControls).removeClass('icon-subtitles-02-small-regular-solid')
             .addClass('icon-subtitles-02-small-regular-outline');
 
+        // Clear zoomPan data
+        if (zoomPan) {
+            zoomPan.destroy();
+            zoomPan = false;
+        }
+
         // Init full screen icon and related data attributes
         if ($document.fullScreen()) {
             $('.v-btn.fullscreen i', $imageControls)
@@ -1258,11 +1146,8 @@ var slideshowid;
             $('.fs-wrapper .tooltip', $videoControls).text(l.video_player_fullscreen);
         }
 
-        // Turn off pick and pan mode
-        slideshow_pickpan($overlay, 1);
-
         // Options context menu
-        if (!optionsMenu) {
+        if (!optionsMenu && self.contextMenu) {
             optionsMenu = contextMenu.create({
                 template: $('#media-viewer-options-menu', $overlay)[0],
                 sibling: $('.v-btn.options', $overlay)[0],
@@ -1318,7 +1203,7 @@ var slideshowid;
                     }
                 }
                 else if ((e.keyCode === 8 || e.key === 'Backspace') && !isDownloadPage && !$.copyDialog
-                        && !$.dialog && !$.msgDialog && !mega.ui.mInfoPanel.isOpen()) {
+                        && !$.dialog && !$.msgDialog && mega.ui.mInfoPanel && !mega.ui.mInfoPanel.isOpen()) {
                     history.back();
                     return false;
                 }
@@ -1334,15 +1219,22 @@ var slideshowid;
                     }
                     $overlay.removeClass('fullscreen browserscreen');
                     $overlay.parents('.download.download-page').removeClass('fullscreen browserscreen');
-                    if (is_mobile) {
-                        zoom_mode = false;
+                    if (is_mobile && zoomPan) {
+                        zoomPan.destroy();
+                        zoomPan = false;
                     }
                     slideshow_imgPosition($overlay);
                     return false;
                 }
                 history.back();
-                mega.ui.mInfoPanel.closeIfOpen();
+                if (mega.ui.mInfoPanel) {
+                    mega.ui.mInfoPanel.hide();
+                }
                 return false;
+            });
+
+            $('.js-close-slideshow', $overlay).rebind('click.media-viewer', () => {
+                slideshow(self.slideshowid, true);
             });
 
             // Keep the Info panel option hidden on public links (but usable in regular Cloud Drive etc)
@@ -1355,8 +1247,7 @@ var slideshowid;
             $('.context-menu .info, .v-btn.info', $overlay).rebind('click.media-viewer', () => {
                 $document.fullScreen(false);
                 // Use original ID to render info from chats
-                $.selected = [id];
-                mega.ui.mInfoPanel.initInfoPanel();
+                mega.ui.mInfoPanel.show([slideshowid]);
                 return false;
             });
 
@@ -1372,9 +1263,9 @@ var slideshowid;
 
                     slideshow_imgPosition($overlay);
 
-                    if (mega.flags.ab_ads) {
+                    // if (mega.flags.ab_ads) {
                         mega.commercials.updateOverlays();
-                    }
+                    // }
 
                     return false;
                 });
@@ -1396,56 +1287,39 @@ var slideshowid;
                     }
                 });
             }
-            else {
+            else if (self.contextMenu) {
                 // Options icon
-                $('.v-btn.options', $overlay).rebind('click.media-viewer', function() {
+                $('.v-btn.options, .sl-btn.settings', $overlay).rebind('click.media-viewer-settings', function() {
                     var $this = $(this);
+                    const menu = $this.hasClass('settings') ? settingsMenu : optionsMenu;
 
                     if ($(this).hasClass('hidden')) {
                         return false;
                     }
                     if ($this.hasClass('active')) {
                         $this.removeClass('active deactivated');
-                        contextMenu.close(optionsMenu);
-                    }
-                    else {
-                        $this.addClass('active deactivated').trigger('simpletipClose');
-                        // xxx: no, this is not a window.open() call..
-                        // eslint-disable-next-line local-rules/open
-                        contextMenu.open(optionsMenu);
-                    }
-                    return false;
-                });
-
-                // Settings icon
-                $('.sl-btn.settings', $overlay).rebind('click.media-viewer-settings', function() {
-                    var $this = $(this);
-
-                    if ($(this).hasClass('hidden')) {
-                        return false;
-                    }
-                    if ($this.hasClass('active')) {
-                        $this.removeClass('active deactivated');
-                        $('i', $this).removeClass('icon-slider-filled');
-                        $('i', $this).addClass('icon-slider-outline');
-
-                        contextMenu.close(settingsMenu);
+                        if (menu === settingsMenu) {
+                            $('i', $this).removeClass('icon-slider-filled').addClass('icon-slider-outline');
+                        }
+                        contextMenu.close(menu);
                         $overlay.removeClass('context-menu-open');
                     }
                     else {
                         $this.addClass('active deactivated').trigger('simpletipClose');
-                        $('i', $this).removeClass('icon-slider-outline');
-                        $('i', $this).addClass('icon-slider-filled');
-
+                        if (menu === settingsMenu) {
+                            $('i', $this).removeClass('icon-slider-outline').addClass('icon-slider-filled');
+                        }
                         // xxx: no, this is not a window.open() call..
                         // eslint-disable-next-line local-rules/open
-                        contextMenu.open(settingsMenu);
+                        contextMenu.open(menu);
                         $overlay.addClass('context-menu-open');
                     }
                     return false;
                 });
 
-                if (fminitialized && !folderlink && u_type === 3 && M.currentrootid !== M.RubbishID && !is_video(n)) {
+                if (self.fminitialized && !self.pfid
+                    && self.u_type === 3 && M.currentrootid !== M.RubbishID && !is_video(n)) {
+
                     $sendToChat.removeClass('hidden');
                 }
                 else if (is_video(n)) {
@@ -1468,6 +1342,11 @@ var slideshowid;
 
                 // Close context menu
                 $overlay.rebind('mouseup.media-viewer', (e) => {
+                    const $target = $(e.target);
+                    if ($target.parent().is('.v-btn.options, .sl-btn.settings')) {
+                        // leave the click-handler dealing with it.
+                        return;
+                    }
 
                     $('.v-btn.options', $overlay).removeClass('active deactivated');
                     contextMenu.close(optionsMenu);
@@ -1483,11 +1362,14 @@ var slideshowid;
                 });
             }
 
-            // Favourite Icon
-            slideshow_favourite(n, $overlay);
+            // Favourite and Sensitive icons
+            slideshowNodeAttributes(n, $overlay);
 
             // Remove Icon
             slideshow_remove(n, $overlay);
+
+            // Add to album icon
+            slideshow_addToAlbum(n, $overlay);
 
             if (filteredNodeArr && Array.isArray(filteredNodeArr)) {
                 preselection = filteredNodeArr;
@@ -1609,8 +1491,8 @@ var slideshowid;
                 }
             }
 
-            if (pfcol) {
-                tryCatch(() => eventlog(mega.gallery.isVideo(n) ? 99972 : 99973))();
+            if (self.pfcol) {
+                tryCatch(() => eventlog(M.isGalleryVideo(n) ? 99972 : 99973))();
             }
 
             // TODO: adapt the above code to work on the downloads page if we need to download the original
@@ -1624,6 +1506,13 @@ var slideshowid;
                 M.addDownload([n]);
             }
 
+            return false;
+        });
+
+        $('.js-download-t-file').rebind('click.media-viewer', () => {
+            if (n.xh) {
+                window.open(T.core.getDownloadLink(n), '_blank', 'noopener,noreferrer');
+            }
             return false;
         });
 
@@ -1652,15 +1541,13 @@ var slideshowid;
             fetchnext();
         }
         else {
-            if (!slideshowplay) {
+            if (is_video(n)) {
                 $('img', $imgWrap).attr('src', '');
-
-                if (is_video(n)) {
-                    $('.loader-grad', $content).removeClass('hidden');
-                }
-                else {
-                    $pendingBlock.removeClass('hidden');
-                }
+                $('.loader-grad', $content).removeClass('hidden');
+            }
+            else if (slideshowplay !== true) {
+                $('img', $imgWrap).attr('src', '');
+                $pendingBlock.removeClass('hidden');
             }
 
             if (!preqs[n.h]) {
@@ -1691,13 +1578,14 @@ var slideshowid;
     }
 
     function slideshow_play(isPlayMode, isAbortFetch) {
-        mega.slideshow.manager.setState({
-            currentNodeId: slideshowid,
-            isPlayMode,
-            isAbortFetch,
-            isNotBuildPlaylist: !isPlayMode && !slideshowplay
-        });
-
+        if (mega.slideshow.manager) {
+            mega.slideshow.manager.setState({
+                currentNodeId: slideshowid,
+                isPlayMode,
+                isAbortFetch,
+                isNotBuildPlaylist: !isPlayMode && !slideshowplay
+            });
+        }
         slideshowplay = isPlayMode;
     }
 
@@ -1733,13 +1621,13 @@ var slideshowid;
             return false;
         }
 
-        var eot = function eot(id, err) {
-            delete preqs[id];
-            delete pfails[id];
-            if (n.s > 13e7) {
-                return previewimg(id, null);
+        var eot = function eot(h, err) {
+            delete preqs[h];
+            delete pfails[h];
+            if (n.s > 13e7 || !M.addDownload) {
+                return previewimg(h, null);
             }
-            M.addDownload([id], false, err ? -1 : true);
+            M.addDownload([h], false, err ? -1 : true);
         };
         eot.timeout = 8500;
 
@@ -1787,7 +1675,7 @@ var slideshowid;
             return false;
         }
 
-        if (is_video(n)) {
+        if (is_video(n) || is_audio(n)) {
             if (!preqs[n.h]) {
                 preqs[n.h] = 1;
 
@@ -1802,13 +1690,11 @@ var slideshowid;
                         .dump('preload.poster.' + n.h);
                 }
 
-                M.require('videostream').done(function() {
+                M.require('videostream').then(() => {
                     if (preqs[n.h]) {
                         previewimg(n.h, Array(26).join('x'), filemime(n, 'video/mp4'));
                     }
-                }).fail(function() {
-                    console.error('Failed to load videostream.js');
-                });
+                }).catch(tell);
             }
             return false;
         }
@@ -2158,7 +2044,9 @@ var slideshowid;
                     p.appendChild(newPdfIframe);
                 }
             }
-
+            if (!newPdfIframe.contentWindow) {
+                throw EINCOMPLETE;
+            }
             var doc = newPdfIframe.contentWindow.document;
             doc.open();
             doc.write(myPage);
@@ -2208,7 +2096,9 @@ var slideshowid;
                     p.appendChild(newIframe);
                 }
             }
-
+            if (!newIframe.contentWindow) {
+                throw EINCOMPLETE;
+            }
             const doc = newIframe.contentWindow.document;
             // eslint-disable-next-line local-rules/open
             doc.open();
@@ -2268,7 +2158,7 @@ var slideshowid;
             // preview pdfs using pdfjs for all browsers #8036
             // to fix pdf compatibility - Bug #7796
             prepareAndViewPdfViewer(previews[id]);
-            api_req({a: 'log', e: 99660, m: 'Previewed PDF Document.'});
+            eventlog(99660);
             return;
         }
         if (previews[id].type === extmime.docx) {
@@ -2288,7 +2178,7 @@ var slideshowid;
 
         const isVideoStream = /^(?:audio|video)\//i.test(previews[id].type);
 
-        if (pfcol) {
+        if (self.pfcol) {
             eventlog(isVideoStream ? 99970 : 99971);
         }
 
@@ -2458,14 +2348,28 @@ var slideshowid;
             blob = new Blob([uint8arr.buffer], {type: type});
         }
 
+        const processFullPreview = () => {
+            if (
+                slideshowplay === id
+                || (M.chat && typeof slideshowplay === 'string' && slideshowplay.split('!')[1] === id)
+            ) {
+                if (d) {
+                    console.warn('Dispatching slideshow-play for %s...', id);
+                }
+
+                slideshow_next();
+            }
+            else if (id === slideshow_handle()) {
+                previewsrc(id);
+            }
+        };
+
         if (previews[id]) {
             if (previews[id].full) {
                 if (d && previews[id].fromChat !== null) {
                     console.warn('Not overwriting a full preview...', id);
                 }
-                if (id === slideshow_handle()) {
-                    previewsrc(id);
-                }
+                processFullPreview();
                 return;
             }
             previews[id].prev = previews[id];
@@ -2492,9 +2396,7 @@ var slideshowid;
             previews[n.hash] = previews[id];
         }
 
-        if (id === slideshow_handle()) {
-            previewsrc(id);
-        }
+        processFullPreview();
 
         // Ensure we are not eating too much memory...
         tSleep.schedule(7, slideshow_freemem);
@@ -2566,5 +2468,6 @@ var slideshowid;
     global.slideshow_steps = slideshowsteps;
     global.previewsrc = previewsrc;
     global.previewimg = previewimg;
+    global.slideshowNodeAttributes = slideshowNodeAttributes;
 
 })(self);

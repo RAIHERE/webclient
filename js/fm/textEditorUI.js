@@ -53,7 +53,7 @@ mega.textEditorUI = new function TextEditorUI() {
 
         var openFile = function() {
             loadingDialog.show('common', l[23130]);
-            var nodeHandle = ($.selected && $.selected[0]) || (selected && selected[0]);
+            const nodeHandle = selected && selected[0];
             if (!nodeHandle) {
                 loadingDialog.hide();
                 return;
@@ -167,6 +167,10 @@ mega.textEditorUI = new function TextEditorUI() {
             });
         }
 
+        if (is_mobile) {
+            editor.options.readOnly = editor.options.readOnly && 'nocursor';
+        }
+
         savedFileData = txt;
         editor.setValue(txt);
 
@@ -275,7 +279,7 @@ mega.textEditorUI = new function TextEditorUI() {
                         bindEventsListner();
 
                         if (fh) {
-                            selectionManager.resetTo(fh, true);
+                            selectionManager.wantResetTo(fh, true);
                             fileName = M.d[fh].name;
                             $('.text-editor-file-name span', $editorContainer).text(fileName);
                         }
@@ -303,7 +307,7 @@ mega.textEditorUI = new function TextEditorUI() {
         $('.file-menu .open-f', $menuBar).rebind(
             'click.txt-editor',
             function openFileClick() {
-                M.initFileAndFolderSelectDialog('openFile', selectedItemOpen);
+                M.initFileAndFolderSelectDialog('open-file').then(selectedItemOpen).catch(tell);
             }
         );
 
@@ -332,7 +336,7 @@ mega.textEditorUI = new function TextEditorUI() {
             function getLinkFileMenuClick() {
                 selectionManager.clear_selection();
                 selectionManager.add_to_selection(versionHandle || fileHandle);
-                $('.dropdown.body.context .dropdown-item.getlink-item').trigger('click');
+                M.getLinkAction();
             }
         );
 
@@ -341,7 +345,7 @@ mega.textEditorUI = new function TextEditorUI() {
             function sendToContactMenuClick() {
                 selectionManager.clear_selection();
                 selectionManager.add_to_selection(versionHandle || fileHandle);
-                $('.dropdown.body.context .dropdown-item.send-to-contact-item').trigger('click');
+                openSendToChatDialog();
             }
         );
 
@@ -527,6 +531,10 @@ mega.textEditorUI = new function TextEditorUI() {
     this.doClose = function() {
         if (editor) {
             editor.setValue('');
+        }
+        if (window.selectionManager) {
+
+            selectionManager.restoreResetTo();
         }
         if ($containerDialog) {
             $containerDialog.addClass('hidden');

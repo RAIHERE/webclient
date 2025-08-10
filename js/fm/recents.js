@@ -113,7 +113,6 @@ RecentsRender.prototype.render = function(limit, until, forceInit) {
     M.onSectionUIOpen('recents');
     $('.fmholder').removeClass("transfer-panel-opened");
     $('.fm-right-files-block').addClass('hidden');
-    $('.top-head').find(".recents-tab-link").removeClass("hidden").addClass('active');
     this.$container.removeClass('hidden');
 
     M.viewmode = 1;
@@ -142,7 +141,7 @@ RecentsRender.prototype.render = function(limit, until, forceInit) {
     if (!this._rendered) {
         loadingDialog.show();
     }
-    M.initShortcutsAndSelection(this.$container);
+    M.initShortcutsAndSelection(this.container);
 
     M.getRecentActionsList(this.currentLimit, this.currentUntil).then(function(actions) {
         self.getMaxFitOnScreen(true);
@@ -467,7 +466,7 @@ RecentsRender.prototype.populateBreadCrumb = function($container, action) {
     var newBreadCrumb = function(node) {
         var $breadCrumb = $('<span/>');
         $breadCrumb
-            .attr('id', node.h)
+            .attr('data-id', node.h)
             .text(node.name)
             .rebind('click dblclick', function () {
                 M.openFolder(node.h);
@@ -480,13 +479,18 @@ RecentsRender.prototype.populateBreadCrumb = function($container, action) {
                 $.hideTopMenu();
                 return M.contextMenuUI(e, 1) ? true : false;
             });
+        if (node.h === M.RootID) {
+            $breadCrumb.addClass('cloud-drive');
+        }
         return $breadCrumb;
     };
 
-    var getActionUserString = function(isOtherUser, isCreated) {
+    var getActionUserString = function(isOtherUser, isCreated, isUnknownUser) {
         var actionUserString = '<span>';
         if (isOtherUser) {
-            actionUserString += isCreated ? l[19937] : l[19940];
+            actionUserString += isCreated
+                ? isUnknownUser ? l.recents_shared_by : l[19937]
+                : l[19940];
             actionUserString = actionUserString
                 .replace("%3", '<span class="link action-user-name"></span>');
         }
@@ -528,7 +532,11 @@ RecentsRender.prototype.populateBreadCrumb = function($container, action) {
         "data-simpletipposition": "top"
     });
 
-    $container.safeAppend(getActionUserString(action.user !== u_handle, action.action === "added"));
+    $container.safeAppend(getActionUserString(
+        action.user !== u_handle,
+        action.action === "added",
+        !M.getNameByHandle(action.user) && action.su
+    ));
 };
 
 /**
@@ -539,12 +547,20 @@ RecentsRender.prototype.populateBreadCrumb = function($container, action) {
 RecentsRender.prototype.handleByUserHandle = function($newRow, action) {
     'use strict';
     var self = this;
-    var user = M.getUserByHandle(action.user);
+
+    // If the user is not a contact, and the added node belongs in an inshare w/o full-access,
+    // we show '[Node name] shared by [Sharer]'
+    const useInshareUser =
+        action.action === 'added'
+        && !M.getNameByHandle(action.user)
+        && action.su;
+
+    var user = useInshareUser ? M.getUserByHandle(useInshareUser) : M.getUserByHandle(action.user);
     var $userNameContainer = $(".breadcrumbs .action-user-name", $newRow);
 
     $userNameContainer
         .removeClass("hidden")
-        .text(M.getNameByHandle(action.user) || l[24061])
+        .text(M.getNameByHandle(useInshareUser || action.user) || l[24061]);
 
     if (!user.h) {
         // unknown/deleted contact, no business here...
@@ -821,6 +837,7 @@ RecentsRender.prototype._renderFiles = function($newRow, action, actionId) {
             clone.recent = this.recent;
             if (this.inshare) {
                 clone.inshare = this.inshare;
+                clone.su = this.su;
             }
             if (this.outshare) {
                 clone.outshare = this.outshare;
@@ -872,6 +889,10 @@ RecentsRender.prototype._renderFiles = function($newRow, action, actionId) {
             $.hideTopMenu();
             return M.contextMenuUI(e, 1) ? true : false;
         });
+
+    if (mega.sensitives.isSensitive(action[0])) {
+        $newRow.addClass('is-sensitive');
+    }
 };
 
 /**
@@ -913,7 +934,7 @@ RecentsRender.prototype._renderMedia = function($newRow, action, actionId) {
                 $.hideContextMenu();
 
                 // Close node Info panel as it's not applicable when opening Preview
-                mega.ui.mInfoPanel.closeIfOpen();
+                mega.ui.mInfoPanel.hide();
 
                 // mega.ui.searchbar.recentlyOpened.addFile(node.h, false);
                 slideshow(node.h);
@@ -965,6 +986,10 @@ RecentsRender.prototype._renderMedia = function($newRow, action, actionId) {
 
         if (node.fav) {
             $('.file-status-icon', $newThumb).addClass('sprite-fm-mono icon-favourite-filled');
+        }
+
+        if (mega.sensitives.isSensitive(node)) {
+            $newThumb.addClass('is-sensitive');
         }
 
         if (M.getNodeShare(node.h).down) {
@@ -1351,6 +1376,9 @@ RecentsRender.prototype._onResize = function() {
         this._resizeListeners[i]();
     }
     fm_thumbnails();
+    if (this._dynamicList && this._dynamicList.listContainer && this._dynamicList.listContainer.Ps) {
+        this._dynamicList.listContainer.Ps.update();
+    }
     if (d) {
         console.timeEnd("recents.resizeListeners");
     }
@@ -1406,14 +1434,38 @@ RecentsRender.prototype._handleSelectionClick = function(e, handle, $element) {
 
 /**
  * Trigger for when a single node gets changes (renamed, etc).
- * This will attempt to re-redner the action that houses the node.
+ * This will attempt to re-render the action that houses the node or the breadcrumb if its parent.
+ * The parent/breadcrumb can change if its share status or name is changed
  * For large changes, like moving the file, the RecentsRender.updateState() should be called instead.
  *
  * @param handle
  */
 RecentsRender.prototype.nodeChanged = function(handle) {
     'use strict';
-    if (handle && M.d[handle] && this._nodeActionMap[handle] && this._dynamicList) {
+    // Parent/breadcrumb change
+    if (this._isBreadcrumb(handle)) {
+        const $nodes = $(`.parent-folder-name[data-id='${handle}']`, '.fm-recents.container');
+        for (const node of $nodes) {
+            const row = node.closest('.fm-recents.content-row');
+            if (row.id) {
+                this._updateNodeBreadcrumb(row.id);
+            }
+            else {
+                let actionId = '';
+                for (const cls of row.classList) {
+                    if (cls.startsWith('action-')) {
+                        actionId = cls.split('-')[1];
+                        break;
+                    }
+                }
+                if (actionId && this.actionIdMap[actionId]) {
+                    this._updateNodeBreadcrumb(actionId);
+                }
+            }
+        }
+    }
+    // Action row change
+    else if (handle && M.d[handle] && this._nodeActionMap[handle] && this._dynamicList) {
         var actionId = this._nodeActionMap[handle];
         var action = this.actionIdMap[actionId];
         if (action) {
@@ -1451,6 +1503,18 @@ RecentsRender.prototype.nodeChanged = function(handle) {
     } else if (this._dynamicList.active) {
         this.updateState();
     }
+};
+
+/**
+ * Utility function, used to check whether a handle belongs to a row item or its path breadcrumb
+ *
+ * @param {String} handle The handle to check
+ * @returns {Boolean} Whether the handle belongs to a breadcrumb
+ * @private
+ */
+RecentsRender.prototype._isBreadcrumb = function(handle) {
+    'use strict';
+    return $(`.parent-folder-name[data-id='${handle}']`, '.fm-recents.container').length;
 };
 
 /**
@@ -1715,4 +1779,42 @@ RecentsRender.prototype._updateNodeName = function(node) {
         }
     }
     return false;
+};
+
+/**
+ * Update the path breadcrumb of a rendered node.
+ * @param {String} id The handle of the action row, NOT the parent/breadcrumb handle
+ * @returns {Boolean} If the update was handled.
+ * @private
+ */
+RecentsRender.prototype._updateNodeBreadcrumb = function(id) {
+    'use strict';
+    M.getRecentActionsList().then(actions => {
+        this._fillActionIds(actions);
+        for (let i = 0; i < actions.length; i++) {
+            const $item = $(this._renderCache[actions[i].id]);
+            if ($item.length && ($item.attr('id') === id || $item.hasClass(`action-${id}`))) {
+                this.actionIdMap[actions[i].id] = actions[i];
+                return actions[i];
+            }
+        }
+    }).then(action => {
+        if (action) {
+            let $oldBreadcrumb = $('.fm-recents.breadcrumbs', `#${id}`);
+            if ($oldBreadcrumb.length === 0) {
+                $oldBreadcrumb = $('.fm-recents.breadcrumbs', `.action-${id}`);
+            }
+            $oldBreadcrumb.empty();
+            // Correct names
+            for (let i = 0; i < action.path.length; i++) {
+                const updNode = M.getNodeByHandle(action.path[i].h);
+                if (updNode && updNode.name) {
+                    action.path[i].name = updNode.name;
+                }
+            }
+            this.populateBreadCrumb($oldBreadcrumb, action);
+            return true;
+        }
+        return false;
+    });
 };

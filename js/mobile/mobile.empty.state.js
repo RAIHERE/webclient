@@ -1,4 +1,4 @@
-class MegaMobileEmptyState extends MegaMobileOverlay {
+class MegaMobileEmptyState extends MegaOverlay {
     show(container) {
         if (container) {
             container.classList.add('hidden');
@@ -131,9 +131,9 @@ MegaMobileEmptyState.states = () => {
             icon: 'folder'
         },
         {
-            title: '',
-            contents: mega.icu.format(l.album_items_count, 0),
-            icon: 'folder'
+            title: l.public_album_empty_title,
+            contents: '',
+            icon: 'no-access no-access-album'
         }
     ][state];
 };

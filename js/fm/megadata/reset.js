@@ -20,7 +20,7 @@ MegaData.prototype.reset = function() {
     // M.d & M.c for chat
     this.chd = Object.create(null);
     this.chc = Object.create(null);
-
+    this.dcd = Object.create(null);
     this.suba = Object.create(null);
     if (typeof MegaDataMap !== 'undefined') {
         this.u = new MegaDataMap();
@@ -29,9 +29,12 @@ MegaData.prototype.reset = function() {
     this.nn = false;
     this.sn = false;
     this.cf = false;
+    this.nrc = false;
+    this.s4nt = false;
     this.filter = false;
     this.sortfn = false;
     this.sortd = false;
+    this.skipSortByTypeAsDefault = false;
     this.rendered = false;
     this.RootID = undefined;
     this.RubbishID = undefined;

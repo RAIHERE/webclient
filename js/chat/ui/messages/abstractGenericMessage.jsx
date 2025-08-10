@@ -4,6 +4,7 @@ import { Avatar, ContactButton } from '../contacts.jsx';
 import { Emoji } from '../../../ui/utils.jsx';
 
 export default class AbstractGenericMessage extends ConversationMessageMixin {
+    domRef = React.createRef();
 
     getAvatar() {
         const contact = this.getContact() || Message.getContactForMessage(this.props.message);
@@ -70,6 +71,7 @@ export default class AbstractGenericMessage extends ConversationMessageMixin {
 
         return (
             <div
+                ref={this.domRef}
                 data-id={message.messageId}
                 className={`
                     ${this.getClassNames ? this.getClassNames() : grouped ? 'grouped' : ''}
@@ -84,7 +86,9 @@ export default class AbstractGenericMessage extends ConversationMessageMixin {
                     {this.getMessageTimestamp ? this.getMessageTimestamp() : grouped ? null : (
                         <div
                             className="message date-time simpletip"
-                            data-simpletip={time2date(this.getTimestamp(), 17)}>
+                            data-simpletip={time2date(this.getTimestamp(), 17)}
+                            data-simpletipposition="top"
+                            data-simpletipoffset="4">
                             {this.getTimestampAsString()}
                         </div>
                     )}

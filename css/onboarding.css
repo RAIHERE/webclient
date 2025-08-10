@@ -41,7 +41,12 @@
 }
 #ob-dialog-arrow.top-left {
     transform: rotate(180deg);
-    left: 48px;
+    left: 56px;
+    top: -8px;
+}
+#ob-dialog-arrow.top-right {
+    transform: rotate(180deg);
+    right: 40px;
     top: -8px;
 }
 #ob-dialog .link-button {
@@ -55,10 +60,7 @@
 }
 .context .onboarding-highlight-dot,
 .context .onboarding-highlight-dot::before,
-.context .onboarding-highlight-dot::after,
-.nw-fm-left-icon.conversations .onboarding-highlight-dot,
-.nw-fm-left-icon.conversations .onboarding-highlight-dot::before,
-.nw-fm-left-icon.conversations .onboarding-highlight-dot::after {
+.context .onboarding-highlight-dot::after {
     content: '';
     width: 10px;
     height: 10px;
@@ -73,9 +75,7 @@
     left: 8px;
 }
 .context .onboarding-highlight-dot::before,
-.context .onboarding-highlight-dot::after,
-.nw-fm-left-icon.conversations .onboarding-highlight-dot::before,
-.nw-fm-left-icon.conversations .onboarding-highlight-dot::after {
+.context .onboarding-highlight-dot::after {
     right: 0;
     left: 0;
     top: 0;
@@ -87,7 +87,7 @@
 }
 #ob-dialog.mcob {
     width: 450px;
-    z-index: 121;
+    z-index: 212;
 }
 .overlayed #ob-dialog.mcob {
     visibility: hidden;
@@ -97,7 +97,6 @@
 }
 #ob-dialog.mcob header {
     padding-inline-end: 24px;
-    -webkit-padding-end: 24px;
 }
 #ob-dialog.mcob #ob-dialog-title {
     font: var(--text-h2-bold);
@@ -230,7 +229,6 @@
     display: flex;
     align-items: center;
     position: relative;
-    -webkit-margin-start: 24px;
     margin-inline-start: 24px;
     flex-shrink: 0;
     flex-grow: 0;
@@ -274,9 +272,7 @@
     height: 100%;
     width: 70%;
     position: relative;
-    -webkit-margin-end: 36px;
     margin-inline-end: 36px;
-    -webkit-margin-start: 30px;
     margin-inline-start: 30px;
     align-items: center;
 }
@@ -353,17 +349,13 @@
 }
 .onboarding-control-panel .onboarding-control-panel-dismiss .mega-button,
 .onboarding-control-panel .onboarding-control-panel-complete .mega-button {
-    -webkit-margin-start: 8px;
     margin-inline-start: 8px;
-    -webkit-margin-end: 0;
     margin-inline-end: 0;
     flex: 0 0 auto;
 }
 .onboarding-control-panel .onboarding-control-panel-dismiss .question-content,
 .onboarding-control-panel .onboarding-control-panel-complete .question-content {
-    -webkit-margin-start: 10px;
     margin-inline-start: 10px;
-    -webkit-margin-end: auto;
     margin-inline-end: auto;
     font: var(--text-body1);
 }
@@ -384,17 +376,13 @@
     --mask-color: var(--text-color-white-high);
 }
 .onboarding-control-panel .onboarding-control-panel-complete .icon-accept {
-    -webkit-margin-start: 17px;
     margin-inline-start: 17px;
-    -webkit-margin-end: 0;
     margin-inline-end: 0;
     flex: 0 0 auto;
 }
 .onboarding-control-panel .onboarding-control-panel-complete .question-content {
     font: var(--text-h3-bold);
-    -webkit-margin-start: 13px;
     margin-inline-start: 13px;
-    -webkit-margin-end: 36px;
     margin-inline-end: 36px;
     vertical-align: middle;
 }
@@ -405,45 +393,6 @@
     vertical-align: middle;
     text-decoration: underline;
     color: var(--text-color-white-high);
-}
-
-.nw-fm-left-icon.conversations .onboarding-highlight-dot + .onboarding-mc-nv {
-    background: var(--surface-main);
-    border-radius: 20px;
-    box-shadow: var(--dialog-shadow);
-    box-sizing: border-box;
-    position: absolute;
-    left: 64px;
-    max-width: 316px;
-    padding: 24px;
-    top: -32px;
-    width: 316px;
-    display: none;
-}
-.nw-fm-left-icon.conversations.w-onboard:hover .onboarding-highlight-dot + .onboarding-mc-nv,
-.nw-fm-left-icon.conversations.w-onboard .onboarding-highlight-dot + .onboarding-mc-nv:hover {
-    display: block;
-}
-.nw-fm-left-icon.conversations .onboarding-mc-nv div {
-    color: var(--text-color-high);
-    font: var(--text-h3-bold);
-    margin: 16px 0 8px;
-}
-.nw-fm-left-icon.conversations .onboarding-mc-nv span {
-    color: var(--text-color-medium);
-    font: var(--text-body2);
-}
-.nw-fm-left-icon.conversations .onboarding-mc-nv img {
-    max-width: 100%;
-}
-.nw-fm-left-icon.conversations .onboarding-mc-nv i {
-    height: 16px;
-    left: -12px;
-    position: absolute;
-    top: 48px;
-    transform: rotate(90deg);
-    --icon-size: 24px;
-    --mask-color: var(--stroke-main);
 }
 
 /* Small width view for control panel */
@@ -465,9 +414,47 @@
     .onboarding-control-panel .onboarding-control-panel-step {
         width: 100%;
         margin-bottom: 24px;
-        -webkit-margin-start: 6px;
         margin-inline-start: 6px;
     }
 }
 
 /* v4 onboarding end */
+
+/* MEGA Pass otp promo dialog */
+.mega-sheet.promo-dialog .icon {
+    display: block;
+}
+.mega-sheet.promo-dialog .header .icon.three-locks {
+    width: 120px;
+    height: 120px;
+    background: url('../images/pm/three-locks.png');
+    background-size: contain;
+}
+.mega-sheet.promo-dialog .header > * {
+    margin-bottom: 0;
+}
+.mega-sheet.promo-dialog .header {
+    padding: 24px 24px 16px;
+    box-sizing: border-box;
+    align-items: start;
+}
+.mega-sheet.promo-dialog .promo-dialog-content {
+    text-align: start;
+    font: var(--mobile-font-copy-regular);
+}
+.mega-sheet.promo-dialog .promo-dialog-content a {
+    text-decoration: none;
+    color: var(--mobile-link-primary);
+}
+.mega-sheet.overlay-wrap.promo-dialog .actions button:last-child:nth-child(even) {
+    margin-inline-start: 8px;
+    margin-inline-end: 0;
+}
+.mega-sheet.overlay-wrap.promo-dialog .sheet .actions {
+    flex-direction: row;
+    justify-content: end;
+}
+.mega-sheet.overlay-wrap.promo-dialog .actions .button {
+    width: auto;
+    margin: inherit;
+}

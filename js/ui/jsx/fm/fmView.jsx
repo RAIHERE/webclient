@@ -9,6 +9,8 @@ import BrowserEntries from "./browserEntries.jsx";
  */
 
 export default class FMView extends MegaRenderMixin {
+    domRef = React.createRef();
+
     constructor(props) {
         super(props);
 
@@ -118,41 +120,42 @@ export default class FMView extends MegaRenderMixin {
         var order = sortBy[1] === "asc" ? 1 : -1;
         var entries = [];
 
+        let sortFunc, filterFunc, dataSource;
         const minSearchLength = self.props.minSearchLength || 3;
+        const showSen = mega.sensitives.showGlobally;
 
         if (
             self.props.currentlyViewedEntry === "search" &&
             self.props.searchValue &&
             self.props.searchValue.length >= minSearchLength
         ) {
-            M.getFilterBy(M.getFilterBySearchFn(self.props.searchValue))
-                .forEach(function(n) {
-                    // skip contacts and invalid data.
-                    if (!n.h || n.h.length === 11 || n.fv) {
-                        return;
-                    }
-                    if (self.props.customFilterFn && !self.props.customFilterFn(n)) {
-                        return;
-                    }
-                    entries.push(n);
-                });
+            dataSource = this.dataSource;
+            filterFunc = M.getFilterBySearchFn(self.props.searchValue);
         }
         else {
-            Object.keys(M.c[self.props.currentlyViewedEntry] || self.props.dataSource || {}).forEach((h) => {
+            const tmp =
+                M.c[self.props.currentlyViewedEntry]
+                || M.tree[self.props.currentlyViewedEntry]
+                || this.props.dataSource;
+            dataSource = Object.create(null);
+            for (const h in tmp) {
                 if (this.dataSource[h]) {
-                    if (self.props.customFilterFn) {
-                        if (self.props.customFilterFn(this.dataSource[h])) {
-                            entries.push(this.dataSource[h]);
-                        }
-                    }
-                    else {
-                        entries.push(this.dataSource[h]);
-                    }
+                    dataSource[h] = this.dataSource[h];
                 }
-            });
+            }
         }
 
-        var sortFunc;
+        const {customFilterFn} = this.props;
+        for (const h in dataSource) {
+            const n = dataSource[h];
+            const e = n && (!n.h || (n.h.length === 8 && crypto_keyok(n) || n.h.length === 11));
+            const s = e && !n.fv && (showSen || !mega.sensitives.isSensitive(n));
+
+            if (s && (!customFilterFn || customFilterFn(n)) && (!filterFunc || filterFunc(n))) {
+
+                entries.push(n);
+            }
+        }
 
         if (sortBy[0] === "name") {
             sortFunc = M.getSortByNameFn();
@@ -412,48 +415,51 @@ export default class FMView extends MegaRenderMixin {
         }
     }
     render() {
-        return <div
-            className="content-container"
-            onClick={(ev) => {
-                $.hideContextMenu(ev);
-            }}>
-            <BrowserEntries
-                isLoading={this.state.isLoading || this.props.nodeLoading}
-                currentlyViewedEntry={this.props.currentlyViewedEntry}
-                entries={this.state.entries || []}
-                onExpand={(node) => {
-                    this.setState({
-                        'selected': [],
-                        'highlighted': []
-                    });
+        return (
+            <div
+                ref={this.domRef}
+                className="content-container"
+                onClick={(ev) => {
+                    $.hideContextMenu(ev);
+                }}>
+                <BrowserEntries
+                    isLoading={this.state.isLoading || this.props.nodeLoading}
+                    currentlyViewedEntry={this.props.currentlyViewedEntry}
+                    entries={this.state.entries || []}
+                    onExpand={(node) => {
+                        this.setState({
+                            'selected': [],
+                            'highlighted': []
+                        });
 
-                    this.props.onExpand(node[this.props.keyProp || 'h']);
-                }}
-                sortBy={this.state.sortBy}
-                folderSelectNotAllowed={this.props.folderSelectNotAllowed}
-                onAttachClicked={this.onAttachClicked}
-                viewMode={this.props.viewMode}
-                selected={this.state.selected}
-                highlighted={this.state.highlighted}
-                onContextMenu={this.props.onContextMenu ? this.props.onContextMenu : this.onContextMenu}
-                selectionManager={this.selectionManager}
-                ref={
-                    (browserEntries) => {
-                        this.browserEntries = browserEntries;
+                        this.props.onExpand(node[this.props.keyProp || 'h']);
+                    }}
+                    sortBy={this.state.sortBy}
+                    folderSelectNotAllowed={this.props.folderSelectNotAllowed}
+                    onAttachClicked={this.onAttachClicked}
+                    viewMode={this.props.viewMode}
+                    selected={this.state.selected}
+                    highlighted={this.state.highlighted}
+                    onContextMenu={this.props.onContextMenu || this.onContextMenu}
+                    selectionManager={this.selectionManager}
+                    ref={
+                        (browserEntries) => {
+                            this.browserEntries = browserEntries;
+                        }
                     }
-                }
-                onSortByChanged={(newState) => {
-                    this.onSortByChanged(newState);
-                }}
-                listAdapterColumns={this.props.listAdapterColumns}
-                currentdirid={this.props.currentdirid}
-                containerClassName={this.props.containerClassName}
-                headerContainerClassName={this.props.headerContainerClassName}
-                megaListItemHeight={this.props.megaListItemHeight}
-                keyProp={this.props.keyProp || 'h'}
-                NilComponent={this.props.NilComponent}
-                listAdapterOpts={this.props.listAdapterOpts}
-            />
-        </div>;
+                    onSortByChanged={(newState) => {
+                        this.onSortByChanged(newState);
+                    }}
+                    listAdapterColumns={this.props.listAdapterColumns}
+                    currentdirid={this.props.currentdirid}
+                    containerClassName={this.props.containerClassName}
+                    headerContainerClassName={this.props.headerContainerClassName}
+                    megaListItemHeight={this.props.megaListItemHeight}
+                    keyProp={this.props.keyProp || 'h'}
+                    NilComponent={this.props.NilComponent}
+                    listAdapterOpts={this.props.listAdapterOpts}
+                />
+            </div>
+        );
     }
 }

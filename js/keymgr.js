@@ -1174,12 +1174,20 @@ lazy(mega, 'keyMgr', () => {
         }
 
         // try decrypting inshares based on the current key situation
-        async decryptInShares() {
+        async decryptInShares(pz) {
+
+            if (pz !== -0xFEED && u_attr.s4) {
+                // Let's make S4 users life easier,
+                // only do this whenever actually entering into the in-shares section,
+                // not on the background right after entering the site.
+                // @todo 'this.gotHereFromAFolderLink' (?)..
+                return EBLOCKED;
+            }
 
             if (!pkPull.dsLock) {
                 pkPull.dsLock = mega.promise;
 
-                let shares = mega.infinity && array.unique((await fmdb.get('s')).map(n => n.t || n.h));
+                let shares = (u_attr.s4 || mega.infinity) && array.unique((await fmdb.get('s')).map(n => n.t || n.h));
 
                 onIdle(() => {
                     const {resolve} = pkPull.dsLock;
@@ -1431,7 +1439,7 @@ lazy(mega, 'keyMgr', () => {
 
         // write out a new share-key was successfully used in s/s2.cr
         async setUsedNewShareKey(node) {
-            this.removeShareSnapshot(node);
+            // this.removeShareSnapshot(node);
 
             if (!this.trustedsharekeys[node]
                 || this.trustedsharekeys[node] & 2) {
@@ -1469,18 +1477,25 @@ lazy(mega, 'keyMgr', () => {
         // creates a sharekey for a node and sends the subtree's shareufskeys to the API
         // FIXME: (this must be called right before opening the share dialog
         //         to prevent the API from clandestinely adding nodes later)
-        async createShare(node, fromsetsharekey) {
-            let sharekey;
+        async createShare(node, fromsetsharekey, sharekey) {
 
             if (u_sharekeys[node]) {
+                assert(!sharekey, 'share-key clash');
                 sharekey = u_sharekeys[node][0];
             }
             else {
-                sharekey = [...crypto.getRandomValues(new Int32Array(4))];
+                // if 'sharekey' is provided, it comes from s4p invocation, and we treat it as trusted...
+                if (sharekey) {
+                    const {s4 = false} = M.getNodeByHandle(node);
+                    assert(s4.s4ses, 'invalid invocation');
 
-                if (this.secure) {
-                    this.trustedsharekeys[node] = true;
+                    const valid = Array.isArray(sharekey) && sharekey.length === 4 && Math.max(...sharekey) >>> 0;
+                    assert(valid, 'invalid share-key');
                 }
+                if (this.secure) {
+                    this.trustedsharekeys[node] = sharekey ? 3 : 1;
+                }
+                sharekey = sharekey || [...crypto.getRandomValues(new Int32Array(4))];
             }
 
             // take a snapshot of the current tree under node
@@ -1619,7 +1634,7 @@ lazy(mega, 'keyMgr', () => {
 
             // snapshot exists?
             if (!this.sharechildren[node]) {
-                this.createShare(node).catch(dump);
+                this.createShare(node).catch(reportError);
                 this.sharechildren[node] = await M.getNodes(node, true);
             }
         }

@@ -16,23 +16,74 @@ import ScheduleMetaChange from "./messages/scheduleMetaChange.jsx";
 export default class HistoryPanel extends MegaRenderMixin {
     $container = null;
     $messages = null;
+    domRef = React.createRef();
 
     state = {
         editing: false,
-        toast: false,
-        pusherHeight: 0,
+        toast: false
     };
 
     constructor(props) {
         super(props);
         this.handleWindowResize = this._handleWindowResize.bind(this);
     }
+
     customIsEventuallyVisible() {
         return this.props.chatRoom.isCurrentlyActive;
     }
+
+    renderNotice = label =>
+        <div
+            className="dropdown body dropdown-arrow down-arrow tooltip not-sent-notification-cancel hidden">
+            <i className="dropdown-white-arrow" />
+            <div className="dropdown notification-text">
+                <i className="small-icon conversations" />
+                {label}
+            </div>
+        </div>;
+
+    renderLoadingSpinner = () =>
+        <div
+            style={{ top: '50%' }}
+            className={`
+                loading-spinner
+                js-messages-loading
+                light
+                manual-management
+                ${this.loadingShown ? '' : 'hidden'}
+            `}>
+            <div
+                className="main-loader"
+                style={{ position: 'fixed', top: '50%', left: '50%' }}
+            />
+        </div>;
+
+    renderNavigationToast = () => {
+        const { chatRoom } = this.props;
+        const unreadCount = chatRoom.messagesBuff.getUnreadCount();
+
+        return (
+            <div
+                className={`
+                    theme-dark-forced
+                    messages-toast
+                    ${this.state.toast ? 'active' : ''}
+                `}
+                onClick={() => {
+                    this.setState({ toast: false }, () => {
+                        this.messagesListScrollable.scrollToBottom();
+                        chatRoom.scrolledToBottom = true;
+                    });
+                }}>
+                <i className="sprite-fm-mono icon-down" />
+                {unreadCount > 0 && <span>{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            </div>
+        );
+    };
+
     onKeyboardScroll = ({ keyCode }) => {
         const scrollbar = this.messagesListScrollable;
-        const domNode = scrollbar?.domNode;
+        const domNode = scrollbar?.domRef?.current;
 
         if (domNode && this.isComponentEventuallyVisible() && !this.state.attachCloudDialog) {
             const scrollPositionY = scrollbar.getScrollPositionY();
@@ -51,23 +102,22 @@ export default class HistoryPanel extends MegaRenderMixin {
                     break;
             }
         }
-    }
-    componentWillMount() {
-        var self = this;
-        var chatRoom = self.props.chatRoom;
+    };
 
-        chatRoom.rebind('onHistoryDecrypted.cp', function() {
-            self.eventuallyUpdate();
-        });
+    UNSAFE_componentWillMount() {
+        const { chatRoom } = this.props;
 
-        this._messagesBuffChangeHandler = chatRoom.messagesBuff.addChangeListener(SoonFc(function() {
+        chatRoom.rebind('onHistoryDecrypted.cp', () => this.eventuallyUpdate());
+
+        this._messagesBuffChangeHandler = chatRoom.messagesBuff?.addChangeListener(SoonFc(() => {
             // wait for scrolling (if such is happening at the moment) to finish
-            if (self.isComponentEventuallyVisible()) {
-                $('.js-messages-scroll-area', self.findDOMNode()).trigger('forceResize', [true]);
+            if (this.isComponentEventuallyVisible()) {
+                $('.js-messages-scroll-area', this.domRef?.current).trigger('forceResize', [true]);
             }
-            self.refreshUI();
+            this.refreshUI();
         }));
     }
+
     componentDidMount() {
         super.componentDidMount();
         const { chatRoom, onMount } = this.props;
@@ -82,26 +132,27 @@ export default class HistoryPanel extends MegaRenderMixin {
             onMount(this);
         }
     }
+
     componentWillUnmount() {
         super.componentWillUnmount();
-        var self = this;
-        var chatRoom = self.props.chatRoom;
+        const { chatRoom } = this.props;
         if (this._messagesBuffChangeHandler) {
-            chatRoom.messagesBuff.removeChangeListener(this._messagesBuffChangeHandler);
+            chatRoom.messagesBuff?.removeChangeListener(this._messagesBuffChangeHandler);
             delete this._messagesBuffChangeHandler;
         }
 
-        window.removeEventListener('resize', self.handleWindowResize);
-        window.removeEventListener('keydown', self.handleKeyDown);
-        $(document).off("fullscreenchange.megaChat_" + chatRoom.roomId);
-        $(document).off('keydown.keyboardScroll_' + chatRoom.roomId);
+        window.removeEventListener('resize', this.handleWindowResize);
+        window.removeEventListener('keydown', this.handleKeyDown);
+        $(document).off(`fullscreenchange.megaChat_${chatRoom.roomId}`);
+        $(document).off(`keydown.keyboardScroll_${chatRoom.roomId}`);
     }
+
     componentDidUpdate(prevProps, prevState) {
         var self = this;
 
         self.eventuallyInit(false);
 
-        var domNode = self.findDOMNode();
+        const domNode = self.domRef?.current;
         var jml = domNode && domNode.querySelector('.js-messages-loading');
 
         if (jml) {
@@ -130,52 +181,43 @@ export default class HistoryPanel extends MegaRenderMixin {
             ps.scrollToY(ps.__prevPosY, true);
         }
     }
-    eventuallyInit(doResize) {
-        const self = this;
 
+    eventuallyInit(doResize) {
         // because..JSP would hijack some DOM elements, we need to wait with this...
-        if (self.initialised) {
+        if (this.initialised) {
             return;
         }
 
-        if (self.findDOMNode()) {
-            self.initialised = true;
+        const domNode = this.domRef?.current;
+        if (domNode) {
+            this.initialised = true;
         }
         else {
             return;
         }
 
-        $(self.findDOMNode()).rebind('resized.convpanel', function() {
-            self.handleWindowResize();
+        this.$messages = $('.messages.scroll-area > .perfectScrollbarContainer', this.$container);
+        this.$messages.droppable({
+            tolerance: 'pointer',
+            drop(e, ui) {
+                $.doDD(e, ui, 'drop', 1);
+            },
+            over(e, ui) {
+                $.doDD(e, ui, 'over', 1);
+            },
+            out(e, ui) {
+                $.doDD(e, ui, 'out', 1);
+            }
         });
 
-        self.$messages = $('.messages.scroll-area > .perfectScrollbarContainer', self.$container);
-
-
-        var droppableConfig = {
-            tolerance: 'pointer',
-            drop: function(e, ui) {
-                $.doDD(e,ui,'drop',1);
-            },
-            over: function(e, ui) {
-                $.doDD(e,ui,'over',1);
-            },
-            out: function(e, ui) {
-                $.doDD(e,ui,'out',1);
-            }
-        };
-
-        self.$messages.droppable(droppableConfig);
-
-        self.lastScrollPosition = null;
-        self.props.chatRoom.scrolledToBottom = true;
-        self.lastScrollHeight = 0;
-        self.lastUpdatedScrollHeight = 0;
+        this.lastScrollPosition = null;
+        this.props.chatRoom.scrolledToBottom = true;
 
         if (doResize !== false) {
-            self.handleWindowResize();
+            this.handleWindowResize();
         }
     }
+
     _handleWindowResize(e, scrollToBottom) {
         if (!M.chat) {
             return;
@@ -247,27 +289,6 @@ export default class HistoryPanel extends MegaRenderMixin {
                 delay(`hp:reinit-scroll:${this.getUniqueId()}`, () => {
                     if (this.messagesListScrollable) {
                         this.messagesListScrollable.reinitialise(true, true);
-                        if (this.state.pusherHeight || this.messagesListScrollable.getScrollHeight() === 0) {
-                            if (room.messagesBuff.haveMoreHistory()) {
-                                // Height of the messages, dividers, etc.. excluding the pusher.
-                                const innerHeight =
-                                    $('.messages.content-area > div', this.findDOMNode())
-                                        .not('.hp-pusher')
-                                        .toArray()
-                                        .map(a => a.getBoundingClientRect().height)
-                                        .reduce((a, b) => a + b);
-                                const pusherHeight = Math.max(
-                                    this.messagesListScrollable.getClientHeight() - innerHeight + 50,
-                                    0
-                                );
-                                if (Math.abs(this.state.pusherHeight - pusherHeight) > 50) {
-                                    this.setState({ pusherHeight });
-                                }
-                            }
-                            else {
-                                this.setState({ pusherHeight: 0 });
-                            }
-                        }
                     }
                 }, 30);
             }
@@ -334,6 +355,9 @@ export default class HistoryPanel extends MegaRenderMixin {
 
     isLoading() {
         const chatRoom = this.props.chatRoom;
+        if (chatRoom.historyTimedOut) {
+            return false;
+        }
         const mb = chatRoom.messagesBuff;
 
         return this.scrollPullHistoryRetrieval === true
@@ -371,7 +395,7 @@ export default class HistoryPanel extends MegaRenderMixin {
         v.edited = false;
 
         if (messageContents === false || messageContents === currentContents) {
-            self.messagesListScrollable.scrollToBottom(true);
+            self.messagesListScrollable?.scrollToBottom(true);
         }
         else if (messageContents) {
             room.trigger('onMessageUpdating', v);
@@ -415,7 +439,7 @@ export default class HistoryPanel extends MegaRenderMixin {
                 megaChat.plugins.richpreviewsFilter.processMessage({}, v, false, true);
             }
 
-            self.messagesListScrollable.scrollToBottom(true);
+            self.messagesListScrollable?.scrollToBottom(true);
         }
         else if (messageContents.length === 0) {
             this.props.onDeleteClicked(v);
@@ -436,29 +460,6 @@ export default class HistoryPanel extends MegaRenderMixin {
                 { toast: !chatRoom.scrolledToBottom && !this.messagesListScrollable?.isCloseToBottom?.(30) },
                 () => this.state.toast ? null : chatRoom.trigger('onChatIsFocused')
             )
-        );
-    };
-
-    renderToast = () => {
-        const { chatRoom } = this.props;
-        const unreadCount = chatRoom.messagesBuff.getUnreadCount();
-
-        return (
-            <div
-                className={`
-                    theme-dark-forced
-                    messages-toast
-                    ${this.state.toast ? 'active' : ''}
-                `}
-                onClick={() => {
-                    this.setState({ toast: false }, () => {
-                        this.messagesListScrollable.scrollToBottom();
-                        chatRoom.scrolledToBottom = true;
-                    });
-                }}>
-                <i className="sprite-fm-mono icon-down" />
-                {unreadCount > 0 && <span>{unreadCount > 9 ? '9+' : unreadCount}</span>}
-            </div>
         );
     };
 
@@ -499,38 +500,70 @@ export default class HistoryPanel extends MegaRenderMixin {
             }
             delete self.loadingShown;
 
-            if (mb.joined === true && !self.scrollPullHistoryRetrieval && mb.haveMoreHistory() === false) {
-                var headerText = l[8002];
-                headerText =
-                    contactName ?
-                        headerText.replace('%s', `<span>${megaChat.html(contactName)}</span>`) :
-                        megaChat.html(room.getRoomTitle());
+            if (
+                room.historyTimedOut ||
+                mb.joined === true &&
+                !self.scrollPullHistoryRetrieval &&
+                mb.haveMoreHistory() === false
+            ) {
+                const $$WELCOME_MESSAGE = ({ heading, title, info, className }) =>
+                    <div
+                        className={`
+                            messages
+                            welcome-message
+                            ${className || ''}
+                        `}>
+                        <ParsedHTML
+                            tag="h1"
+                            content={heading}
+                        />
+                        {title && <span>{title}</span>}
+                        {info}
+                    </div>;
 
-                messagesList.push(
-                    <div className="messages notification" key="initialMsg">
-                        <div className="header">
-                            <ParsedHTML
-                                tag="div"
-                                content={room.scheduledMeeting ? megaChat.html(room.getRoomTitle()) : headerText}
-                            />
-                        </div>
-                        <div className="info">
-                            {l[8080]}
-                            <p>
-                                <i className="sprite-fm-mono icon-lock" />
-                                <ParsedHTML>
-                                    {l[8540].replace("[S]", "<strong>").replace("[/S]", "</strong>")}
-                                </ParsedHTML>
-                            </p>
-                            <p>
-                                <i className="sprite-fm-mono icon-accept" />
-                                <ParsedHTML>
-                                    {l[8539].replace("[S]", "<strong>").replace("[/S]", "</strong>")}
-                                </ParsedHTML>
-                            </p>
-                        </div>
-                    </div>
-                );
+                messagesList = [
+                    ...messagesList,
+                    room.isNote ?
+                        $$WELCOME_MESSAGE({
+                            heading: l.note_heading /* `Keep it to yourself` */,
+                            info: (
+                                <p>
+                                    <i className="sprite-fm-mono icon-file-text-thin-outline note-chat-icon"/>
+                                    {l.note_description /* `Send yourself sensitive information, pics and videos...` */}
+                                </p>
+                            ),
+                            className: 'note-chat-info'
+                        }) :
+                        $$WELCOME_MESSAGE({
+                            heading: room.scheduledMeeting || !contactName ?
+                                megaChat.html(room.getRoomTitle()) :
+                                // `Conversation with %s`
+                                l[8002].replace('%s', `<span>${megaChat.html(contactName)}</span>`),
+                            title: l[8080] /* `MEGA protects your chat with zero-knowledge encryption providing...` */,
+                            info: (
+                                <>
+                                    <p>
+                                        <i className="sprite-fm-mono icon-lock"/>
+                                        <ParsedHTML
+                                            content={
+                                                // `[S]Confidentiality.[/S] Only the author and intended recipients...`
+                                                l[8540].replace("[S]", "<strong>").replace("[/S]", "</strong>")
+                                            }
+                                        />
+                                    </p>
+                                    <p>
+                                        <i className="sprite-fm-mono icon-accept"/>
+                                        <ParsedHTML
+                                            content={
+                                                // `[S]Authenticity.[/S] The system ensures that the data received...`
+                                                l[8539].replace("[S]", "<strong>").replace("[/S]", "</strong>")
+                                            }
+                                        />
+                                    </p>
+                                </>
+                            )
+                        })
+                ];
             }
         }
 
@@ -764,88 +797,47 @@ export default class HistoryPanel extends MegaRenderMixin {
 
         return (
             <div
+                ref={this.domRef}
                 className={`
                     messages
                     scroll-area
-                    ${this.props.className ? this.props.className : ''}
+                    ${this.props.className || ''}
                 `}>
-                <div
-                    className="dropdown body dropdown-arrow down-arrow tooltip not-sent-notification-manual hidden">
-                    <i className="dropdown-white-arrow" />
-                    <div className="dropdown notification-text">
-                        <i className="small-icon conversations" />
-                        {l[8883] /* `Message not sent. Click here if you want to resend it.` */}
-                    </div>
-                </div>
-
-                <div
-                    className="dropdown body dropdown-arrow down-arrow tooltip not-sent-notification-cancel hidden">
-                    <i className="dropdown-white-arrow" />
-                    <div className="dropdown notification-text">
-                        <i className="small-icon conversations" />
-                        {l[8884] /* `Message not sent. Click here if you want to cancel it.` */}
-                    </div>
-                </div>
-
                 <PerfectScrollbar
-                    onFirstInit={ps => {
-                        ps.scrollToBottom(true);
-                        this.props.chatRoom.scrolledToBottom = 1;
-                    }}
-                    onUserScroll={this.onMessagesScrollUserScroll}
                     className="js-messages-scroll-area perfectScrollbarContainer"
-                    messagesToggledInCall={this.state.messagesToggledInCall}
-                    ref={(ref) => {
+                    ref={ref => {
                         this.messagesListScrollable = ref;
                         $(document).rebind(
-                            'keydown.keyboardScroll_' + this.props.chatRoom.roomId,
+                            `keydown.keyboardScroll_${room.roomId}`,
                             this.onKeyboardScroll
                         );
-                        if (this.props.onMessagesListScrollableMount) {
-                            this.props.onMessagesListScrollableMount(ref);
-                        }
+                        this.props.onMessagesListScrollableMount?.(ref);
                     }}
-                    chatRoom={this.props.chatRoom}
-                    messagesBuff={this.props.chatRoom.messagesBuff}
+                    chatRoom={room}
+                    messagesBuff={room.messagesBuff}
                     editDomElement={this.state.editDomElement}
                     editingMessageId={this.state.editing}
                     confirmDeleteDialog={this.state.confirmDeleteDialog}
                     renderedMessagesCount={messagesList.length}
+                    options={{ suppressScrollX: true }}
                     isLoading={
-                        this.props.chatRoom.messagesBuff.messagesHistoryIsLoading() ||
-                        this.props.chatRoom.activeSearches > 0 ||
+                        room.messagesBuff.messagesHistoryIsLoading() ||
+                        room.activeSearches > 0 ||
                         this.loadingShown
                     }
-                    options={{ 'suppressScrollX': true }}>
+                    onFirstInit={ps => {
+                        ps.scrollToBottom(true);
+                        room.scrolledToBottom = 1;
+                    }}
+                    onUserScroll={this.onMessagesScrollUserScroll}>
                     <div className="messages main-pad">
                         <div className="messages content-area">
-                            <div
-                                key="loadingSpinner" style={{ top: "50%" }}
-                                className={`
-                                    loading-spinner
-                                    js-messages-loading
-                                    light
-                                    manual-management
-                                    ${this.loadingShown ? '' : 'hidden'}
-                                `}>
-                                <div
-                                    className="main-loader"
-                                    style={{ 'position': 'fixed', 'top': '50%', 'left': '50%' }}
-                                />
-                            </div>
-                            {
-                                !!this.state.pusherHeight &&
-                                <div
-                                    className="hp-pusher"
-                                    style={{ height: this.state.pusherHeight }}
-                                />
-                            }
-                            {/* add a naive pre-pusher that would eventually keep the the scrollbar realistic */}
+                            {this.renderLoadingSpinner()}
                             {messagesList}
                         </div>
                     </div>
                 </PerfectScrollbar>
-                {this.renderToast()}
+                {this.renderNavigationToast()}
             </div>
         );
     }

@@ -11,7 +11,7 @@ import Call, { inProgressAlert } from './meetings/call.jsx';
 import ChatToaster from './chatToaster.jsx';
 import LeftPanel from './leftPanel/leftPanel.jsx';
 import { FreeCallEnded as FreeCallEndedDialog } from './meetings/workflow/freeCallEnded.jsx';
-import ContactSelectorDialog from "./contactSelectorDialog";
+import ContactSelectorDialog from './contactSelectorDialog.jsx';
 
 export const VIEWS = {
     CHATS: 0x00,
@@ -23,12 +23,17 @@ export const EVENTS = {
     NAV_RENDER_VIEW: 'navRenderView'
 };
 
+window.convAppConstants = {
+    VIEWS,
+    EVENTS,
+};
+
 class ConversationsApp extends MegaRenderMixin {
+    domRef = React.createRef();
     chatRoomRef = null;
     occurrenceRef = null;
 
     state = {
-        leftPaneWidth: Math.min(mega.config.get('leftPaneWidth') | 0, 400) || 384,
         startGroupChatDialog: false,
         startMeetingDialog: false,
         scheduleMeetingDialog: false,
@@ -80,7 +85,6 @@ class ConversationsApp extends MegaRenderMixin {
 
     componentDidMount() {
         super.componentDidMount();
-        var self = this;
 
         $(document).rebind('keydown.megaChatTextAreaFocus', e => {
             // prevent recursion!
@@ -130,6 +134,7 @@ class ConversationsApp extends MegaRenderMixin {
                 // is visible/active at the moment
                 if (
                     $target.is(".messages-textarea,a,input,textarea,select,button") ||
+                    $target.is('i') && $target.parent().is('a,input,select,button') ||
                     $target.closest('.messages.scroll-area').length > 0 ||
                     $target.closest('.mega-dialog').length > 0 ||
                     this.hasOpenDialog() ||
@@ -148,47 +153,6 @@ class ConversationsApp extends MegaRenderMixin {
             }
         });
 
-
-        self.fmConfigLeftPaneListener = mBroadcaster.addListener('fmconfig:leftPaneWidth', function(value) {
-            if (value > 0) {
-                megaChat.$leftPane = megaChat.$leftPane || $('.conversationsApp .fm-left-panel');
-                delay('CoApp:fmc:thr', function() {
-                    self.setState({leftPaneWidth: value});
-                }, 75);
-                megaChat.$leftPane.width(value);
-                $('.fm-tree-panel', megaChat.$leftPane).width(value);
-                self.onResizeDoUpdate();
-            }
-        });
-
-
-        var lPaneResizableInit = function() {
-            megaChat.$leftPane = megaChat.$leftPane || $('.conversationsApp .fm-left-panel');
-
-            $.leftPaneResizableChat = new FMResizablePane(megaChat.$leftPane, {
-                ...$.leftPaneResizable.options,
-                maxWidth: 400
-            });
-        };
-
-        if (typeof($.leftPaneResizable) === 'undefined') {
-            mBroadcaster.once('fm:initialized', function() {
-                lPaneResizableInit();
-            });
-        }
-        else {
-            lPaneResizableInit();
-
-        }
-
-        megaChat.$leftPane = megaChat.$leftPane || $('.conversationsApp .fm-left-panel');
-        if (is_chatlink && !is_eplusplus) {
-            megaChat.$leftPane.addClass('hidden');
-        }
-        else {
-            megaChat.$leftPane.removeClass('hidden');
-        }
-
         // --
 
         megaChat.rebind(megaChat.plugins.meetingsManager.EVENTS.EDIT, (ev, chatOrOccurrence) => {
@@ -202,22 +166,26 @@ class ConversationsApp extends MegaRenderMixin {
             }
         });
 
-        megaChat.rebind(EVENTS.NAV_RENDER_VIEW, (ev, view) => {
-            if (Object.values(VIEWS).includes(view)) {
-                this.renderView(view);
+        megaChat.rebind(EVENTS.NAV_RENDER_VIEW, ({ data }) => {
+            if (Object.values(VIEWS).includes(data)) {
+                this.renderView(data);
             }
         });
 
         megaChat.rebind('onCallTimeLimitExceeded', () => {
             this.setState({ freeCallEndedDialog: true });
         });
+
+        // --
+
+        if (megaChat.WITH_SELF_NOTE && !megaChat.getNoteChat() && !is_chatlink) {
+            api.req({ a: 'mcc', u: [], m: 0, g: 0, v: Chatd.VERSION }).catch(dump);
+        }
     }
 
     componentWillUnmount() {
         super.componentWillUnmount();
         $(document).off('keydown.megaChatTextAreaFocus');
-        mBroadcaster.removeListener(this.fmConfigLeftPaneListener);
-        delete this.props.megaChat.$conversationsAppInstance;
     }
 
     componentDidUpdate() {
@@ -233,12 +201,15 @@ class ConversationsApp extends MegaRenderMixin {
 
     renderView(view) {
         this.setState({ view }, () => {
-            const { $chatTreePanePs, routingSection } = megaChat;
+            const { $chatTreePanePs, routingSection, currentlyOpenedChat } = megaChat;
             Object.values($chatTreePanePs).forEach(ref => ref.reinitialise?.());
             if (routingSection !== 'chat') {
                 loadSubPage('fm/chat');
             }
             megaChat.currentlyOpenedView = view;
+            if (!currentlyOpenedChat) {
+                megaChat.renderListing(null, false).catch(dump);
+            }
         });
     }
 
@@ -247,11 +218,10 @@ class ConversationsApp extends MegaRenderMixin {
         const { routingSection, chatUIFlags, currentlyOpenedChat, chats } = megaChat;
         const {
             view, startGroupChatDialog, startMeetingDialog, scheduleMeetingDialog, scheduleOccurrenceDialog,
-            leftPaneWidth, callExpanded, freeCallEndedDialog, contactSelectorDialog
+            callExpanded, freeCallEndedDialog, contactSelectorDialog
         } = this.state;
         const isEmpty =
             chats &&
-            chats.every(c => c.isArchived()) &&
             routingSection === 'chat' &&
             !currentlyOpenedChat &&
             !is_chatlink;
@@ -280,7 +250,7 @@ class ConversationsApp extends MegaRenderMixin {
                         onScheduleMeeting={() => this.setState({ scheduleMeetingDialog: true })}
                     />
                 }
-                {!isLoading && (
+                {!isLoading &&
                     <ConversationPanels
                         {...this.props}
                         className={routingSection === 'chat' ? '' : 'hidden'}
@@ -288,9 +258,7 @@ class ConversationsApp extends MegaRenderMixin {
                         currentlyOpenedChat={currentlyOpenedChat}
                         isEmpty={isEmpty}
                         chatUIFlags={chatUIFlags}
-                        onToggleExpandedFlag={() => {
-                            this.setState(() => ({ callExpanded: Call.isExpanded() }));
-                        }}
+                        onToggleExpandedFlag={() => this.setState(() => ({ callExpanded: Call.isExpanded() }))}
                         onMount={() => {
                             const chatRoom = megaChat.getCurrentRoom();
                             const view = chatRoom && chatRoom.isMeeting ? MEETINGS : CHATS;
@@ -299,15 +267,15 @@ class ConversationsApp extends MegaRenderMixin {
                             });
                         }}
                     />
-                )}
+                }
             </div>
         );
 
+        const noteChat = megaChat.getNoteChat();
         return (
             <div
-                key="conversationsApp"
+                ref={this.domRef}
                 className="conversationsApp">
-
                 {contactSelectorDialog && (
                     <ContactSelectorDialog
                         className={`main-start-chat-dropdown ${LeftPanel.NAMESPACE}-contact-selector`}
@@ -316,12 +284,21 @@ class ConversationsApp extends MegaRenderMixin {
                             {
                                 key: 'newGroupChat',
                                 title: l[19483] /* `New group chat` */,
-                                icon: 'sprite-fm-mono icon-chat-filled',
-                                onClick: () => this.setState({
-                                    startGroupChatDialog: true,
-                                    contactSelectorDialog: false
-                                })
-                            }
+                                className: 'positive',
+                                onClick: () =>
+                                    this.setState({ startGroupChatDialog: true, contactSelectorDialog: false })
+                            },
+                            ...megaChat.WITH_SELF_NOTE ?
+                                ContactsPanel.hasContacts() || noteChat && noteChat.hasMessages() ? [] : [{
+                                    key: 'noteChat',
+                                    title: l.note_label,
+                                    icon: 'sprite-fm-mono icon-file-text-thin-outline note-chat-icon',
+                                    onClick: () => {
+                                        closeDialog();
+                                        loadSubPage(`fm/chat/p/${u_handle}`);
+                                    }
+                                }] :
+                                []
                         ]}
                         showAddContact={ContactsPanel.hasContacts()}
                         onClose={() => this.setState({ contactSelectorDialog: false })}
@@ -393,7 +370,6 @@ class ConversationsApp extends MegaRenderMixin {
                     views={VIEWS}
                     routingSection={routingSection}
                     conversations={chats}
-                    leftPaneWidth={leftPaneWidth}
                     renderView={view => this.renderView(view)}
                     startMeeting={() => {
                         this.startMeeting();

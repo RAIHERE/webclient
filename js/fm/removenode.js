@@ -35,14 +35,26 @@ function removeUInode(h, parent) {
         }
     }
 
-    if (mega.gallery.handleNodeRemoval) {
-        tryCatch(mega.gallery.handleNodeRemoval)(n);
+    mega.gallery.handleNodeRemoval(n);
+    if (mega.devices.ui) {
+        mega.devices.ui.onUpdateNode(n.h);
     }
 
     if (M.isDynPage(M.currentdirid) > 1) {
         M.dynContentLoader[M.currentdirid].sync(n);
     }
 
+    delay('fmLeftMenuUIRub', () => {
+        if (mega.ui.topmenu && mega.ui.topmenu.rubbishBtn) {
+            const rubNodes = Object.keys(M.c[M.RubbishID] || {});
+            if (rubNodes.length) {
+                mega.ui.topmenu.rubbishBtn.addClass('filled');
+            }
+            else {
+                mega.ui.topmenu.rubbishBtn.removeClass('filled');
+            }
+        }
+    });
     var hasItems = !!M.v.length;
     const __markEmptied = () => {
 
@@ -51,6 +63,10 @@ function removeUInode(h, parent) {
         if (fmRightFileBlock) {
             fmRightFileBlock.classList.add('emptied');
         }
+
+        delay('removeNodeExtraToggle', () => {
+            mega.ui.secondaryNav.toggleGridExtraButtons(M.v.length === 0);
+        }, 100);
     };
 
     switch (M.currentdirid) {
@@ -67,6 +83,11 @@ function removeUInode(h, parent) {
 
                 __markEmptied();
                 $('.fm-empty-chat').removeClass('hidden');
+            }
+            break;
+        case "pwm":
+            if (n && n.pwm && mega.pwmh && mega.pm && mega.pm.pwmFeature) {
+                tryCatch(() => mega.ui.pm.list.initLayout().catch(reportError))();
             }
             break;
         case M.RubbishID:
@@ -92,7 +113,7 @@ function removeUInode(h, parent) {
                     $('.fm-empty-trashbin').removeClass('hidden');
                 }
 
-                $('.fm-clearbin-button').addClass('hidden');
+                mega.ui.secondaryNav.hideActionButtons();
             }
             break;
         case M.RootID:
@@ -111,16 +132,8 @@ function removeUInode(h, parent) {
                 $('.files-grid-view').addClass('hidden');
                 $('.grid-table.fm tbody tr').remove();
 
-                if (M.gallery) {
-                    const lastToRemove = M.c[M.currentdirid] &&
-                        Object.values(M.c[M.currentdirid]).length === 1 && h in M.c[M.currentdirid];
-                    mega.gallery.showEmpty(M.currentdirid, lastToRemove);
-                }
-                else if (folderlink) {
-                    $('.fm-empty-folder').removeClass('hidden');
-                }
-                else {
-                    $('.fm-empty-cloud').removeClass('hidden');
+                if (!folderlink) {
+                    mega.ui.empty.root();
                     if (u_type !== 3) {
                         $('.fm-not-logged-description').safeHTML(l[8762].replace('%s', bytesToSize(mega.bstrg, 0)));
                     }
@@ -132,7 +145,7 @@ function removeUInode(h, parent) {
             if (!hasItems) {
 
                 __markEmptied();
-                $('.files-grid-view').addClass('hidden');
+                $('.files-grid-view, #gallery-view', '.fm-right-files-block').addClass('hidden');
                 $('.grid-table.fm tbody tr').remove();
 
                 mega.gallery.showEmpty(M.currentdirid);
@@ -151,11 +164,9 @@ function removeUInode(h, parent) {
 
                 __markEmptied();
                 if (M.gallery) {
-                    $('.files-grid-view').addClass('hidden');
+                    $('.files-grid-view, #gallery-view', '.fm-right-files-block').addClass('hidden');
 
-                    const lastToRemove = M.c[M.currentdirid] &&
-                        Object.values(M.c[M.currentdirid]).length === 1 && h in M.c[M.currentdirid];
-                    mega.gallery.showEmpty(M.currentdirid, lastToRemove);
+                    mega.ui.empty.folder();
                 }
                 else if (M.dyh) {
                     M.dyh('empty-ui');
@@ -171,7 +182,10 @@ function removeUInode(h, parent) {
                     else if (M.currentdirid === 'out-shares') {
                         $('.fm-empty-outgoing').removeClass('hidden');
                     }
-                    else if (M.currentdirid !== 'public-links' && M.currentdirid !== 'file-requests') {
+                    else if (M.currentdirid !== 'public-links' &&
+                        M.currentdirid !== 'file-requests' &&
+                        M.currentdirid !== 's4' &&
+                        M.currentdirid !== mega.devices.rootId) {
 
                         // If they have removed all files from the search results screen, show empty search
                         if (M.search) {
@@ -180,7 +194,7 @@ function removeUInode(h, parent) {
                             $('.fm-right-files-block:not(.in-chat) .search-bottom-wrapper').addClass('hidden');
                         }
                         else {
-                            $('.fm-empty-folder').removeClass('hidden');
+                            mega.ui.empty.folder();
                         }
                     }
                 }
@@ -207,6 +221,14 @@ function removeUInode(h, parent) {
         }
     }
 
+    if (n.su && mega.ui.header.contactsButton.hasClass('active')) {
+        delay('flyout-contact-refresh', () => {
+            if (mega.ui.flyout.name === `contact-${n.su}`) {
+                mega.ui.flyout.showContactFlyout(n.su);
+            }
+        });
+    }
+
     M.nodeRemovalUIRefresh(h,  parent);
 }
 
@@ -227,7 +249,7 @@ async function fmremove(selectedNodes, skipDelWarning) {
     }
 
     const handles = [...selectedNodes];
-    await dbfetch.coll(handles).catch(nop);
+    await dbfetch.coll(handles.filter((h) => h && h.length === 8)).catch(nop);
 
     if (handles.some((h) => M.d[h] && M.d[h].su)) {
         const promises = [];
@@ -247,12 +269,14 @@ async function fmremove(selectedNodes, skipDelWarning) {
     var title = '';
     var message = '';
     let s4Bucketcnt = 0;
+    let s4Containercnt = 0;
 
     // If on mobile we will bypass the warning dialog prompts
-    skipDelWarning = skipDelWarning || is_mobile ? 1 : mega.config.get('skipDelWarning');
+    skipDelWarning = skipDelWarning ? 1 : mega.config.get('skipDelWarning');
 
     for (i = 0; i < selectedNodes.length; i++) {
         var n = M.d[selectedNodes[i]];
+        const s4Type = M.getS4NodeType(n);
 
         if (n && n.su) {
             removesharecnt++;
@@ -267,7 +291,10 @@ async function fmremove(selectedNodes, skipDelWarning) {
             filecnt++;
         }
 
-        if (M.getS4NodeType(n) === 'bucket') {
+        if (s4Type === 'container') {
+            s4Containercnt++;
+        }
+        if (s4Type === 'bucket') {
             s4Bucketcnt++;
         }
     }
@@ -310,7 +337,11 @@ async function fmremove(selectedNodes, skipDelWarning) {
                 promises.push(api.screq({a: 'ur2', u: h, l: '0'}));
             }
 
-            return Promise.allSettled(promises).dump('delete-contact');
+            return Promise.allSettled(promises).then(() => {
+                if (c === 1) {
+                    mega.ui.toast.show(l.contact_removed);
+                }
+            }).dump('delete-contact');
         };
 
         msgDialog('delete-contact', l[1001], l[1002].replace('[X]', replaceString), sharedFoldersAlertMessage, ack);
@@ -353,7 +384,7 @@ async function fmremove(selectedNodes, skipDelWarning) {
             toastMessage = mega.icu.format(l[13762], itemscnt);
         }
 
-        msgDialog('clear-bin:' + l[83], l[1003], dlgMessage, l[1007], function(e) {
+        msgDialog('clear-bin:' + l[1730], l[1003], dlgMessage, l[1007], (e) => {
             if (e) {
                 var tmp = null;
                 if (String(M.currentdirid).substr(0, 7) === 'search/') {
@@ -432,6 +463,11 @@ async function fmremove(selectedNodes, skipDelWarning) {
                     `${l.s4_remove_bucket_note} <p>${l.s4_remove_bucket_tip}</p>` :
                     `${l.s4_remove_items_note} <p>${l.s4_remove_items_tip}</p>`;
             }
+            // Moving S4 containers if they were accidentally created
+            else if (s4Containercnt) {
+                message = mega.icu.format(l.move_files_to_bin, filecnt + foldercnt);
+                note = `${l.s4_remove_items_note} <p>${l.s4_remove_container_tip}</p>`;
+            }
             else if (filecnt === 0 && !s4Bucketcnt && foldercnt > 0) {
                 message = mega.icu.format(l.move_folders_to_bin, foldercnt);
             }
@@ -444,7 +480,8 @@ async function fmremove(selectedNodes, skipDelWarning) {
             }
 
             if (filecnt + foldercnt === 1) {
-                message = message.replace('%1', escapeHTML(M.d[selectedNodes[0]].name));
+                const n = M.getNodeByHandle(selectedNodes[0]);
+                message = message.replace('%1', escapeHTML(n.name || ''));
             }
 
             msgDialog(

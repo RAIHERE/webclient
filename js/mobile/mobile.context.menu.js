@@ -8,7 +8,7 @@ class MegaMobileContextMenu extends MegaComponentGroup {
         this.hide = this.sheet.hide;
 
         this.domNode = document.createElement('div');
-        this.domNode.className = 'context-menu-container';
+        this.domNode.className = 'context-menu-container px-6';
 
         const menuNode = document.createElement('menu');
         menuNode.className = 'context-menu-items items';
@@ -43,9 +43,9 @@ class MegaMobileContextMenu extends MegaComponentGroup {
 
             this.addChild(key, tappableListItem);
 
-            tappableListItem.on('tap', () => {
+            tappableListItem.on('tap', (megaDataEvent, touchEvent) => {
                 this.sheet.hide();
-                item.onClick(this.handle);
+                item.onClick(this.handle, touchEvent);
 
                 return false;
             });
@@ -67,6 +67,10 @@ class MegaMobileContextMenu extends MegaComponentGroup {
 
         // add open in app menu
         items['.open-app'] = 1;
+        if (items['.download-standart-item']) {
+            delete items['.download-standart-item'];
+            items['.download-item'] = 1;
+        }
 
         if (nodeShare.down) {
             delete items['.open-app'];
@@ -88,6 +92,10 @@ class MegaMobileContextMenu extends MegaComponentGroup {
             }
         }
 
+        if (pfcol) {
+            delete items['.getlink-item'];
+        }
+
         // Hide context menu items not needed for undecrypted nodes
         if (missingkeys[this.handle]) {
             delete items['.add-star-item'];
@@ -106,6 +114,10 @@ class MegaMobileContextMenu extends MegaComponentGroup {
             delete items['.send-to-contact-item'];
         }
 
+        if (is_image3(node) && M.v.filter(is_image3).length > 1) {
+            items['.play-slideshow'] = 1;
+        }
+
         // Phase 2
         // if (items['.sh4r1ng-item']) {
         //     // show Manage share or share folder text depending on the status
@@ -120,6 +132,14 @@ class MegaMobileContextMenu extends MegaComponentGroup {
         // download text
         if (items['.download-item']) {
             mega.ui.contextMenu.getChild('.download-item').text = node.t === 1 ? l[864] : l[58];
+        }
+
+        // Set sensitives
+        if (items['.add-sensitive-item']) {
+            const toHide = items['.add-sensitive-item'] === 1;
+            const {domNode} = mega.ui.contextMenu.getChild('.add-sensitive-item');
+
+            mega.sensitives.applyMenuItemStyle(domNode, toHide);
         }
 
         // This seem text editor context menu
@@ -234,6 +254,9 @@ class MegaMobileContextMenu extends MegaComponentGroup {
                     l.delete_permanently : l.move_to_rubbish_bin;
             }
 
+            mega.ui.sheet.name = 'mobile-context-menu';
+            mega.ui.sheet.safeShow = true;
+
             this.sheet.show();
         });
     }
@@ -341,17 +364,19 @@ mBroadcaster.once('boot_done', () => {
                 }
 
                 _download();
+
+                M.fmEventLog(500695);
             }
         },
         // Phase 2
         // '.sh4r1ng-item': {
         //     text: l[60],
-        //     icon: 'sprite-mobile-fm-mono icon-settings-thin-outline',
+        //     icon: 'sprite-fm-mono icon-settings-thin-outline',
         //     subMenu: false,
         //     classNames: '',
         //     callback: function() {
         //         // TODO: Update the functionality once the designs are ready
-        //         // M.openSharingDialog();
+        //         // mega.ui.mShareDialog.init();
         //     }
         // },
         '.removeshare-item': {
@@ -394,11 +419,13 @@ mBroadcaster.once('boot_done', () => {
                 }
 
                 mobile.linkManagement.checkCopyRightAndGetLink(nodeHandle);
+
+                M.fmEventLog(500696);
             }
         },
         '.removelink-item': {
             text: l[6821],
-            icon: 'sprite-mobile-fm-mono icon-link-off-02-thin-outline',
+            icon: 'sprite-fm-mono icon-link-off-02-thin-outline',
             subMenu: false,
             classNames: '',
             onClick: async function(nodeHandle) {
@@ -444,6 +471,8 @@ mBroadcaster.once('boot_done', () => {
                         ]
                     });
                 }
+
+                M.fmEventLog(500697);
             }
         },
         '.file-request-create': {
@@ -526,6 +555,17 @@ mBroadcaster.once('boot_done', () => {
                 eventlog(99914);
 
                 goToMobileApp(MegaMobileViewOverlay.getAppLink(nodeHandle));
+
+                M.fmEventLog(500698);
+            }
+        },
+        '.play-slideshow': {
+            text: l.album_play_slideshow,
+            icon: 'sprite-fm-mono icon-play-square-thin-outline',
+            subMenu: false,
+            classNames: '',
+            onClick: () => {
+                $('.media-viewer-container footer .v-btn.slideshow').trigger('click');
             }
         },
         '.move-item': {
@@ -537,9 +577,12 @@ mBroadcaster.once('boot_done', () => {
                 if (!validateUserAction()) {
                     return false;
                 }
+
                 mobile.nodeSelector.registerPreviousViewNode();
                 mega.ui.viewerOverlay.hide();
                 mobile.nodeSelector.show('move', nodeHandle);
+
+                M.fmEventLog(500699);
             }
         },
         '.copy-item': {
@@ -551,9 +594,12 @@ mBroadcaster.once('boot_done', () => {
                 if (!validateUserAction()) {
                     return false;
                 }
+
                 mobile.nodeSelector.registerPreviousViewNode();
                 mega.ui.viewerOverlay.hide();
                 mobile.nodeSelector.show('copy', nodeHandle);
+
+                M.fmEventLog(500700);
             }
         },
         '.rename-item': {
@@ -571,6 +617,28 @@ mBroadcaster.once('boot_done', () => {
                     mobile.renameNode = new MobileNodeNameControl({type: 'rename'});
                 }
                 mobile.renameNode.show(nodeHandle);
+
+                M.fmEventLog(500701);
+            }
+        },
+        '.add-sensitive-item': {
+            text: l.sen_hide,
+            icon: 'sprite-fm-mono icon-eye-hidden',
+            subMenu: false,
+            classNames: '',
+            onClick: (handle, event) => {
+                if (M.isInvalidUserStatus()) {
+                    return;
+                }
+
+                if (event && event.target.classList.contains('icon-help-circle-thin-outline')) {
+                    mega.sensitives.showOnboardingDialog(l.ok_button);
+                }
+                else {
+                    mega.sensitives.toggleStatus($.selected, !M.getNodeByHandle(handle).sen);
+                }
+
+                M.fmEventLog(500702);
             }
         },
         '.add-star-item': {
@@ -584,6 +652,8 @@ mBroadcaster.once('boot_done', () => {
                 }
 
                 M.favourite($.selected, M.isFavourite(nodeHandle) ^ 1);
+
+                M.fmEventLog(500703);
             }
         },
         '.colour-label-items': {
@@ -630,7 +700,9 @@ mBroadcaster.once('boot_done', () => {
                     name: 'label-selector',
                     showClose: true,
                     title: l[17398],
-                    contents: Object.values(labelGroup.children).map(c => c.domNode),
+                    contents: [
+                        mCreateElement('div', { class: 'px-6' }, labelGroup.map(c => c.domNode))
+                    ],
                     type: 'normal',
                     actions: n.lbl && [{
                         type: 'normal',
@@ -639,6 +711,8 @@ mBroadcaster.once('boot_done', () => {
                         onClick: () => _setLabel()
                     }]
                 });
+
+                M.fmEventLog(500704);
             }
         },
         '.properties-item': {
@@ -648,6 +722,8 @@ mBroadcaster.once('boot_done', () => {
             classNames: '',
             onClick: (nodeHandle) => {
                 mega.ui.viewerOverlay.show(nodeHandle, true);
+
+                M.fmEventLog(500705);
             }
         },
         '.revert-item': {
@@ -661,22 +737,20 @@ mBroadcaster.once('boot_done', () => {
                 }
 
                 const node = M.getNodeByHandle(nodeHandle);
-                await mobile.rubbishBin.restore(nodeHandle).catch(dump);
+                const restored = await mobile.rubbishBin.restore(nodeHandle).catch(dump);
+                const target_keys = restored && typeof restored === 'object' && Object.keys(restored);
+                const target = target_keys && target_keys.length ? target_keys[0] : false;
 
-                if (!mobile.cloud.nodeInView(nodeHandle)) {
-                    const restoredToCloud = node.t ? l.restored_folder_to_cloud : l.restored_file_to_cloud;
-                    const restoredToFolder = node.t ? l.restored_folder_to_folder : l.restored_file_to_folder;
+                if (!mobile.cloud.nodeInView(nodeHandle) || target && sharer(target)) {
+                    const msg = mega.icu.format(
+                        l[`mobile_${node.t ? 'folder' : 'file'}_restored_from_bin`], 1
+                    );
+
                     const nodeParent = node.rr || node.p;
-
-                    const msg = nodeParent === M.RootID ?
-                        restoredToCloud.replace('[X]', node.name) :
-                        restoredToFolder
-                            .replace('%1', node.name)
-                            .replace('%2', M.getNodeByHandle(nodeParent).name);
 
                     // toast message
                     mega.ui.toast.show(
-                        msg, 4, l.show, {
+                        msg, 4, l[16797], {
                             actionButtonCallback: () => {
                                 M.openFolder(nodeParent)
                                     .finally(() => {
@@ -729,7 +803,15 @@ mBroadcaster.once('boot_done', () => {
                     return false;
                 }
 
-                mobile.rubbishBin.removeItem(nodeHandle);
+                const delog = M.currentrootid !== M.RubbishID;
+                fmremove([nodeHandle])
+                    .then(() => {
+                        if (delog) {
+                            eventlog(99638);
+                        }
+                        M.fmEventLog(500706);
+                    })
+                    .catch(tell);
             }
         }
     };

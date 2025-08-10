@@ -236,7 +236,7 @@ var mobile = {
         Object.defineProperty(ctx, 'favourite' + 'DomUpdate', {
             value: function(node) {
 
-                const component = MegaMobileNode.getNodeComponentByHandle(node.h);
+                const component = MegaNodeComponent.getNodeComponentByHandle(node.h);
 
                 if (component) {
                     component.update('fav');
@@ -256,7 +256,7 @@ var mobile = {
         Object.defineProperty(ctx, 'labelDo' + 'mUpdate', {
             value: function(h) {
 
-                const component = MegaMobileNode.getNodeComponentByHandle(h);
+                const component = MegaNodeComponent.getNodeComponentByHandle(h);
                 const node = M.d[h] || false;
 
                 if (component) {
@@ -277,7 +277,7 @@ var mobile = {
         Object.defineProperty(ctx, 'onRename' + 'UIUpdate', {
             value: function(h) {
 
-                const component = MegaMobileNode.getNodeComponentByHandle(h);
+                const component = MegaNodeComponent.getNodeComponentByHandle(h);
                 const node = M.d[h] || false;
 
                 if (component) {
@@ -354,7 +354,7 @@ var mobile = {
 
         const tf = [
             "renderTree", "buildtree", "initTreePanelSorting",
-            "treePanelType", "addTreeUI", "addTreeUIDelayed", "onTreeUIExpand", "onTreeUIOpen",
+            "addTreeUI", "addTreeUIDelayed", "onTreeUIExpand", "onTreeUIOpen",
             "treeSortUI", "treeFilterUI"
         ];
 
@@ -821,7 +821,7 @@ var mobile = {
     onFolderSizeChangeUIUpdate(node) {
         'use strict';
 
-        var p = this.viewmode === 0 && this.currentdirid || false;
+        var p = this.onListView && this.currentdirid || false;
         if (p && String(p).slice(-8) === node.p || M.currentCustomView) {
             mobile.cloud.countAndUpdateSubFolderTotals(node);
         }
@@ -1057,39 +1057,6 @@ function accountUI() {
     }
 }
 
-function affiliateUI() {
-
-    'use strict';
-
-    if (!fminitialized || !u_type || !page.startsWith('fm/refer')) {
-        return loadSubPage('start');
-    }
-
-    document.getElementsByClassName('file-manager-block')[0].classList.add('hidden');
-    if (mobile.settingsHelper && mobile.settingsHelper.currentPage) {
-        mobile.settingsHelper.currentPage.hide();
-    }
-
-    if (page === 'fm/refer') {
-        mobile.settings.account.referral.init();
-    }
-    else if (page === 'fm/refer/redeem') {
-        mobile.affiliate.initRedeemPage();
-    }
-    else if (page === 'fm/refer/guide') {
-        mobile.affiliate.initGuidePage();
-    }
-    else if (page === 'fm/refer/history') {
-        mobile.affiliate.initHistoryPage();
-    }
-    else if (page === 'fm/refer/distribution') {
-        mobile.settings.account.referralDistribution.init();
-    }
-    else {
-        loadSubPage('fm/refer');
-    }
-}
-
 accountUI.session = {
     update: function() {
 
@@ -1240,7 +1207,7 @@ function openRecents() {
 function sharedUInode(nodeHandle) {
     // t === 1, folder
     if (M.d[nodeHandle] && M.d[nodeHandle].t && M.megaRender) {
-        const node = MegaMobileNode.getNodeComponentByHandle(nodeHandle);
+        const node = MegaNodeComponent.getNodeComponentByHandle(nodeHandle);
 
         if (node) {
             node.update('icon');
@@ -1285,143 +1252,14 @@ mega.gallery = {
     sections: {},
     secKeys: {},
     showEmpty: nop,
-    updateButtonsStates: nop,
+    updateMediaPath: nop,
     removeDbActionCache: nop,
-    isGalleryNode: nop,
+    handleNodeUpdate: nop,
+    handleNodeRemoval: nop,
+    canShowAddToAlbum: nop,
     emptyBlock: null,
     albumsRendered: false,
-    publicSet: Object.create(null),
-    albums: {
-        grid: null,
-        store: {},
-        tree: null,
-        disposeAll: nop,
-        initPublicAlbum: (parentNode) => {
-            const {at, e} = M.d[M.RootID];
-            const setAttr = tryCatch(() => tlvstore.decrypt(at, true, base64_to_a32(pfkey)))();
-
-            if (!setAttr) {
-                if (d) {
-                    console.error('Could not fetch public set data...', e, at);
-                }
-
-                loadSubPage('login');
-                return;
-            }
-
-            const setNodes = [];
-            const isCoverSpecified = !!setAttr.c;
-            let coverNode = null;
-
-            if (Array.isArray(e)) {
-                for (let i = 0; i < e.length; i++) {
-                    const {id, h} = e[i];
-                    const n = M.d[h];
-
-                    if (n) {
-                        setNodes.push(n);
-
-                        if (isCoverSpecified && !coverNode && id === setAttr.c) {
-                            coverNode = n;
-                        }
-                    }
-                }
-            }
-
-            const elCount = setNodes.length;
-
-            if (!coverNode && elCount) {
-                const sort = M.sortByModTimeFn3();
-                setNodes.sort((a, b) => sort(a, b, -1));
-                coverNode = setNodes[0];
-            }
-
-            const coverContainer = document.createElement('div');
-            coverContainer.className = 'pcol-cover-container';
-
-            const coverImg = document.createElement('i');
-            mega.ui.emptyState.hide(parentNode[0]);
-
-            if (elCount) {
-                coverImg.className = 'loading-album-img sprite-mobile-fm-uni mime-image-solid';
-
-                api_getfileattr(
-                    { [coverNode.h]: coverNode },
-                    0,
-                    async(ctx, key, ab) => {
-                        if (ab === 0xDEAD || !ab.byteLength) {
-                            dump('Cannot generate the cover...');
-                            return;
-                        }
-
-                        // const blob = await webgl.getDynamicThumbnail(ab, { ats: 1 }).catch(dump);
-                        const url = tryCatch(() => mObjectURL([ab], ab.type || 'image/jpeg'))();
-
-                        if (!url) {
-                            dump('Cannot generate the cover image...');
-                            return;
-                        }
-
-                        coverImg.classList.remove('shimmer');
-                        coverImg.style.backgroundImage = `url(${url})`;
-                    }
-                );
-            }
-            else {
-                coverImg.className = 'empty-album-img';
-            }
-
-            const countTxt = document.createElement('p');
-            countTxt.className = 'album-count-txt';
-            countTxt.textContent = mega.icu.format(l.album_items_count, elCount);
-
-            coverContainer.appendChild(coverImg);
-            coverContainer.appendChild(countTxt);
-
-            parentNode.append(coverContainer);
-
-            delay('collection-render.attach-events', () => {
-                const megaListOptions = M.megaRender.getMListOptions ? M.megaRender.getMListOptions() : null;
-
-                if (megaListOptions) {
-                    const bottomBlock = document.querySelector('.bottom-block');
-                    const list = document.getElementById('file-manager-list-container');
-
-                    list.style.position = 'relative';
-                    list.style.paddingBottom = `${megaListOptions.bottomSpacing | 0}px`;
-
-                    const onScroll = () => {
-                        if (list.scrollTop >= bottomBlock.originalHeight) {
-                            bottomBlock.style.height = 0;
-                        }
-                        else if (list.scrollTop > 0) {
-                            bottomBlock.style.height = `${(bottomBlock.originalHeight - list.scrollTop) / 2}px`;
-                        }
-                        else {
-                            bottomBlock.style.height = `${bottomBlock.originalHeight}px`;
-                        }
-                    };
-
-                    const onResize = () => {
-                        bottomBlock.removeAttribute('style');
-
-                        onIdle(() => {
-                            bottomBlock.originalHeight = bottomBlock.offsetHeight;
-                            bottomBlock.style.height = `${bottomBlock.originalHeight}px`;
-                        });
-                    };
-
-                    list.addEventListener('scroll', onScroll);
-                    window.addEventListener('resize', onResize);
-
-                    mBroadcaster.addListener('beforepagechange', () => {
-                        list.removeEventListener('scroll', onScroll);
-                        window.removeEventListener('resize', onResize);
-                    });
-                }
-            });
-        }
-    }
+    publicSet: Object.create(null)
 };
 
 /** Global function to be used in mobile mode, checking if the action can be taken by the user.

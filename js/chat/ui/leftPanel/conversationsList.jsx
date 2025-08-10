@@ -4,46 +4,52 @@ import { PerfectScrollbar } from '../../../ui/perfectScrollbar.jsx';
 import ConversationsListItem from './conversationsListItem.jsx';
 import { FILTER, NAMESPACE } from './leftPanel.jsx';
 import Button from '../meetings/button.jsx';
-import { isToday, isTomorrow } from '../meetings/schedule/helpers.jsx';
 
-export const ConversationsList = ({ conversations, className, children }) =>
-    <PerfectScrollbar
-        className="chat-lp-scroll-area"
-        didMount={(id, ref) => {
-            megaChat.$chatTreePanePs = [...megaChat.$chatTreePanePs, { id, ref }];
-        }}
-        willUnmount={id => {
-            megaChat.$chatTreePanePs = megaChat.$chatTreePanePs.filter(ref => ref.id !== id);
-        }}
-        conversations={conversations}>
-        <ul
-            className={`
-                conversations-pane
-                ${className || ''}
-            `}>
-            {children || conversations.map(chatRoom =>
-                chatRoom.roomId &&
-                <ConversationsListItem
-                    key={chatRoom.roomId}
-                    chatRoom={chatRoom}
-                    {...(chatRoom.type === 'private' && { contact: M.u[chatRoom.getParticipantsExceptMe()[0]] })}
-                />
-            )}
-        </ul>
-    </PerfectScrollbar>;
+export const ConversationsList = ({ conversations, className, children }) => {
+    return (
+        <PerfectScrollbar
+            className="chat-lp-scroll-area"
+            didMount={(id, ref) => {
+                megaChat.$chatTreePanePs = [...megaChat.$chatTreePanePs, { id, ref }];
+            }}
+            willUnmount={id => {
+                megaChat.$chatTreePanePs = megaChat.$chatTreePanePs.filter(ref => ref.id !== id);
+            }}
+            conversations={conversations}>
+            <ul
+                className={`
+                    conversations-pane
+                    ${className || ''}
+                `}>
+                {children ||
+                    conversations.map(c =>
+                        c.roomId &&
+                        <ConversationsListItem
+                            key={c.roomId}
+                            chatRoom={c}
+                            {...(c.type === 'private' && { contact: M.u[c.getParticipantsExceptMe()[0]] })}
+                        />
+                    )
+                }
+            </ul>
+        </PerfectScrollbar>
+    );
+};
 
 // --
 
 export const Chats = ({ conversations, onArchivedClicked, filter }) => {
     conversations = Object.values(conversations || {})
         .filter(c =>
-            !c.isMeeting && c.isDisplayable() &&
+            !c.isMeeting &&
+            c.isDisplayable() &&
             (!filter ||
                 filter === FILTER.UNREAD && c.messagesBuff.getUnreadCount() > 0 ||
                 filter === FILTER.MUTED && c.isMuted()
             )
         )
         .sort(M.sortObjFn(c => c.lastActivity || c.ctime, -1));
+    const noteChat = megaChat.getNoteChat();
 
     return (
         <>
@@ -54,8 +60,23 @@ export const Chats = ({ conversations, onArchivedClicked, filter }) => {
                         <span>{l.filter_heading__recent}</span>
                     </div>
                 }
-                {conversations && conversations.length ?
-                    <ConversationsList conversations={conversations} /> :
+
+                {conversations && conversations.length >= 1 ?
+                    <ConversationsList conversations={conversations}>
+                        {megaChat.WITH_SELF_NOTE && noteChat && noteChat.isDisplayable() ?
+                            filter ? null : <ConversationsListItem chatRoom={noteChat}/> :
+                            null
+                        }
+                        {conversations.map(c =>
+                            c.roomId &&
+                            !c.isNote &&
+                            <ConversationsListItem
+                                key={c.roomId}
+                                chatRoom={c}
+                                {...(c.type === 'private' && { contact: M.u[c.getParticipantsExceptMe()[0]] })}
+                            />
+                        )}
+                    </ConversationsList> :
                     <div
                         className={`
                             ${NAMESPACE}-nil
@@ -80,7 +101,14 @@ export const Chats = ({ conversations, onArchivedClicked, filter }) => {
                         }
                     </div>
                 }
+
+                {megaChat.WITH_SELF_NOTE && conversations && conversations.length === 1 && noteChat &&
+                    <ConversationsList conversations={conversations}>
+                        <ConversationsListItem chatRoom={noteChat} />
+                    </ConversationsList>
+                }
             </div>
+
             <div className={`${NAMESPACE}-bottom`}>
                 <div className={`${NAMESPACE}-bottom-control`}>
                     <div
@@ -134,6 +162,7 @@ export const Archived = ({ conversations, archivedUnmounting, onClose }) => {
 export class Meetings extends MegaRenderMixin {
     TABS = { UPCOMING: 0x00, PAST: 0x01 };
 
+    domRef = React.createRef();
     ongoingRef = React.createRef();
     navigationRef = React.createRef();
 
@@ -183,7 +212,6 @@ export class Meetings extends MegaRenderMixin {
                         mega-button
                         action
                         ${tab === PAST ? 'is-active' : ''}
-                        category-past
                     `}
                     onClick={() => this.setState({ tab: PAST }, () => eventlog(500254))}>
                     <span>
@@ -195,9 +223,7 @@ export class Meetings extends MegaRenderMixin {
         );
     };
 
-    Holder = ({ heading, categoryName, className, children }) =>
-        // The `categoryName` selectors are used as references in the onboarding flow;
-        // see `chatOnboarding.jsx`, `onboarding.js` for further details.
+    Holder = ({ heading, className, children }) =>
         <div
             className={`
                 conversations-holder
@@ -206,7 +232,6 @@ export class Meetings extends MegaRenderMixin {
             <div
                 className={`
                     conversations-category
-                    ${categoryName ? `category-${categoryName}` : ''}
                 `}>
                 {heading && <span>{heading}</span>}
             </div>
@@ -224,45 +249,12 @@ export class Meetings extends MegaRenderMixin {
             null;
 
     Upcoming = () => {
-        const upcomingMeetings = Object.values(this.props.conversations || {})
-            .filter(c => {
-                return (
-                    c.isDisplayable() &&
-                    c.isMeeting &&
-                    c.scheduledMeeting &&
-                    c.scheduledMeeting.isUpcoming &&
-                    c.iAmInRoom() &&
-                    !c.havePendingCall()
-                );
-            })
-            .sort((a, b) =>
-                a.scheduledMeeting.nextOccurrenceStart - b.scheduledMeeting.nextOccurrenceStart ||
-                a.ctime - b.ctime
-            );
-        const nextOccurrences = upcomingMeetings
-            .reduce((nextOccurrences, chatRoom) => {
-                const { nextOccurrenceStart } = chatRoom.scheduledMeeting;
-
-                if (isToday(nextOccurrenceStart)) {
-                    nextOccurrences.today.push(chatRoom);
-                }
-                else if (isTomorrow(nextOccurrenceStart)) {
-                    nextOccurrences.tomorrow.push(chatRoom);
-                }
-                else {
-                    const date = time2date(nextOccurrenceStart / 1000, 19);
-                    if (!nextOccurrences.rest[date]) {
-                        nextOccurrences.rest[date] = [];
-                    }
-                    nextOccurrences.rest[date].push(chatRoom);
-                }
-
-                return nextOccurrences;
-            }, { today: [], tomorrow: [], rest: {} });
+        const { upcomingMeetings, nextOccurrences } =
+            megaChat.plugins.meetingsManager.filterUpcomingMeetings(this.props.conversations);
         const upcomingItem = chatRoom => <ConversationsListItem key={chatRoom.roomId} chatRoom={chatRoom} />;
 
         return (
-            <this.Holder categoryName="upcoming">
+            <this.Holder>
                 {upcomingMeetings && upcomingMeetings.length ?
                     <ConversationsList conversations={upcomingMeetings}>
                         {nextOccurrences.today && nextOccurrences.today.length ?
@@ -325,7 +317,7 @@ export class Meetings extends MegaRenderMixin {
             .sort(M.sortObjFn(c => c.lastActivity || c.ctime, -1));
 
         return (
-            <this.Holder categoryName="past">
+            <this.Holder>
                 <ConversationsList conversations={pastMeetings}>
                     {pastMeetings.length ?
                         pastMeetings.map(chatRoom =>
@@ -409,7 +401,9 @@ export class Meetings extends MegaRenderMixin {
             .filter(c => c.isDisplayable() && c.isMeeting && c.havePendingCall());
 
         return (
-            <div className={`${NAMESPACE}-meetings`}>
+            <div
+                ref={this.domRef}
+                className={`${NAMESPACE}-meetings`}>
                 <this.Ongoing ongoingMeetings={ongoingMeetings} />
                 <this.Navigation conversations={this.props.conversations} />
                 <div

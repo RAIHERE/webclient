@@ -66,6 +66,8 @@ var pro = {
 
     blockPlans: null,
 
+    taxInfo: null,
+
     /**
      * Determines if a Business or Pro Flexi account is expired or in grace period
      * @param {Number} accountStatus The account status e.g. from u_attr.b.s (Business) or u_attr.pf.s (Pro Flexi)
@@ -112,23 +114,37 @@ var pro = {
         pro.planSearch.reset();
     },
 
+    divideAllBy100(obj, excl) {
+        'use strict';
+
+        excl = excl || [];
+
+        for (const key of Object.keys(obj)) {
+            if (!excl.includes(key)) {
+                obj[key] /= 100;
+            }
+        }
+
+        return obj;
+    },
+
     /**
      * Load pricing plan information from the API. The data will be loaded into 'pro.membershipPlans'.
      * @param {Function} loadedCallback The function to call when the data is loaded
      */
-    loadMembershipPlans: async function(loadedCallback) {
+    loadMembershipPlans: async function(loadedCallback, force) {
         "use strict";
 
         // Set default
         loadedCallback = loadedCallback || function() { };
 
         // If this data has already been fetched, re-use it and run the callback function
-        if (pro.membershipPlans.length > 0 && !(!pro.lastLoginStatus && u_type > 0)) {
+        if (!force && pro.membershipPlans.length > 0 && !(!pro.lastLoginStatus && u_type > 0)) {
             loadedCallback();
         }
         else {
             // Get the membership plans.
-            const payload = {a: 'utqa', nf: 2, p: 1, ft: 1};
+            const payload = {a: 'utqa', nf: +mega.utqav, p: 1, ft: 1};
 
             await api.req({a: 'uq', pro: 1, gc: 1})
                 .then(({result: {balance}}) => {
@@ -142,9 +158,8 @@ var pro = {
                 })
                 .catch(dump);
 
-            api.req(payload)
+            return api.req(payload)
                 .then(({result: results}) => {
-
                     pro.resetCaching();
 
                     // The rest of the webclient expects this data in an array format
@@ -157,7 +172,17 @@ var pro = {
 
                     pro.blockPlans = d && localStorage.blockPlans && new Set(localStorage.blockPlans.split(','));
 
-                    const conversionRate = results[0].l.lc === "EUR" ? 1 : results[0].l.exch;
+                    const {txn, tx, txva, l, txe} = results[0];
+
+                    const conversionRate = l.lc === "EUR" ? 1 : l.exch;
+
+                    const taxInfo = !!(txn && (tx !== undefined)) && (txva !== undefined) && !txe && {
+                        taxName: txn,
+                        taxPercent: tx / 100,
+                        variant: txva,
+                    };
+
+                    pro.taxInfo = taxInfo;
 
                     for (var i = 1; i < results.length; i++) {
 
@@ -201,43 +226,73 @@ var pro = {
 
                         // If this is Pro Flexi, the data is structured similarly to business, so set that manually
                         if (results[i].al === pro.ACCOUNT_LEVEL_PRO_FLEXI) {
+
+                            const {sto, trns, ba} = results[i].bd;
+                            const {p, pn, lp, lpn} = (ba || Object.create(null));
+
+                            let localStoragePrice;
+                            let euroStoragePrice;
+                            let localTransferPrice;
+                            let euroTransferPrice;
+
+                            // localPrice may be undefined, this is expected, and can cause bugs if changed
+                            const localPrice = (taxInfo && lpn) ? lpn : lp;
+                            const price = (taxInfo && pn) ? pn : p;
+
+                            if (sto) {
+                                const {p, pn, lp, lpn} = sto;
+                                localStoragePrice = (taxInfo && lpn) ? lpn : lp;
+                                euroStoragePrice = (taxInfo && pn) ? pn : p;
+                            }
+                            if (trns) {
+                                const {p, pn, lp, lpn} = trns;
+                                localTransferPrice = (taxInfo && lpn) ? lpn : lp;
+                                euroTransferPrice = (taxInfo && pn) ? pn : p;
+                            }
+
                             plans.push([
                                 results[i].id,              // id
                                 results[i].al,              // account level
                                 results[i].bd.ba.s,         // base storage
                                 results[i].bd.ba.t,         // base transfer
                                 results[i].m,               // months
-                                results[i].bd.ba.p  / 100,  // base price
+                                price  / 100,  // base price
                                 results[0].l.c,             // currency
-                                results[i].bd.ba.p  / 100,  // monthly base price
-                                results[i].bd.ba.lp / 100,  // local base price
+                                price  / 100,  // monthly base price
+                                localPrice / 100,  // local base price
                                 results[0].l.lc,            // local price currency
                                 0,                          // local price save
                                 results[i].it,              // item (will be 1 for business / Pro Flexi)
-                                results[i].bd.sto.p / 100,  // extra storage rate
-                                results[i].bd.sto.lp / 100, // extra storage local rate
-                                results[i].bd.trns.p / 100,  // extra transfer rate
-                                results[i].bd.trns.lp / 100,    // extra transfer local rate
+                                euroStoragePrice / 100,  // extra storage rate
+                                localStoragePrice / 100, // extra storage local rate
+                                euroTransferPrice / 100,  // extra transfer rate
+                                localTransferPrice / 100,    // extra transfer local rate
                                 {                       // Extra information about the plan from API, such as features
                                     f: results[i].f,    // Features object, or false if none
                                     trial: results[i].trial,
                                     trialStrings: results[i].trialStrings,
                                     featureStrings: results[i].featureStrings,
+                                    taxInfo: !!(taxInfo && p && pn)
+                                        && {p, pn, lp, lpn},
                                 },
                             ]);
                         }
                         else {
                             // Otherwise for PRO I - III and PRO Lite set as so
+                            const {pn, lpn, p, lp, mbp, mbpn} = results[i];
+                            const price = (taxInfo && pn) ? pn : p;
+                            // localPrice may be undefined, this is expected, and can cause bugs if changed
+                            const localPrice = (taxInfo && lpn) ? lpn : lp;
                             plans.push([
                                 results[i].id,          // id
                                 results[i].al,          // account level
                                 results[i].s,           // storage
                                 results[i].t,           // transfer
                                 results[i].m,           // months
-                                results[i].p / 100,     // price
+                                price / 100,            // price
                                 results[0].l.c,         // currency
                                 results[i].mbp / 100,   // monthly base price
-                                results[i].lp / 100,    // local price
+                                localPrice / 100,       // local price
                                 results[0].l.lc,        // local price currency
                                 discount / 100,         // local price save
                                 results[i].it,          // item (will be 0 for user)
@@ -250,11 +305,13 @@ var pro = {
                                     trial: results[i].trial,
                                     trialStrings: results[i].trialStrings,
                                     featureStrings: results[i].featureStrings,
+                                    taxInfo: !!(taxInfo && p && pn && mbp && mbpn)
+                                            && {p, pn, mbp, mbpn, lp, lpn},
                                 },
                             ]);
                         }
                         if (!pro.blockPlans || !pro.blockPlans.has(results[i].al)) {
-                            pro.planObjects.createPlanObject(plans[plans.length - 1]);
+                            pro.planObjects.createPlanObject(plans[plans.length - 1], results[i]);
                             pro.planSearch.addPlanToSearch(plans[plans.length - 1]);
                             if (results[i].m === 1 && results[i].it !== 1) {
                                 if (!maxPlan || maxPlan[2] < results[i].s) {
@@ -268,13 +325,20 @@ var pro = {
                     }
 
                     // Store globally
-                    if (d && localStorage.useDevOptions) {
-                        pro.applyDevSettings();
-                    }
                     pro.membershipPlans = plans;
                     if (d && localStorage.useDevOptions) {
                         pro.applyDevSettings();
                     }
+
+                    if (localStorage.ignoreTrial) {
+                        for (let i = 0; i < pro.membershipPlans.length; i++) {
+                            pro.membershipPlans[i][pro.UTQA_RES_INDEX_EXTRAS].trial = false;
+                        }
+
+                        pro.propay.ignoreTrial = true;
+                        delete localStorage.ignoreTrial;
+                    }
+
                     pro.lastLoginStatus = u_type;
                     pro.maxPlan = maxPlan;
                     pro.minPlan = minPlan;
@@ -282,8 +346,8 @@ var pro = {
                     pro.filter.dynamic.singleDurationPlans = new Set(
                         // Sets are made from numbers, so convert the keys back to numbers
                         Object.keys(pro.singleDurationPlans).map(level => level | 0));
-                })
-                .finally(() => {
+
+                    // Initialize the filtered plans
                     pro.initFilteredPlans();
                     // Run the callback function
                     loadedCallback();
@@ -394,6 +458,18 @@ var pro = {
 
             // Don't show the plan expiry dialog anymore for this session
             alarm.planExpired.lastPayment = null;
+            if (is_mobile) {
+                const banner = document.componentSelector('.payment-banner');
+                if (banner) {
+                    banner.hide();
+                }
+            }
+            else {
+                const banner = mega.ui.secondaryNav.bannerHolder.querySelector('.new-banner');
+                if (banner) {
+                    banner.classList.add('hidden');
+                }
+            }
 
             // If last payment was Bitcoin, we need to redirect to the account page
             if (pro.lastPaymentProviderId === bitcoinDialog.gatewayId) {
@@ -447,7 +523,19 @@ var pro = {
      *                   'displayName' which is the translated name for that provider (however
      *                   company names are not translated).
      */
-    getPaymentGatewayName: function(gatewayId, gatewayOpt) {
+    getPaymentGatewayName(givenId, gatewayOpt) {
+        'use strict';
+        let walletType;
+        let gatewayId;
+
+        if (Array.isArray(givenId)) {
+            gatewayId = givenId[0];
+            walletType = givenId[1];
+        }
+        else {
+            gatewayId = givenId;
+        }
+
 
         var gateways = {
             0: {
@@ -531,6 +619,25 @@ var pro = {
                 displayName: l[6198]    // Wire transfer
             }
         };
+
+        const wallets = {
+            'google_pay': {
+                name: 'google',
+                displayName: 'Google Pay',
+            },
+            'apple_pay': {
+                name: 'apple',
+                displayName: 'Apple Pay',
+            },
+            'ideal': {
+                name: 'ideal',
+                displayName: 'iDEAL',
+            },
+        };
+
+        if (wallets[walletType]) {
+            return wallets[walletType];
+        }
 
         // If the gateway option information was provided we can improve the default naming in some cases
         if (typeof gatewayOpt !== 'undefined') {
@@ -677,20 +784,47 @@ var pro = {
         planKeys: Object.create(null),
         planTypes: Object.create(null),
 
-        createPlanObject(plan) {
+        createPlanObject(plan, planFromApi) {
             'use strict';
             const key = plan[pro.UTQA_RES_INDEX_ID] + plan[pro.UTQA_RES_INDEX_ITEMNUM];
+
+            const taxInfo = (pro.taxInfo || plan[pro.UTQA_RES_INDEX_ACCOUNTLEVEL] === pro.ACCOUNT_LEVEL_BUSINESS)
+                && plan[pro.UTQA_RES_INDEX_EXTRAS].taxInfo;
+
+            delete pro.planObjects.planKeys[key];
+
+            let type1info = (plan[pro.UTQA_RES_INDEX_ITEMNUM] === 1) && !!planFromApi;
+
+            if (type1info) {
+                const {bd} = planFromApi || false;
+                const {ba, sto, trns, us} = bd || false;
+
+                type1info = {
+                    trns: pro.divideAllBy100(trns),
+                    ba: pro.divideAllBy100(ba),
+                    us: pro.divideAllBy100(us),
+                    sto: pro.divideAllBy100(sto),
+                };
+            }
 
             lazy(pro.planObjects.planKeys, key, () => {
 
                 const thisPlan = {
-                    key,        // Plan key
+                    key,                    // Plan key
                     _saveUpTo: null,        // Stores the saveUpTo percentage of the plan, in case given by another plan
-                    _correlatedPlan: null,       // Stores the correlated plan, in case given by another plan
+                    _correlatedPlan: null,  // Stores the correlated plan, in case given by another plan
+                    _durationOptions: null,     // Stores the duration options available in the plan
                     _maxCorrPriceEur: null,
                     planArray: plan,
                     features: plan[pro.UTQA_RES_INDEX_EXTRAS].f,
                     trial: plan[pro.UTQA_RES_INDEX_EXTRAS].trial,
+                    featureStrings: pro.featureInfo[plan[pro.UTQA_RES_INDEX_ACCOUNTLEVEL]],
+                    baseTransfer: plan[pro.UTQA_RES_INDEX_TRANSFER]
+                        && ((plan[pro.UTQA_RES_INDEX_TRANSFER] / plan[pro.UTQA_RES_INDEX_MONTHS])
+                            * pro.BYTES_PER_GB),
+                    transferCost: type1info
+                        && ((pro.taxInfo && (type1info.trns.lpn || type1info.trns.pn))
+                            || (type1info.trns.lp || type1info.trns.p))
                 };
 
                 lazy(thisPlan, 'id', () => plan[pro.UTQA_RES_INDEX_ID]);
@@ -709,6 +843,11 @@ var pro = {
                 lazy(thisPlan, 'save', () => plan[pro.UTQA_RES_INDEX_LOCALPRICESAVE] || false);
                 lazy(thisPlan, 'monthlyBasePrice', () => plan[pro.UTQA_RES_INDEX_MONTHLYBASEPRICE] || false);
                 lazy(thisPlan, 'hasLocal', () => !!plan[pro.UTQA_RES_INDEX_LOCALPRICECURRENCY]);
+                lazy(thisPlan, 'trialStrings', () => thisPlan.trial && pro.featureInfo[thisPlan.level + '-trial']);
+                lazy(thisPlan, 'featureBits', () => thisPlan.features && pro.getStandaloneBits(thisPlan.features));
+                lazy(thisPlan, 'taxInfo', () => {
+                    return pro.getStandardisedTaxInfo(taxInfo, thisPlan.level === pro.ACCOUNT_LEVEL_BUSINESS);
+                });
 
                 lazy(thisPlan, 'correlatedPlan', () => {
                     if (thisPlan._correlatedPlan === null) {
@@ -727,6 +866,25 @@ var pro = {
                     return thisPlan._correlatedPlan;
                 });
 
+                lazy(thisPlan, 'durationOptions', () => {
+                    if (thisPlan._durationOptions === null) {
+                        const { membershipPlans: plans, UTQA_RES_INDEX_ACCOUNTLEVEL } = pro;
+                        thisPlan._durationOptions = [];
+                        let i = plans.length;
+
+                        while (--i >= 0) {
+                            if (plans[i][UTQA_RES_INDEX_ACCOUNTLEVEL] === thisPlan.level) {
+                                thisPlan._durationOptions.push(plans[i]);
+                            }
+                        }
+
+                        // Sorting by UTQA_RES_INDEX_MONTHS
+                        thisPlan._durationOptions.sort(([,,,,a], [,,,,b]) => a - b);
+                    }
+
+                    return thisPlan._durationOptions;
+                });
+
                 lazy(thisPlan, 'saveUpTo', () => {
                     if (thisPlan._saveUpTo === null) {
                         let saveUpTo = false;
@@ -743,14 +901,15 @@ var pro = {
 
                 lazy(thisPlan, 'maxCorrPriceEuro', () => {
                     if (thisPlan._maxCorrPriceEur === null) {
-                        let maxCorrPrice = thisPlan.priceEuro;
+                        // map by UTQA_RES_INDEX_PRICE
+                        thisPlan._maxCorrPriceEur = Math.max(...thisPlan.durationOptions.map(([,,,,,p]) => p));
+
                         if (thisPlan.correlatedPlan) {
-                            maxCorrPrice = Math.max(thisPlan.priceEuro, thisPlan.correlatedPlan.priceEuro);
-                            thisPlan.correlatedPlan._maxCorrPriceEur = maxCorrPrice;
+                            thisPlan.correlatedPlan._maxCorrPriceEur = thisPlan._maxCorrPriceEur;
                         }
-                        thisPlan._maxCorrPrice = maxCorrPrice;
                     }
-                    return thisPlan._maxCorrPrice;
+
+                    return thisPlan._maxCorrPriceEur;
                 });
 
                 lazy(thisPlan, 'yearlyDiscount', () => {
@@ -766,6 +925,7 @@ var pro = {
                     return (baseYearly * 100 - thisPlan.price * 100) / 100;
                 });
 
+
                 /**
                  * Checks if the plan is in a filter, returns boolean or level of the plan in the filter.
                  * @param {string} filter - The name of the filter to check
@@ -780,26 +940,93 @@ var pro = {
                     return pro.filter.simple[filter].has(thisPlan.level);
                 };
 
-                /**
-                 * Returns the price of the plan formatted as a string
-                 * @param {string} display - The display type of the price
-                 * @param {Boolean} returnEuro - If the price should be returned in Euro
-                 * @param {boolean} noDecimals - If the price should be returned without decimals
-                 * @returns {string} - The formatted price
-                 */
-                thisPlan.getFormattedPrice = (display, returnEuro, noDecimals) => {
-                    return formatCurrency(
-                        returnEuro ? thisPlan.priceEuro : thisPlan.price,
-                        returnEuro ? thisPlan.currencyEuro : thisPlan.currency,
-                        display,
-                        noDecimals
-                    );
-                };
+                thisPlan.getFormattedPrice = pro.getFormattedPrice.bind(null, thisPlan);
 
                 return thisPlan;
-
             });
         },
+
+        createBusinessPlanObject(plan) {
+            'use strict';
+
+            const {id, al, bd, m, l, it} = plan;
+
+            const key = id + it;
+            const planObj = pro.getPlanObj(false, false, key);
+            if (planObj) {
+                return planObj;
+            }
+
+            const {ba, sto, trns, us, minu} = (bd || Object.create(null));
+
+            const {p, pn, lp, lpn} = us;
+
+            const taxInfo = (p && pn) && {
+                p: p * minu,
+                pn: pn * minu,
+                lp: (lp || p) * minu,
+                lpn: (lpn || pn) * minu
+            };
+
+            const price = (taxInfo ? pn : p) * minu;
+            const localPrice = ((taxInfo && lpn) ? lpn : lp) * minu;
+
+            const bussinessPlanArray = [
+                id, al,
+                ba.s, ba.t, m, price, l.c, price, localPrice, l.lc, 0, it,
+                sto.p, sto.lp, trns.p, trns.lp,
+            ];
+
+            bussinessPlanArray[pro.UTQA_RES_INDEX_EXTRAS] = {
+                taxInfo,
+                trial: false,
+                trialStrings: false,
+                featureStrings: false,
+            };
+
+            this.createPlanObject(bussinessPlanArray);
+
+            return pro.getPlanObj(false, false, key);
+        },
+    },
+
+    /**
+     * Returns the price of the plan formatted as a string
+     * @param {string} display - The display type of the price
+     * @param {Boolean} returnEuro - If the price should be returned in Euro
+     * @param {boolean} noDecimals - If the price should be returned without decimals
+     * @param {number} months - The number of months to return the price for
+     * @param {object} options - Extra options to format what price is shown and how
+     * @returns {string} - The formatted price
+     */
+    getFormattedPrice: (plan, display, returnEuro, noDecimals, months, options) => {
+        'use strict';
+
+        options = options || Object.create(null);
+
+        const monthMultiplier = +(months || plan.months) / plan.months;
+
+        let localPrice = returnEuro ? plan.priceEuro : plan.price;
+
+        if (options.includeTax && plan.taxInfo) {
+            const {taxedPriceEuro, taxedPrice} = plan.taxInfo;
+            localPrice = (plan.taxInfo && (returnEuro ? taxedPriceEuro : taxedPrice))
+                || localPrice;
+        }
+        else if (options.useTaxAmount) {
+            const {taxAmount, taxAmountEuro} = plan.taxInfo;
+            localPrice = plan.taxInfo && (returnEuro ? taxAmountEuro : taxAmount);
+            if (typeof localPrice !== 'number') {
+                localPrice = returnEuro ? plan.priceEuro : plan.price;
+            }
+        }
+
+        return formatCurrency(
+            localPrice * monthMultiplier,
+            returnEuro ? plan.currencyEuro : plan.currency,
+            display,
+            noDecimals
+        );
     },
 
     initFilteredPlans() {
@@ -890,17 +1117,6 @@ var pro = {
         };
 
         // TODO: Update Min lazys to use getMinStoragePlan, when it will not require extra QA to do so
-        lazy(pro.filter, 'affMin', () => {
-            const plans = pro.filter.plans.affPlans;
-            let currentMin = plans[0];
-            for (let i = 1; i < plans.length; i++) {
-                if (plans[i][pro.UTQA_RES_INDEX_STORAGE] < currentMin[pro.UTQA_RES_INDEX_STORAGE]) {
-                    currentMin = plans[i];
-                }
-            }
-            return currentMin;
-        });
-
         lazy(pro.filter, 'miniMin', () => {
             const plans = pro.filter.plans.miniPlans;
             if (!plans.length) {
@@ -927,15 +1143,19 @@ var pro = {
      * @param {number | string} [months = 1] - the number of months of the plan if account level is given
      * @returns {Object | boolean} - returns the same plan but as an object, or false if none found
      */
-    getPlanObj(plan, months) {
+    getPlanObj(plan, months, key) {
         'use strict';
+
+        if (key) {
+            return pro.planObjects.planKeys[key] || false;
+        }
+
         if (!pro.membershipPlans.length) {
             console.assert(!d, 'getPlanObj called before membershipPlans were loaded.');
             return;
         }
         const {planTypes} = pro.planObjects;
         months = (months |= 0) || 1;
-        let key;
         let type;
         if (typeof plan === 'number' || typeof plan === 'string') {
             plan |= 0;
@@ -957,6 +1177,65 @@ var pro = {
             planTypes[type] = pro.planObjects.planKeys[key];
         }
         return pro.planObjects.planKeys[key] || false;
+    },
+
+    getStandardisedTaxInfo(planTaxInfo, type) {
+        'use strict';
+
+        type = type |= 0;
+
+        if ((pro.taxInfo === false) || (typeof planTaxInfo !== 'object')) {
+            return false;
+        }
+        if (planTaxInfo.taxInfoObj !== undefined) {
+            return planTaxInfo.taxInfoObj;
+        }
+
+        if (Array.isArray(planTaxInfo)) {
+            planTaxInfo = planTaxInfo[pro.UTQA_RES_INDEX_EXTRAS].taxInfo;
+            if (typeof planTaxInfo !== 'object') {
+                return false;
+            }
+        }
+
+        let taxInfoObj = false;
+
+        if (planTaxInfo.taxAmount && planTaxInfo.taxedPrice) {
+            planTaxInfo.taxInfoObj = planTaxInfo;
+        }
+
+        // {"p": 574, "pn": 499, "mbp": 574, "mbpn": 499, "lp": 1088, "lpn": 946};
+        else {
+            const {p, pn, lp, lpn} = planTaxInfo;
+
+            if (pn && p) {
+
+                const taxedPriceEuro = p;
+                const taxAmountEuro = taxedPriceEuro - pn;
+                const taxedPrice = lp || taxedPriceEuro;
+                const taxAmount = (lp - lpn) || taxAmountEuro;
+
+                if (type === 0) {
+                    taxInfoObj = pro.divideAllBy100({
+                        taxAmount,
+                        taxedPrice,
+                        taxAmountEuro,
+                        taxedPriceEuro,
+                    });
+                }
+                else {
+                    taxInfoObj = {
+                        taxAmount,
+                        taxedPrice,
+                        taxAmountEuro,
+                        taxedPriceEuro,
+                    };
+                }
+            }
+        }
+
+        planTaxInfo.taxInfoObj = taxInfoObj;
+        return taxInfoObj;
     },
 
     /**
@@ -1109,13 +1388,6 @@ lazy(pro, 'filter', () => {
                     pro.ACCOUNT_LEVEL_PRO_LITE
                 ]),
 
-            // affPlans: 4, 1, 2, 3 - plans that can show in the affiliate redeem section
-            affPlans:
-                new Set([
-                    pro.ACCOUNT_LEVEL_PRO_LITE, pro.ACCOUNT_LEVEL_PRO_I, pro.ACCOUNT_LEVEL_PRO_II,
-                    pro.ACCOUNT_LEVEL_PRO_III
-                ]),
-
             // miniPlans: 11, 12, 13 - mini plans available to targeted users
             miniPlans:
                 new Set([
@@ -1180,6 +1452,13 @@ lazy(pro, 'filter', () => {
                     pro.ACCOUNT_LEVEL_BASIC, pro.ACCOUNT_LEVEL_ESSENTIAL, pro.ACCOUNT_LEVEL_STARTER,
                     pro.ACCOUNT_LEVEL_PRO_LITE, pro.ACCOUNT_LEVEL_PRO_I, pro.ACCOUNT_LEVEL_PRO_II,
                     pro.ACCOUNT_LEVEL_PRO_III, pro.ACCOUNT_LEVEL_PRO_FLEXI
+                ]),
+
+            // showFeatureInfo: 4, 1, 2, 3 - plans that should show feature info on propay page
+            showFeatureInfo:
+                new Set([
+                    pro.ACCOUNT_LEVEL_PRO_LITE, pro.ACCOUNT_LEVEL_PRO_I, pro.ACCOUNT_LEVEL_PRO_II,
+                    pro.ACCOUNT_LEVEL_PRO_III, pro.ACCOUNT_LEVEL_PRO_FLEXI,
                 ]),
         },
 
@@ -1288,12 +1567,15 @@ lazy(pro, 'featureInfo', () => {
 
     const general = [
         {
+            icon: 'sprite-fm-mono icon-shield-thin-outline',
             text: l.mega_vpn
         },
         {
-            text: l.pr_no_meet_time_limits
+            icon: 'sprite-fm-mono icon-lock-thin-outline',
+            text: l.mega_pwm
         },
         {
+            icon: 'sprite-fm-mono icon-users-thin-outline',
             text: l.pr_unlimited_participants
         }
     ];

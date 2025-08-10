@@ -1,7 +1,8 @@
 import React from 'react';
-import { MegaRenderMixin } from '../../../mixins.js';
+import { compose } from '../../../mixins.js';
+import { withDateObserver } from './dateObserver';
 
-export default class Datepicker extends MegaRenderMixin {
+class Datepicker extends React.Component {
     static NAMESPACE = 'meetings-datepicker';
 
     OPTIONS = {
@@ -35,11 +36,12 @@ export default class Datepicker extends MegaRenderMixin {
             const prevDate = new Date(+this.props.value);
             const nextDate = new Date(+dateText);
             nextDate.setHours(prevDate.getHours(), prevDate.getMinutes());
-            return this.props.onSelect(nextDate.getTime());
+            this.props.onSelect(nextDate.getTime());
+            mBroadcaster.sendMessage(withDateObserver.NAMESPACE, nextDate.getTime());
         }
     };
 
-    containerRef = React.createRef();
+    domRef = React.createRef();
     inputRef = React.createRef();
     datepicker = null;
 
@@ -69,18 +71,16 @@ export default class Datepicker extends MegaRenderMixin {
     }
 
     componentWillUnmount() {
-        super.componentWillUnmount();
-        if (this.containerRef && this.containerRef.current) {
-            $(this.containerRef.current).unbind(`keyup.${Datepicker.NAMESPACE}`);
+        if (this.domRef && this.domRef.current) {
+            $(this.domRef.current).unbind(`keyup.${Datepicker.NAMESPACE}`);
         }
     }
 
     componentDidMount() {
-        super.componentDidMount();
         M.require('datepicker_js').done(() => this.initialize());
 
-        if (this.containerRef && this.containerRef.current) {
-            $(this.containerRef.current).rebind(`keyup.${Datepicker.NAMESPACE}`, ({ keyCode }) => {
+        if (this.domRef && this.domRef.current) {
+            $(this.domRef.current).rebind(`keyup.${Datepicker.NAMESPACE}`, ({ keyCode }) => {
                 if (keyCode === 13 /* RET */) {
                     this.datepicker.hide();
                     return false;
@@ -91,12 +91,12 @@ export default class Datepicker extends MegaRenderMixin {
 
     render() {
         const { NAMESPACE } = Datepicker;
-        const { value, name, className, placeholder, onFocus, onChange, onBlur } = this.props;
+        const { value, name, className, placeholder, isLoading, onFocus, onChange, onBlur } = this.props;
         const formattedValue = this.formatValue(value);
 
         return (
             <div
-                ref={this.containerRef}
+                ref={this.domRef}
                 className={NAMESPACE}>
                 <div className="mega-input datepicker-input">
                     <input
@@ -108,6 +108,7 @@ export default class Datepicker extends MegaRenderMixin {
                             ${className || ''}
                         `}
                         autoComplete="off"
+                        disabled={isLoading}
                         placeholder={placeholder || ''}
                         value={formattedValue}
                         onFocus={ev => onFocus?.(ev)}
@@ -116,7 +117,7 @@ export default class Datepicker extends MegaRenderMixin {
                     />
                     <i
                         className="sprite-fm-mono icon-calendar1"
-                        onClick={() => {
+                        onClick={isLoading ? null : () => {
                             if (this.datepicker) {
                                 this.datepicker.show();
                                 this.inputRef.current?.focus();
@@ -128,3 +129,5 @@ export default class Datepicker extends MegaRenderMixin {
         );
     }
 }
+
+export default compose(withDateObserver)(Datepicker);

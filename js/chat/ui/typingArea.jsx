@@ -8,11 +8,10 @@ import GifPanel from './gifPanel/gifPanel.jsx';
 import { PerfectScrollbar } from './../../ui/perfectScrollbar.jsx';
 
 export class TypingArea extends MegaRenderMixin {
-    typingAreaRef = React.createRef();
+    domRef = React.createRef();
 
     state = {
         emojiSearchQuery: false,
-        typedMessage: '',
         textareaHeight: 20,
         gifPanelActive: false
     };
@@ -43,20 +42,13 @@ export class TypingArea extends MegaRenderMixin {
 
         slug = slug[0] === ':' || slug.substr(-1) === ':' ? slug : `:${slug}:`;
 
-        const textarea = $('.messages-textarea', this.typingAreaRef.current)[0];
+        const textarea = $('.messages-textarea', this.domRef.current)[0];
         const cursorPosition = this.getCursorPosition(textarea);
-
-        this.setState({
-            typedMessage:
-                this.state.typedMessage.slice(0, cursorPosition) +
-                slug +
-                this.state.typedMessage.slice(cursorPosition)
-        }, () => {
-            // `Sample |message` -> `Sample :smile:| message`
-            textarea.selectionEnd = cursorPosition + slug.length;
-
-            this.onTypeAreaChange(e, this.state.typedMessage);
-        });
+        const {text, onValueChanged} = this.props;
+        const val = text.slice(0, cursorPosition) + slug + text.slice(cursorPosition);
+        onValueChanged(val);
+        textarea.selectionEnd = cursorPosition + slug.length;
+        this.onTypeAreaChange(e, val);
     }
 
     stoppedTyping() {
@@ -93,13 +85,13 @@ export class TypingArea extends MegaRenderMixin {
 
         var shouldTriggerUpdate = forced ? forced : false;
 
-        if (!shouldTriggerUpdate && self.state.typedMessage !== self.lastTypedMessage) {
-            self.lastTypedMessage = self.state.typedMessage;
+        if (!shouldTriggerUpdate && self.props.text !== self.lastTypedMessage) {
+            self.lastTypedMessage = self.props.text;
             shouldTriggerUpdate = true;
         }
 
         if (!shouldTriggerUpdate) {
-            var $textarea = $('.chat-textarea:visible textarea:visible', self.typingAreaRef.current);
+            var $textarea = $('.chat-textarea:visible textarea:visible', self.domRef.current);
             if (!self._lastTextareaHeight || self._lastTextareaHeight !== $textarea.height()) {
                 self._lastTextareaHeight = $textarea.height();
                 shouldTriggerUpdate = true;
@@ -116,7 +108,7 @@ export class TypingArea extends MegaRenderMixin {
 
     onCancelClicked() {
         var self = this;
-        self.setState({typedMessage: ""});
+        self.props.onValueChanged('');
         if (self.props.chatRoom && self.iAmTyping) {
             self.stoppedTyping();
         }
@@ -131,10 +123,10 @@ export class TypingArea extends MegaRenderMixin {
             return;
         }
 
-        var val = $.trim($('.chat-textarea:visible textarea:visible', this.typingAreaRef.current).val());
+        var val = $.trim($('.chat-textarea:visible textarea:visible', this.domRef.current).val());
 
         if (self.onConfirmTrigger(val) !== true) {
-            self.setState({typedMessage: ""});
+            self.props.onValueChanged('');
         }
         if (self.props.chatRoom && self.iAmTyping) {
             self.stoppedTyping();
@@ -148,7 +140,7 @@ export class TypingArea extends MegaRenderMixin {
 
         if (val !== false && result !== false) {
             // scroll To 0 after sending a message.
-            $('.textarea-scroll', this.typingAreaRef.current).scrollTop(0);
+            $('.textarea-scroll', this.domRef.current).scrollTop(0);
         }
 
         if (persist) {
@@ -185,7 +177,7 @@ export class TypingArea extends MegaRenderMixin {
             }
 
             if (self.onConfirmTrigger(val) !== true) {
-                self.setState({typedMessage: ""});
+                self.props.onValueChanged('');
                 $(document).trigger('closeDropdowns');
             }
             e.preventDefault();
@@ -227,7 +219,7 @@ export class TypingArea extends MegaRenderMixin {
                         content.length
                     );
 
-                self.setState({typedMessage: content});
+                self.props.onValueChanged(content);
                 self.onUpdateCursorPosition = cursorPos + 1;
                 e.preventDefault();
             }
@@ -356,8 +348,8 @@ export class TypingArea extends MegaRenderMixin {
         var self = this;
         value = String(value || e.target.value || '').replace(/^\s+/, '');
 
-        if (self.state.typedMessage !== value) {
-            self.setState({typedMessage: value});
+        if (self.props.text !== value) {
+            self.props.onValueChanged(value);
             self.forceUpdate();
         }
 
@@ -401,10 +393,10 @@ export class TypingArea extends MegaRenderMixin {
         }
 
         if (
-            $('.chat-textarea:visible textarea:visible', this.typingAreaRef.current).length > 0 &&
-            !$('.chat-textarea:visible textarea:visible:first', this.typingAreaRef.current).is(":focus")
+            $('.chat-textarea:visible textarea:visible', this.domRef.current).length > 0 &&
+            !$('.chat-textarea:visible textarea:visible:first', this.domRef.current).is(":focus")
         ) {
-            moveCursortoToEnd($('.chat-textarea:visible:first textarea', this.typingAreaRef.current)[0]);
+            moveCursortoToEnd($('.chat-textarea:visible:first textarea', this.domRef.current)[0]);
         }
     }
 
@@ -433,8 +425,8 @@ export class TypingArea extends MegaRenderMixin {
         });
     }
 
-    componentWillMount() {
-        const {chatRoom, initialText, persist} = this.props;
+    UNSAFE_componentWillMount() {
+        const {chatRoom, initialText, persist, onValueChanged} = this.props;
         const {megaChat, roomId} = chatRoom;
         const {persistedTypeArea} = megaChat.plugins;
 
@@ -445,9 +437,9 @@ export class TypingArea extends MegaRenderMixin {
                 persistedTypeArea.getPersistedTypedValue(chatRoom)
                     .then((res) => {
 
-                        if (res && this.isMounted() && !this.state.typedMessage) {
+                        if (res && this.isMounted() && !this.props.text) {
 
-                            this.setState({'typedMessage': res});
+                            onValueChanged(res);
                         }
                     })
                     .catch((ex) => {
@@ -459,7 +451,7 @@ export class TypingArea extends MegaRenderMixin {
 
             persistedTypeArea.addChangeListener(this.getUniqueId(), (e, k, v) => {
                 if (roomId === k) {
-                    this.setState({'typedMessage': v || ''});
+                    onValueChanged(v || '');
                     this.triggerOnUpdate(true);
                 }
             });
@@ -492,7 +484,7 @@ export class TypingArea extends MegaRenderMixin {
         this.updateScroll();
 
         if (this.onUpdateCursorPosition) {
-            var el = $('.chat-textarea:visible:first textarea:visible', this.typingAreaRef.current)[0];
+            var el = $('.chat-textarea:visible:first textarea:visible', this.domRef.current)[0];
             el.selectionStart = el.selectionEnd = this.onUpdateCursorPosition;
             this.onUpdateCursorPosition = false;
         }
@@ -516,16 +508,16 @@ export class TypingArea extends MegaRenderMixin {
 
         // DONT update if not visible...
         if (!this.isComponentEventuallyVisible()
-            || !this.$node && !this.typingAreaRef && !this.typingAreaRef.current) {
+            || !this.$node && !this.domRef && !this.domRef.current) {
 
             return;
         }
 
-        var $node = this.$node = this.$node || this.typingAreaRef.current;
+        var $node = this.$node = this.$node || this.domRef.current;
         const $textarea = this.$textarea = this.$textarea || $('textarea:first', $node);
         const $scrollBlock = this.$scrollBlock = this.$scrollBlock || $textarea.closest('.textarea-scroll');
         const $preview = $('.message-preview', $scrollBlock)
-            .safeHTML(`${megaChat.html($textarea.val()).replace(/\n/g, '<br />')} <br>`);
+            .safeHTML(`${escapeHTML(this.props.text).replace(/\n/g, '<br />')} <br>`);
         const textareaHeight = $preview.height();
 
         $scrollBlock.height(
@@ -652,13 +644,13 @@ export class TypingArea extends MegaRenderMixin {
                 emojiSearchQuery={self.state.emojiSearchQuery}
                 emojiStartPos={self.state.emojiStartPos}
                 emojiEndPos={self.state.emojiEndPos}
-                typedMessage={self.state.typedMessage}
+                typedMessage={self.props.text}
                 onPrefill={function(e, emojiAlias) {
                     if (
                         $.isNumeric(self.state.emojiStartPos) &&
                         $.isNumeric(self.state.emojiEndPos)
                     ) {
-                        var msg = self.state.typedMessage;
+                        var msg = self.props.text;
                         var pre = msg.substr(0, self.state.emojiStartPos);
                         var post = msg.substr(self.state.emojiEndPos + 1, msg.length);
                         var startPos = self.state.emojiStartPos;
@@ -682,9 +674,9 @@ export class TypingArea extends MegaRenderMixin {
                         }
 
                         self.setState({
-                            'typedMessage': pre + emojiAlias + post,
                             'emojiEndPos': endPos
                         });
+                        self.props.onValueChanged(pre + emojiAlias + post);
                     }
                 }}
                 onSelect={function (e, emojiAlias, forceSend) {
@@ -692,7 +684,7 @@ export class TypingArea extends MegaRenderMixin {
                         $.isNumeric(self.state.emojiStartPos) &&
                         $.isNumeric(self.state.emojiEndPos)
                     ) {
-                        var msg = self.state.typedMessage;
+                        var msg = self.props.text;
                         var pre = msg.substr(0, self.state.emojiStartPos);
                         var post = msg.substr(self.state.emojiEndPos + 1, msg.length);
 
@@ -711,14 +703,14 @@ export class TypingArea extends MegaRenderMixin {
                         self.prefillMode = false;
 
                         self.setState({
-                            'typedMessage': val,
                             'emojiSearchQuery': false,
                             'emojiStartPos': false,
                             'emojiEndPos': false
                         });
+                        self.props.onValueChanged(val);
                         if (forceSend) {
                             if (self.onConfirmTrigger($.trim(val)) !== true) {
-                                self.setState({typedMessage: ""});
+                                self.props.onValueChanged('');
                             }
                         }
                     }
@@ -738,7 +730,7 @@ export class TypingArea extends MegaRenderMixin {
 
         return (
             <div
-                ref={this.typingAreaRef}
+                ref={this.domRef}
                 className={`
                     typingarea-component
                     ${this.props.className}
@@ -799,7 +791,7 @@ export class TypingArea extends MegaRenderMixin {
                             self.textareaScroll = ref;
                         }}>
                         <div className="messages-textarea-placeholder">
-                            {self.state.typedMessage ?
+                            {self.props.text ?
                                 null :
                                 <Emoji>
                                     {(l[18763] || `Write message to \u201c%s\u201d\u2026`)
@@ -819,7 +811,7 @@ export class TypingArea extends MegaRenderMixin {
                             onCopyCapture={this.onCopyCapture}
                             onPasteCapture={this.onPasteCapture}
                             onCutCapture={this.onCutCapture}
-                            value={self.state.typedMessage}
+                            value={self.props.text}
                             style={textareaStyles}
                             disabled={disabledTextarea}
                             readOnly={disabledTextarea}

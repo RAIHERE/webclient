@@ -8,6 +8,7 @@
     height: 100%;
     background: #222;
     z-index: 120;
+    transition: width 200ms ease-in-out;
 
     &.minimized {
         display: none;
@@ -123,7 +124,6 @@
             cursor: pointer;
             float: right;
             margin-inline-start: 24px;
-            -webkit-margin-start: 24px;
 
             .rtl & {
                 float: left;
@@ -226,5 +226,14 @@
                 visibility: visible;
             }
         }
+    }
+}
+
+.recording-info {
+    font: var(--text-body1);
+    color: var(--secondary-white);
+
+    .dropdown-white-arrow {
+        left: 20px;
     }
 }

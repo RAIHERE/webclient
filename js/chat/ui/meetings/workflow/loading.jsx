@@ -1,8 +1,9 @@
 import React from 'react';
-import { MegaRenderMixin } from '../../../mixins';
 
-export default class Loading extends MegaRenderMixin {
+export default class Loading extends React.Component {
     static NAMESPACE = 'meetings-loading';
+
+    domRef = React.createRef();
 
     PERMISSIONS = {
         VIDEO: 'camera',
@@ -14,18 +15,16 @@ export default class Loading extends MegaRenderMixin {
     };
 
     componentWillUnmount() {
-        super.componentWillUnmount();
         megaChat.unbind(`onLocalMediaQueryError.${Loading.NAMESPACE}`);
     }
 
     componentDidMount() {
-        super.componentDidMount();
         // Close dropdown elements, popups
         document.dispatchEvent(new Event('closeDropdowns'));
         if ($.dialog) {
             closeDialog?.();
         }
-        mega.ui.mInfoPanel.closeIfOpen();
+        mega.ui.mInfoPanel.hide();
         notify?.closePopup();
         alarm?.hideAllWarningPopups();
         document.querySelectorAll('.js-dropdown-account').forEach(({ classList }) =>
@@ -69,7 +68,7 @@ export default class Loading extends MegaRenderMixin {
                 status.onchange = () => name === 'audio_capture' && this.queryPermissions(this.PERMISSIONS.VIDEO);
 
                 if (state === 'prompt') {
-                    return this.isMounted() && this.setState({ pendingPermissions: name });
+                    return this.domRef.current && this.setState({ pendingPermissions: name });
                 }
             })
             .catch(ex => console.warn(`Failed to get permissions state: ${ex}`));
@@ -106,7 +105,9 @@ export default class Loading extends MegaRenderMixin {
         const { pendingPermissions } = this.state;
 
         return (
-            <div className={Loading.NAMESPACE}>
+            <div
+                ref={this.domRef}
+                className={Loading.NAMESPACE}>
                 <div className={`${Loading.NAMESPACE}-content`}>
                     {pendingPermissions ?
                         <h2>

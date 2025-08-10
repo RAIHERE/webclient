@@ -12,6 +12,13 @@ import { PerfectScrollbar } from '../../../../ui/perfectScrollbar.jsx';
 
 export default class Text extends AbstractGenericMessage {
 
+    constructor(props) {
+        super(props);
+        this.state = {
+            editText: ''
+        };
+    }
+
     isRichPreview(message) {
         return message.metaType === Message.MESSAGE_META_TYPE.RICH_PREVIEW;
     }
@@ -35,6 +42,46 @@ export default class Text extends AbstractGenericMessage {
         `;
     }
 
+
+    renderMessageIndicators() {
+        const { message, spinnerElement, isBeingEdited, onRetry, onCancelRetry } = this.props;
+
+        if (!message || spinnerElement || isBeingEdited()) {
+            return null;
+        }
+
+        const state = message.getState?.();
+        if (![Message.STATE.NOT_SENT, Message.STATE.NOT_SENT_EXPIRED].includes(state)) {
+            return null;
+        }
+
+        const props = { 'data-simpletipposition': 'top', 'data-simpletipoffset': 8 };
+        return (
+            message.requiresManualRetry ?
+                <div className="not-sent-indicator clickable">
+                    <span
+                        className="simpletip"
+                        {...props}
+                        data-simpletip={l[8883] /* `Message not sent. Click here if you want to resend it.` */}
+                        onClick={ev => onRetry(ev, message)}>
+                        <i className="small-icon refresh-circle"/>
+                    </span>
+                    <span
+                        className="simpletip"
+                        {...props}
+                        data-simpletip={l[8884] /* `Message not sent. Click here if you want to cancel it.` */}
+                        onClick={ev => onCancelRetry(ev, message)}>
+                        <i className="sprite-fm-mono icon-dialog-close"/>
+                    </span>
+                </div> :
+                <div
+                    className="not-sent-indicator simpletip"
+                    {...props}
+                    data-simpletip={l[8882] /* `Message not sent. Will keep retrying.` */}>
+                    <i className="small-icon yellow-triangle"/>
+                </div>
+        );
+    }
 
     getMessageActionButtons() {
         const { chatRoom, message, isBeingEdited } = this.props;
@@ -105,45 +152,41 @@ export default class Text extends AbstractGenericMessage {
         }
 
         // edit and delete
-        if (!message.deleted) {
-            const contact = this.getContact();
-
-            if (
-                contact && contact.u === u_handle &&
-                unixtime() - message.delay < MESSAGE_NOT_EDITABLE_TIMEOUT &&
-                isBeingEdited() !== true &&
-                chatRoom.isReadOnly() === false &&
-                !message.requiresManualRetry
-            ) {
-                const editButton = !IS_GEOLOCATION && (
-                    <DropdownItem
-                        icon="sprite-fm-mono icon-rename"
-                        label={l[1342] /* `Edit` */}
-                        onClick={() => this.props.onEditToggle(true)} />
-                );
-                messageActionButtons = (
-                    <Button
-                        key="delete-msg"
-                        className="tiny-button"
-                        icon="sprite-fm-mono icon-options">
-                        <Dropdown
-                            className="white-context-menu attachments-dropdown"
-                            noArrow={true}
-                            positionMy="left bottom"
-                            positionAt="right bottom"
-                            horizOffset={4}>
-                            {extraPreButtons}
-                            {editButton}
-                            {editButton ? <hr/> : null}
-                            <DropdownItem
-                                icon="sprite-fm-mono icon-dialog-close"
-                                label={l[1730] /* `Delete` */}
-                                onClick={e => this.props.onDelete(e, message)}
-                            />
-                        </Dropdown>
-                    </Button>
-                );
-            }
+        if (
+            !message.deleted &&
+            message.isEditable() &&
+            !isBeingEdited() &&
+            !chatRoom.isReadOnly() &&
+            !message.requiresManualRetry
+        ) {
+            const editButton = !IS_GEOLOCATION && (
+                <DropdownItem
+                    icon="sprite-fm-mono icon-rename"
+                    label={l[1342] /* `Edit` */}
+                    onClick={() => this.props.onEditToggle(true)} />
+            );
+            messageActionButtons = (
+                <Button
+                    key="delete-msg"
+                    className="tiny-button"
+                    icon="sprite-fm-mono icon-options">
+                    <Dropdown
+                        className="white-context-menu attachments-dropdown"
+                        noArrow={true}
+                        positionMy="left bottom"
+                        positionAt="right bottom"
+                        horizOffset={4}>
+                        {extraPreButtons}
+                        {editButton}
+                        {editButton ? <hr/> : null}
+                        <DropdownItem
+                            icon="sprite-fm-mono icon-dialog-close"
+                            label={l[1730] /* `Delete` */}
+                            onClick={e => this.props.onDelete(e, message)}
+                        />
+                    </Dropdown>
+                </Button>
+            );
         }
 
         let parentButtons;
@@ -190,7 +233,6 @@ export default class Text extends AbstractGenericMessage {
     getContents() {
         const { message, chatRoom, onUpdate, isBeingEdited, spinnerElement } = this.props;
 
-        let messageNotSendIndicator;
         let textMessage = message.messageHtml;
 
         const IS_GEOLOCATION = this.isGeoLocation(message);
@@ -228,44 +270,6 @@ export default class Text extends AbstractGenericMessage {
             }
         }
 
-        if (
-            message &&
-            message.getState &&
-            (message.getState() === Message.STATE.NOT_SENT || message.getState() === Message.STATE.NOT_SENT_EXPIRED)
-        ) {
-            if (!spinnerElement) {
-                if (message.requiresManualRetry) {
-                    if (isBeingEdited() !== true) {
-                        messageNotSendIndicator = (
-                            <div className="not-sent-indicator">
-                                <span
-                                    className="tooltip-trigger"
-                                    key="retry"
-                                    data-tooltip="not-sent-notification-manual"
-                                    onClick={(e) => this.props.onRetry(e, message)}>
-                                    <i className="small-icon refresh-circle" />
-                                </span>
-                                <span
-                                    className="tooltip-trigger"
-                                    key="cancel"
-                                    data-tooltip="not-sent-notification-cancel"
-                                    onClick={e => this.props.onCancelRetry(e, message)}>
-                                    <i className="sprite-fm-mono icon-dialog-close" />
-                                </span>
-                            </div>
-                        );
-                    }
-                }
-                else {
-                    messageNotSendIndicator = (
-                        <div className="not-sent-indicator tooltip-trigger" data-tooltip="not-sent-notification">
-                            <i className="small-icon yellow-triangle" />
-                        </div>
-                    );
-                }
-            }
-        }
-
         let messageDisplayBlock;
         if (isBeingEdited() === true) {
             let msgContents = message.textContents;
@@ -274,6 +278,7 @@ export default class Text extends AbstractGenericMessage {
                 <TypingArea
                     iconClass="small-icon writing-pen textarea-icon"
                     initialText={msgContents}
+                    text={this.state.editText || msgContents}
                     chatRoom={chatRoom}
                     showButtons={true}
                     editing={true}
@@ -294,12 +299,17 @@ export default class Text extends AbstractGenericMessage {
                         return true;
                     }}
                     onResized={this.props.onResized ? this.props.onResized : false}
+                    onValueChanged={val => {
+                        this.setState({editText: val});
+                    }}
                 />
             );
         }
         else {
             if (message.updated > 0 && !message.metaType) {
-                textMessage = `${textMessage} <em class="edited">${l[8887] /* `(edited)` */}</em>`;
+                textMessage = `${textMessage} <em class="edited simpletip"
+                    data-simpletip="${toLocaleTime(this.getTimestamp(true))}"
+                    data-simpletipposition="top" data-simpletipoffset="4"> ${l[8887] /* `(edited)` */} </em>`;
             }
             if (this.props.initTextScrolling) {
                 messageDisplayBlock =
@@ -321,7 +331,7 @@ export default class Text extends AbstractGenericMessage {
 
         return (
             <>
-                {messageNotSendIndicator}
+                {this.renderMessageIndicators()}
                 {IS_GEOLOCATION ? null : messageDisplayBlock}
                 {subMessageComponent}
                 {spinnerElement}

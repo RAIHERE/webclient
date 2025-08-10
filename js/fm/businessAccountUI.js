@@ -14,22 +14,21 @@ function BusinessAccountUI() {
     else {
         this.business = mega.buinsessController;
         this.initialized = true;
-        if (u_handle && u_attr) {
-
-            this.currAdmin = {
-                u: u_handle,
-                p: u_attr.b ? u_attr.b.bu : u_handle, // Parent account (for Pro Flexi there's only the current acct)
-                s: 0,
-                e: u_attr.email,
-                firstname: base64urlencode(to8(u_attr.firstname)),
-                lastname: base64urlencode(to8(u_attr.lastname)),
-                position: null,
-                idnum: null,
-                phonenum: null,
-                location: null,
-                isAdmin: true
-            };
-        }
+    }
+    if (u_handle && u_attr) {
+        this.currAdmin = {
+            u: u_handle,
+            p: u_attr.b ? u_attr.b.bu : u_handle, // Parent account (for Pro Flexi there's only the current acct)
+            s: 0,
+            e: u_attr.email,
+            firstname: base64urlencode(to8(u_attr.firstname)),
+            lastname: base64urlencode(to8(u_attr.lastname)),
+            position: null,
+            idnum: null,
+            phonenum: null,
+            location: null,
+            isAdmin: true
+        };
     }
 
     var mySelf = this;
@@ -100,7 +99,9 @@ function BusinessAccountUI() {
         $('.fm-left-panel .nw-tree-panel-header').addClass('hidden');
         $('.user-management-tree-panel-header.enabled-accounts', '.fm-left-panel').removeClass('hidden');
         $('.user-management-tree-panel-header.disabled-accounts', '.fm-left-panel').removeClass('hidden');
-        $('.fm-left-panel').addClass('user-management');
+        if (u_attr.b) {
+            $('.fm-left-panel').addClass('user-management');
+        }
 
         // headers
         $('.fm-right-header-user-management .user-management-main-page-buttons').removeClass('hidden');
@@ -243,34 +244,6 @@ function initBusinessAccountScroll($scrollBlock) {
     else {
         Ps.initialize($scrollBlock[0]);
     }
-}
-
-/**
- * Function to format start and end dates
- *
- * @param   {Date}    leadingDate                           The start date of the required month
- * @returns {Object} {{fromDate: string, toDate: string}}   The format of start date and end date in YYYYMMDD
- */
-function getReportDates(leadingDate) {
-    "use strict";
-
-    const today = leadingDate || new Date();
-    const todayMonth = today.getMonth() + 1;
-    let currMonth = String(todayMonth);
-    if (currMonth.length < 2) {
-        currMonth = `0${currMonth}`;
-    }
-    const currYear = String(today.getFullYear());
-
-    const startDate = `${currYear}${currMonth}01`;
-
-    const endDate = getLastDayofTheMonth(today);
-    if (!endDate) {
-        return;
-    }
-    const endDateStr = String(endDate.getFullYear()) + currMonth + String(endDate.getDate());
-
-    return { fromDate: startDate, toDate: endDateStr };
 }
 
 BusinessAccountUI.prototype.checkCu25519 = function(userHandle, callback) {
@@ -590,7 +563,7 @@ BusinessAccountUI.prototype.viewSubAccountListUI = function (subAccounts, isBloc
                     return;
                 }
 
-                if (!mySelf.checkCu25519(userHandle, mySelf.viewSubAccountInfoUI.bind(mySelf))) {
+                if (!mySelf.checkCu25519(userHandle, disableEnableSubUserClickHandler.bind(this))) {
                     return false;
                 }
 
@@ -746,7 +719,7 @@ BusinessAccountUI.prototype.viewSubAccountListUI = function (subAccounts, isBloc
 /**
  * get the status string of a sub-user
  * @param {Number} statusCode       a number represents the status code of a sub-user
- * @returns {String}                the status string (Active, disabled ...etc)
+ * @returns {String}                the status string (Active, deactivated ...etc)
  */
 BusinessAccountUI.prototype.subUserStatus = function (statusCode) {
     "use strict";
@@ -757,7 +730,7 @@ BusinessAccountUI.prototype.subUserStatus = function (statusCode) {
         return l[7379]; // pending
     }
     else if (statusCode === 11) {
-        return l.sub_user_disabled; // disabled
+        return l.sub_user_deactivated; // deactivated
     }
     else if (statusCode === 12) {
         return l[7376]; // deleted
@@ -1410,8 +1383,12 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
     const $nbPriceContainer = $('.overall-next-bill-wrapper', $businessDashboard);
     const $storageAnalysisPie = $('.storage-analysis-pie-container', $businessDashboard);
     const $stgeTrfAnalysisContainer = $('.data-analysis-container', $businessDashboard);
-    const $stgeAnalysisContainer = $('.storage-analysis-container', $stgeTrfAnalysisContainer);
-    const $trfAnalysisContainer = $('.transfer-analysis-container', $stgeTrfAnalysisContainer);
+    const $stgeAnalysisContainer = $('.analysis-container.storage', $stgeTrfAnalysisContainer);
+    const $trfAnalysisContainer = $('.analysis-container.transfer', $stgeTrfAnalysisContainer);
+    const filters = {
+        dl: false,
+        st: false
+    };
 
     // Private function to populate the pie chart and data into the storage usage dashboard
     const populateStoragePieAndData = function(st, quotas) {
@@ -1653,244 +1630,133 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
         }
     };
 
-    // Private function to determine the scale unit of the bar chart
-    const setBarChartScaleUnit = function(res, isTransferData) {
-        const propertyName = isTransferData ? 'tdl' : 'ts';
-        let dataDivider = 1;
-
-        // Determine the scale
-        const scaleKB = 1024;
-        const scaleMB = 1024 * scaleKB;
-        const scaleGB = 1024 * scaleMB;
-        const scaleTB = 1024 * scaleGB;
-        let is_KB = false;
-        let is_MB = false;
-        let is_GB = false;
-        let is_TB = false;
-
-        for (const dailyData in res) {
-            const consume = res[dailyData][propertyName] || 0;
-            if (consume > scaleTB) {
-                is_TB = true;
-                break;
-            }
-            else if (consume > scaleGB) {
-                is_GB = true;
-            }
-            else if (consume > scaleMB) {
-                is_MB = true;
-            }
-            else if (consume > scaleKB) {
-                is_KB = true;
-            }
-        }
-        const $barChartUnit = isTransferData ? $('#trf-bar-chart-unit', $stgeTrfAnalysisContainer)
-            : $('#stge-bar-chart-unit', $stgeTrfAnalysisContainer);
-        if (is_TB) {
-            dataDivider = scaleTB;
-            $barChartUnit.text(l.data_size_unit_tb);
-        }
-        else if (is_GB) {
-            dataDivider = scaleGB;
-            $barChartUnit.text(l[20031]);
-        }
-        else if (is_MB) {
-            dataDivider = scaleMB;
-            $barChartUnit.text(l[20032]);
-        }
-        else if (is_KB) {
-            dataDivider = scaleKB;
-            $barChartUnit.text(l[20033]);
-        }
-        else {
-            dataDivider = 1;
-            $barChartUnit.text(l[20034]);
-        }
-
-        return dataDivider;
-    };
-
     // Private function to populate the transfer and storage analytics bar chart and data
     const populateBarChart = function(success, res, isTrfGraph, targetDate) {
-        M.require('charts_js').done(() => {
-            const chartContainerID = isTrfGraph ? '#trf-bar-chart-container' : '#stge-bar-chart-container';
-            const $chartContainer = $(chartContainerID, $stgeTrfAnalysisContainer);
+        const $container = isTrfGraph ? $trfAnalysisContainer : $stgeAnalysisContainer;
+        const $chartContainer = $('.chart-container', $container);
+        const $units = $('.units', $container);
+        const $legendBody = $('.legend-body', $container);
+        const $legendBtns = $('.legend-buttons', $container);
+        const style = getComputedStyle(document.body);
 
-            $chartContainer.empty();
-            $chartContainer.safeHTML(
-                isTrfGraph ?
-                    '<canvas id="trf-bar-chart" class="daily-transfer-flow-container"></canvas>' :
-                    '<canvas id="stge-bar-chart" class="daily-storage-flow-container"></canvas>'
-            );
+        $legendBody.empty();
+        $legendBtns.empty();
 
-            const $chartCanvas = $(isTrfGraph ? '#trf-bar-chart' : '#stge-bar-chart', $chartContainer);
-            const style = getComputedStyle(document.body);
+        const availableLabels = Object.keys(res);
+        availableLabels.sort();
 
-            var availableLabels = Object.keys(res);
-            availableLabels.sort();
+        // Build bars data and total storage data
+        const chartBaseData = [];
+        const chartExtraData = [];
+        const chartLabels = [];
+        const values = Object.values(res).map(a => a[isTrfGraph ? 'tdl' : 'ts'] || 0);
+        const divider = dashboardUI.getBarChartScale(values, $units);
+        const isTBGraph = divider === 1024 * 1024 * 1024 * 1024;
+        const extraColor = u_attr.s4 ? 'blue' : 'yellow';
+        const ftr = isTrfGraph ? 'dl' : 'st';
 
-            if (!isTrfGraph) {
-                const lastDay = availableLabels[availableLabels.length - 1];
-                if (res[lastDay] && res[lastDay].dts !== undefined) {
-                    // Use the daily storage value instead of the current storage value for today
-                    res[lastDay].ts = res[lastDay].dts;
-                }
+        const updateData = (name) => {
+            filters[ftr] = name;
+            populateBarChart(success, res, isTrfGraph, targetDate);
+        };
+
+        // Render legend boxes and filtering buttons
+        const renderLegend = (ds = []) => {
+            if (!u_attr.s4) {
+                return;
             }
+            for (let i = -1; i < ds.length; ++i) {
+                const data = ds[i] || {};
+                const {
+                    name,
+                    hoverBorderColor: color,
+                    label = isTrfGraph ? l.all_transfer_lbl : l.all_storage_lbl,
+                } = data;
 
-            // Build bars data and total storage data
-            var chartBaseData = [];
-            var chartExtraData = [];
-            var chartDatasets = [];
-            var chartLabels = [];
-            var chartTooltips = {};
-            const divider = setBarChartScaleUnit(res, isTrfGraph);
-            const isTBGraph = divider === 1024 * 1024 * 1024 * 1024;
+                const btn = mCreateElement('button', {
+                    class: `legend-btn${filters[ftr] === name || i === -1 && !filters[ftr] ? ' active' : ''}`
+                }, $legendBtns[0]);
 
-            const tooltipBarLabeling = function(tooltipItem, data) {
-                const storageValue = data.datasets[tooltipItem.datasetIndex].data[tooltipItem.index];
-                const storageInfo = numOfBytes(storageValue * divider);
-                const dataLabel = data.datasets[tooltipItem.datasetIndex].label;
-                let labellingMsg = `${storageInfo.size} ${storageInfo.unit}`;
+                btn.textContent = label;
+                btn.addEventListener('click', () => updateData(name));
 
-                if (dataLabel !== '') {
-                    labellingMsg = dataLabel === 'base' ? l.base_quota_v : l.extra_quota;
-                    labellingMsg = labellingMsg.replace('[X]', `${storageInfo.size} ${storageInfo.unit}`);
+                if (i === -1) {
+                    mCreateElement('hr', null, $legendBtns[0]);
+                    continue;
                 }
 
-                return labellingMsg;
-            };
-
-            const tooltipBarTitling = function(tooltipItem) {
-                const storageDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-                storageDate.setDate(tooltipItem[0].xLabel || 0);
-                return acc_time2date(storageDate.getTime() / 1000, true);
-            };
-
-            targetDate  = targetDate || new Date();
-            const daysOfThisMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
-            for (let d = 0; d < daysOfThisMonth; d++) {
-                chartBaseData.push(0);
-                chartExtraData.push(0);
-                chartLabels.push(d + 1);
+                const legend = mCreateElement('div', { 'class': 'legend' }, $legendBody[0]);
+                mCreateElement('i', null, legend).style.background = color;
+                mCreateElement('span', null, legend).textContent = label;
             }
+        };
 
-            if (isTrfGraph) {
-                for (let t = 0; t < availableLabels.length; t++) {
-                    const index = parseInt(availableLabels[t].substr(6, 2), 10);
-                    const dayConsume = res[availableLabels[t]].tdl || 0;
-                    chartBaseData[index - 1] = dayConsume / divider;
+        targetDate  = targetDate || new Date();
+        const daysOfThisMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+        for (let d = 0; d < daysOfThisMonth; d++) {
+            chartBaseData.push(0);
+            chartExtraData.push(0);
+            chartLabels.push(d + 1);
+        }
+
+        for (let i = 0; i < availableLabels.length; i++) {
+            const elm = availableLabels[i];
+            const index = parseInt(elm.substr(6, 2), 10);
+            const total = isTrfGraph ? res[elm].tdl : res[elm].ts || 0;
+
+            if (u_attr.s4) {
+                let s4 = 0;
+                for (const v of Object.values(res[elm].u || {})) {
+                    s4 += isTrfGraph ? v.s4dl : v.s4 && v.s4[0] || 0;
                 }
-
-                chartDatasets = [{
-                    label: '',
-                    data: chartBaseData,
-                    backgroundColor: style.getPropertyValue('--label-blue-hover').trim(),
-                    hoverBackgroundColor: style.getPropertyValue('--label-blue-hover').trim(),
-                    hoverBorderColor: style.getPropertyValue('--label-blue').trim(),
-                    borderWidth: 0,
-                    hoverBorderWidth: 2
-                }];
-
-                chartTooltips = {
-                    callbacks: {
-                        label: tooltipBarLabeling,
-                        title: tooltipBarTitling
-                    },
-                    displayColors: false
-                };
+                chartBaseData[index - 1] = (total - s4) / divider;
+                chartExtraData[index - 1] =  s4 / divider;
+            }
+            else if (!isTrfGraph && isTBGraph & total > 3 * divider) {
+                chartBaseData[index - 1] = 3;
+                chartExtraData[index - 1] = total / divider - 3;
             }
             else {
-                for (let s = 0; s < availableLabels.length; s++) {
-                    const index = parseInt(availableLabels[s].substr(6, 2), 10);
-                    const dayConsume = res[availableLabels[s]].ts || 0;
-                    if (isTBGraph & dayConsume > 3 * divider) {
-                        chartBaseData[index - 1] = 3;
-                        chartExtraData[index - 1] = dayConsume / divider - 3;
-                    }
-                    else {
-                        chartBaseData[index - 1] = dayConsume / divider;
-                    }
+                chartBaseData[index - 1] = total / divider;
+                if (isTrfGraph) {
+                    chartExtraData.length = 0;
                 }
-
-                chartDatasets = [{
-                    label: 'base',
-                    data: chartBaseData,
-                    backgroundColor: style.getPropertyValue('--label-blue-hover').trim(),
-                    hoverBackgroundColor: style.getPropertyValue('--label-blue-hover').trim(),
-                    hoverBorderColor: style.getPropertyValue('--label-blue').trim(),
-                    borderWidth: 0,
-                    hoverBorderWidth: 2
-                }, {
-                    label: 'extra',
-                    data: chartExtraData,
-                    backgroundColor: style.getPropertyValue('--label-yellow-hover').trim(),
-                    hoverBackgroundColor: style.getPropertyValue('--label-yellow-hover').trim(),
-                    hoverBorderColor: style.getPropertyValue('--label-yellow').trim(),
-                    borderWidth: 0,
-                    hoverBorderWidth: 2
-                }];
-
-                chartTooltips = {
-                    mode: 'label',
-                    callbacks: {
-                        label: tooltipBarLabeling,
-                        title: tooltipBarTitling
-                    },
-                    displayColors: true
-                };
             }
+        }
 
-            const theBarChart = new Chart($chartCanvas, {
-                type: 'bar',
-                data: {
-                    labels: chartLabels,
-                    datasets: chartDatasets,
-                },
-                options: {
-                    scales: {
-                        yAxes: [{
-                            stacked: true,
-                            ticks: {
-                                beginAtZero: true,
-                                fontColor: style.getPropertyValue('--text-color-medium').trim(),
-                                padding: 8
-                            },
-                            gridLines: {
-                                display: true,
-                                drawTicks: false,
-                                color: style.getPropertyValue('--divider-color').trim(),
-                                zeroLineColor: style.getPropertyValue('--divider-color').trim(),
-                                drawBorder: false,
-                                tickMarkLength: 0
-                            }
-                        }],
-                        xAxes: [{
-                            stacked: true,
-                            ticks: {
-                                fontColor: style.getPropertyValue('--text-color-medium').trim(),
-                                autoSkip: true,
-                                maxTicksLimit: 4,
-                                maxRotation: 0
-                            },
-                            gridLines: {
-                                display: false
-                            }
-                        }]
-                    },
-                    legend: {
-                        display: false
-                    },
-                    tooltips: chartTooltips,
-                    layout: {
-                        padding: {
-                            left: 24,
-                            right: 24,
-                            bottom: 32,
-                            top: 16
-                        }
-                    }
-                }
-            });
+        const datasets = [
+            {
+                name: 'base',
+                label: l[18051],
+                helperLabel: u_attr.s4 ? l.cloud_drive_x : l.base_quota_v,
+                backgroundColor: style.getPropertyValue('--label-red-hover').trim(),
+                borderWidth: 0,
+                data: chartBaseData,
+                hoverBackgroundColor: style.getPropertyValue('--label-red-hover').trim(),
+                hoverBorderColor: style.getPropertyValue('--label-red').trim(),
+                hoverBorderWidth: 1
+            },
+            {
+                name: 'extra',
+                label: u_attr.s4 ? l.obj_storage : l.extra_quota,
+                helperLabel: u_attr.s4 ? l.object_storage_x : l.extra_quota,
+                data: chartExtraData,
+                backgroundColor: style.getPropertyValue(`--label-${extraColor}-hover`).trim(),
+                hoverBackgroundColor: style.getPropertyValue(`--label-${extraColor}-hover`).trim(),
+                hoverBorderColor: style.getPropertyValue(`--label-${extraColor}`).trim(),
+                borderWidth: 0,
+                hoverBorderWidth: 1
+            }
+        ];
+
+        const filteredDatasets = datasets.filter(
+            (elm) => !u_attr.s4 || !filters[ftr] || filters[ftr] === elm.name
+        );
+
+        renderLegend(datasets);
+
+        dashboardUI.renderAnalyticsChart({
+            $cn: $chartContainer, datasets: filteredDatasets, divider, chartLabels, targetDate
         });
     };
 
@@ -1912,6 +1778,17 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
         else {
             $('.next-bill-value.euro', $nbPriceContainer).removeClass('hidden')
                 .text(formatCurrency(billData.price_eur.amount));
+        }
+
+        const $noTaxEstPrice = $('.second-message.no-tax', $nbPriceContainer).addClass('hidden');
+        const $inclTaxEstPrice = $('.second-message.inc-tax', $nbPriceContainer).addClass('hidden');
+        if (pro.taxInfo) {
+            $inclTaxEstPrice
+                .text(l.est_price_tma.replace('%1', pro.taxInfo.taxName))
+                .removeClass('hidden');
+        }
+        else {
+            $noTaxEstPrice.removeClass('hidden');
         }
 
         // If Pro Flexi
@@ -1942,6 +1819,7 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
                         usersM.viewBusinessInvoicesPage();
 
                         $('.fm-right-files-block', '.fmholder').removeClass('hidden emptied');
+                        $('.fm-right-block.dashboard').addClass('hidden');
 
                         if (mega.ui.mNodeFilter) {
                             mega.ui.mNodeFilter.resetFilterSelections();
@@ -1960,10 +1838,11 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
         const billData = M.account.b;
 
         const $targetContainer = isTrfField ? $trfAnalysisContainer : $stgeAnalysisContainer;
-        const $lbRow = $('.one-column', $targetContainer).removeClass('hidden');
-        const $nbRow = $('.two-column', $targetContainer);
-        const $billDiff = $('.next-bill-ratio', $nbRow).addClass('hidden').removeClass('up down');
-        const $billDiffArrow = $('.sprite-fm-mono', $billDiff).removeClass('icon-up icon-down');
+        const $lbRow = $('.usage.last', $targetContainer).removeClass('hidden');
+        const $nbRow = $('.usage.next', $targetContainer);
+        const $billDiff = $('.next-bill-ratio', $targetContainer).addClass('hidden').removeClass('up down');
+        const $billDiffArrow = $('.sprite-fm-mono', $billDiff)
+            .removeClass('icon-arrow-up-thin-outline icon-arrow-down-thin-outline');
 
         var noLastBillItem;
         var lastBillItem;
@@ -1993,63 +1872,15 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
                 const valDiffPerc = formatPercentage(valDiffSize / lastBillItem);
 
                 $billDiff.addClass(valDiff > 0 ? 'up' : 'down').removeClass('hidden');
-                $billDiffArrow.addClass(valDiff > 0 ? 'icon-up' : 'icon-down');
+                $billDiffArrow.addClass(
+                    valDiff > 0 ? 'icon-arrow-up-thin-outline' : 'icon-arrow-down-thin-outline'
+                );
                 $('.ratio-value', $billDiff).text(valDiffSize);
                 $('.diff-perc span', $billDiff).text(
                     l.bsn_last_renew_diff_ratio.replace('[X]', `(${valDiffPerc})`)
                 );
             }
         }
-    };
-
-    // Private function to populate the month dropdown list into the storage and transfer analytics chart
-    const populateMonthDropDownList = function($targetContainer) {
-        const adminCreationDate = new Date(u_attr.since * 1000);
-        const nowDate = new Date();
-        nowDate.setDate(1);
-        const monthLimit = 12; // 1 year back max
-        const $monthDropdown = $('.chart-month-selector', $targetContainer);
-        const $dropdownScroll = $('.dropdown-scroll', $monthDropdown);
-        const $dropdownLabel = $('> span', $monthDropdown);
-        $dropdownScroll.empty();
-        $dropdownLabel.text('');
-
-        for (var m = 0; m < monthLimit; m++) {
-            const nowTime = nowDate.getTime();
-            const label = time2date(nowTime / 1000, 3);
-            var itemNode;
-
-            itemNode = mCreateElement('div', {
-                'class': 'option',
-                'data-state': m === 0 ? 'active' : '',
-                'data-value': nowTime
-            }, $dropdownScroll[0]);
-            mCreateElement('span', undefined, itemNode).textContent = label;
-
-            if (m === 0) {
-                $dropdownLabel.text(label);
-            }
-
-            nowDate.setMonth(nowDate.getMonth() - 1);
-
-            if (nowDate < adminCreationDate && nowDate.getMonth() !== adminCreationDate.getMonth()) {
-                break;
-            }
-        }
-
-
-        $('.option', $monthDropdown).rebind('click.subuser', function() {
-            const $this = $(this);
-            const $activeMonthDropdown = $this.closest('.chart-month-selector.active');
-            const selectedDate = new Date(Number.parseFloat($this.attr('data-value')));
-            const newReportDates = getReportDates(selectedDate);
-
-            const barReportPromise = mySelf.business.getQuotaUsageReport(false, newReportDates);
-            barReportPromise.done((st, res) => {
-                populateBarChart(st, res, $activeMonthDropdown.hasClass('transfer'), selectedDate);
-            });
-        });
-        bindDropdownEvents($monthDropdown, undefined, undefined, { wheelPropagation: false });
     };
 
     const quotasPromise = this.business.getQuotaUsage();
@@ -2072,7 +1903,7 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
     if (u_attr.pf || typeof M.account.b.v === 'undefined' || M.account.b.v === 0) {
 
         // Populate the next billing info into the overall usage section
-        populateNextBillInfo();
+        pro.loadMembershipPlans(populateNextBillInfo);
 
         // Fill the last/next bill transfer data into the analytics section
         fillStgeTrfBillInfo(true);
@@ -2087,10 +1918,34 @@ BusinessAccountUI.prototype.viewAdminDashboardAnalysisUI = function() {
         $('.forecast-remarks', $stgeTrfAnalysisContainer).addClass('hidden');
     }
 
+    // Init storage/transfer analytics tabs
+    $('.tab', $stgeTrfAnalysisContainer).rebind('click.dashTabSwicth', (e) => {
+        $('.analysis-container', $stgeTrfAnalysisContainer).addClass('vo-hidden');
+        $('.tab.active', $stgeTrfAnalysisContainer).removeClass('active');
+        $(`.analysis-container.${e.currentTarget.dataset.value}`, $stgeTrfAnalysisContainer)
+            .removeClass('vo-hidden');
+        $(e.currentTarget).addClass('active');
+    });
+    $('.tab:first-child', $stgeTrfAnalysisContainer).click();
+
     // Populate the month dropdown list for the transfer analytics graph
-    populateMonthDropDownList($trfAnalysisContainer);
+    dashboardUI.populateAnalyticsDropdown($trfAnalysisContainer);
+
     // Populate the month dropdown list for the storage analytics graph
-    populateMonthDropDownList($stgeAnalysisContainer);
+    dashboardUI.populateAnalyticsDropdown($stgeAnalysisContainer);
+
+    // Init month dropdown events
+    $('.chart-month-selector .option', $stgeTrfAnalysisContainer).rebind('click.changeDate', (e) => {
+        const $this = $(e.currentTarget);
+        const $activeMonthDropdown = $this.closest('.chart-month-selector.active');
+        const selectedDate = new Date(Number.parseFloat($this.attr('data-value')));
+        const newReportDates = getReportDates(selectedDate);
+
+        const barReportPromise = mySelf.business.getQuotaUsageReport(false, newReportDates);
+        barReportPromise.done((st, res) => {
+            populateBarChart(st, res, $activeMonthDropdown.hasClass('transfer'), selectedDate);
+        });
+    });
 };
 
 BusinessAccountUI.prototype.initBusinessAccountHeader = function ($accountContainer) {
@@ -2709,7 +2564,13 @@ BusinessAccountUI.prototype.viewBusinessInvoicesPage = function () {
     // private function to fill the list of invoices on UI
     var prepareInvoiceListSection = function (st, invoicesList) {
 
+        if (!String(page).includes('invoices')) {
+            return;
+        }
         var unhideSection = function () {
+
+            $('.fm-right-files-block').removeClass('hidden');
+
             $businessAccountContainer.removeClass('hidden');
             $accountContainer.removeClass('hidden');
             $invoiceContainer.removeClass('hidden');
@@ -2818,6 +2679,7 @@ BusinessAccountUI.prototype.initBreadcrumbClickHandlers = function($pageHeader) 
         // If Pro Flexi, when clicking on Dashboard breadcrumbs, go back to the Dashboard
         if (u_attr.pf) {
             loadSubPage('fm/dashboard');
+            return;
         }
 
         return this.viewSubAccountListUI();
@@ -3698,7 +3560,7 @@ BusinessAccountUI.prototype.showResetPasswordSubUserDialog = function(subUserHan
 
             })
             .catch((ex) => {
-                msgDialog('info', '', l[22082], api.strerror(ex));
+                msgDialog('info', '', l[22082], ex === ENOENT ? l.err_miss_sub_pw_reset : api.strerror(ex));
             });
     });
 

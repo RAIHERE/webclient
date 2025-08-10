@@ -1163,17 +1163,17 @@ MegaData.prototype.addUpload = function(u, ignoreWarning, emptyFolders, target) 
         // for (var ur = 0; ur < u.length; ur++) {
         //    mega.tpw.addDownloadUpload(mega.tpw.UPLOAD, u[ur]);
         // }
+        if (!added) {
+            ulmanager.logger.warn('Nothing added to upload.');
+            return;
+        }
+
         tfsheadupdate({
             a: u.map((u) => {
                 return `ul_${u.id}`;
             })
         });
         mega.tpw.addDownloadUpload(mega.tpw.UPLOAD, u);
-
-        if (!added) {
-            ulmanager.logger.warn('Nothing added to upload.');
-            return;
-        }
         if (!$.transferHeader) {
             M.addTransferPanelUI();
         }
@@ -1376,6 +1376,9 @@ MegaData.prototype.addUpload = function(u, ignoreWarning, emptyFolders, target) 
     });
 
     makeDirPromise.then(() => {
+        if (!u.length) {
+            return u;
+        }
         var targets = Object.create(null);
 
         for (var i = u.length; i--;) {
@@ -1448,7 +1451,7 @@ MegaData.prototype.addNewFile = function(fileName, dest) {
     nFile.target = dest;
     nFile.id = ++__ul_id;
     nFile.path = '';
-    nFile.isCreateFile = true;
+    nFile.ulSilent = true;
     nFile.promiseToInvoke = addFilePromise;
 
 
@@ -1474,7 +1477,10 @@ MegaData.prototype.ulprogress = function(ul, perc, bl, bt, bps) {
 
         domElement = ul.domElement = document.getElementById('ul_' + id);
         if (!domElement) {
-            console.error('DOM Element not found...', id, ul);
+            if (!ul.xput) {
+                // @todo reuse the function from boot.js, associated per ul-queue entry
+                console.error('DOM Element not found...', id, ul);
+            }
             return false;
         }
 
@@ -1644,7 +1650,7 @@ MegaData.prototype.ulcomplete = function(ul, h, faid) {
     'use strict';
 
     // If there is no start time, initialise the upload and set percentage to 100, e.g. with deduplicated uploads
-    if (h && !ul.isCreateFile && typeof ul.starttime === 'undefined') {
+    if (h && !ul.ulSilent && ul.starttime === undefined) {
         M.ulstart(ul);
         M.ulprogress(ul, 100, ul.size, ul.size, 0);
     }
@@ -2006,8 +2012,9 @@ function fm_tfsupdate() {
         }
         else if (M.pendingTransfers) {
             // Move completed transfers to the bottom
-            while (completedLen--) {
-                parent.appendChild(domCompleted[completedLen]);
+            let i = 0;
+            while (i < completedLen) {
+                parent.appendChild(domCompleted[i++]);
             }
         }
     }

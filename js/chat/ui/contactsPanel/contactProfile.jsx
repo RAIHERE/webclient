@@ -1,29 +1,31 @@
 import React from 'react';
-import {MegaRenderMixin} from '../../mixins';
-import {Avatar, ContactPresence} from '../contacts.jsx';
-import {Button} from '../../../ui/buttons.jsx';
-import {Dropdown} from '../../../ui/dropdowns.jsx';
+import { MegaRenderMixin } from '../../mixins';
+import { Avatar, ContactPresence } from '../contacts.jsx';
+import { Button } from '../../../ui/buttons.jsx';
+import { Dropdown } from '../../../ui/dropdowns.jsx';
 import { Emoji } from '../../../ui/utils.jsx';
 import ContactsPanel from './contactsPanel.jsx';
 import ContextMenu from './contextMenu.jsx';
-import FMView from "../../../ui/jsx/fm/fmView.jsx";
-import {ColumnFavIcon} from "../../../ui/jsx/fm/nodes/columns/columnFavIcon.jsx";
-import {ColumnSharedFolderName} from "../../../ui/jsx/fm/nodes/columns/columnSharedFolderName.jsx";
-import {ColumnSharedFolderAccess} from "../../../ui/jsx/fm/nodes/columns/columnSharedFolderAccess.jsx";
-import {ColumnSharedFolderButtons} from "../../../ui/jsx/fm/nodes/columns/columnSharedFolderButtons.jsx";
+import FMView from '../../../ui/jsx/fm/fmView.jsx';
+import { ColumnFavIcon } from '../../../ui/jsx/fm/nodes/columns/columnFavIcon.jsx';
+import { ColumnSharedFolderName } from '../../../ui/jsx/fm/nodes/columns/columnSharedFolderName.jsx';
+import { ColumnSharedFolderAccess } from '../../../ui/jsx/fm/nodes/columns/columnSharedFolderAccess.jsx';
+import { ColumnSharedFolderButtons } from '../../../ui/jsx/fm/nodes/columns/columnSharedFolderButtons.jsx';
 import Nil from './nil.jsx';
 import Link from '../link.jsx';
-import { inProgressAlert } from '../meetings/call.jsx';
+import { EVENTS, VIEWS } from '../conversations.jsx';
 
 export default class ContactProfile extends MegaRenderMixin {
+    domRef = React.createRef();
+
     state = {
         selected: [],
         loading: true
     };
 
-    componentWillMount() {
-        if (super.componentWillMount) {
-            super.componentWillMount();
+    UNSAFE_componentWillMount() {
+        if (super.UNSAFE_componentWillMount) {
+            super.UNSAFE_componentWillMount();
         }
 
         const { handle } = this.props;
@@ -157,6 +159,7 @@ export default class ContactProfile extends MegaRenderMixin {
 
     render() {
         const { handle } = this.props;
+
         if (handle) {
             const contact = M.u[handle];
 
@@ -167,7 +170,9 @@ export default class ContactProfile extends MegaRenderMixin {
             const HAS_RELATIONSHIP = ContactsPanel.hasRelationship(contact);
 
             return (
-                <div className="contacts-profile">
+                <div
+                    ref={this.domRef}
+                    className="contacts-profile">
                     <this.Breadcrumb />
                     <div className="profile-content">
                         <div className="profile-head">
@@ -188,7 +193,10 @@ export default class ContactProfile extends MegaRenderMixin {
                                         className="mega-button round simpletip"
                                         icon="sprite-fm-mono icon-chat-filled"
                                         attrs={{ 'data-simpletip': l[8632] /* `Start new chat` */ }}
-                                        onClick={() => loadSubPage(`fm/chat/p/${handle}`)}
+                                        onClick={() => {
+                                            loadSubPage(`fm/chat/p/${handle}`);
+                                            megaChat.trigger(EVENTS.NAV_RENDER_VIEW, VIEWS.CHATS);
+                                        }}
                                     />
                                     <Button
                                         className="mega-button round simpletip"
@@ -221,6 +229,7 @@ export default class ContactProfile extends MegaRenderMixin {
                 </div>
             );
         }
+
         return null;
     }
 }

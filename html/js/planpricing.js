@@ -62,6 +62,8 @@ lazy(pro, 'proplan2', () => {
     let VpnPlanFound = false;
     let PwmPlanFound = false;
 
+    const allowedPeriods = new Set([1, 12]);
+
     /**
      * @type {PricingPageInformation}
      */
@@ -276,6 +278,8 @@ lazy(pro, 'proplan2', () => {
         },
     };
 
+    const setSItem = tryCatch((k, v) => sessionStorage.setItem(k, `${v}`));
+
     const getCurrentTab = () => (tabsInfo[window.mProTab] && tabsInfo[window.mProTab].tabID)
         || sessionStorage['pro.pricingTab']
         || tabsInfo.pro.tabID;
@@ -404,7 +408,12 @@ lazy(pro, 'proplan2', () => {
             }
             else if (tab === 3 && tabAvailable('vpn')) {
                 if (!tabsInfo.vpn.initialized) {
-                    tabsInfo.vpn.$planCards = pro.proplan2.vpn.renderPricingPage(VpnPlanFound, $page, moveToBuyStep);
+                    tabsInfo.vpn.$planCards = pro.proplan2.vpn
+                        .renderPricingPage(VpnPlanFound, $page, (months, al, trial) => {
+                            setSItem('pro.period', months);
+                            setSItem(`noTrial${al}`, +!trial);
+                            moveToBuyStep(al);
+                        });
                     tabsInfo.vpn.initialized = true;
                     tabsInfo.vpn.updateTabVisibility();
                     tabsInfo.vpn.requiresUpdate = true;
@@ -413,7 +422,12 @@ lazy(pro, 'proplan2', () => {
             }
             else if (tab === 4 && tabAvailable('pwm')) {
                 if (!tabsInfo.pwm.initialized) {
-                    tabsInfo.pwm.$planCards = pro.proplan2.pwm.renderPricingPage(PwmPlanFound, $page, moveToBuyStep);
+                    tabsInfo.pwm.$planCards = pro.proplan2.pwm
+                        .renderPricingPage(PwmPlanFound, $page, (months, al, trial) => {
+                            setSItem('pro.period', months);
+                            setSItem(`noTrial${al}`, +!trial);
+                            moveToBuyStep(al);
+                        });
                     tabsInfo.pwm.initialized = true;
                     tabsInfo.pwm.updateTabVisibility();
                     tabsInfo.pwm.requiresUpdate = true;
@@ -450,7 +464,7 @@ lazy(pro, 'proplan2', () => {
             changeIndividualTeamTab(this);
 
             currentTab = this.id;
-            sessionStorage['pro.pricingTab'] = this.id;
+            setSItem('pro.pricingTab', currentTab);
 
             switch (this.id) {
                 case 'pr-individual-tab':
@@ -502,7 +516,7 @@ lazy(pro, 'proplan2', () => {
         eventlog(500337, currentTab);
 
         // Update the savedTab so that it will be set correctly when visited via /pro?tab=XXX
-        sessionStorage['pro.pricingTab'] = currentTab;
+        setSItem('pro.pricingTab', currentTab);
     };
 
     const initPlansTabs = () => {
@@ -570,6 +584,13 @@ lazy(pro, 'proplan2', () => {
                         delay('pricing.plan-mobile', eventlog.bind(null, 99869 + planId));
                     }
                     delay('pricing.plan', eventlog.bind(null, 99779 + planId));
+                    eventlog(pro.taxInfo ? 500911 : 500910);
+                    if (mega.flags.ff_npabm) {
+                        eventlog(500591, sessionStorage['pro.period']);
+                    }
+                    else {
+                        eventlog(500590, sessionStorage['pro.period']);
+                    }
 
                     moveToBuyStep(planId);
                 }
@@ -631,11 +652,27 @@ lazy(pro, 'proplan2', () => {
         let totalPrice;
         let currency = 'EUR';
 
+        const getNetOrTotal = (obj, cond, local) => {
+            if (!obj) {
+                return;
+            }
+            if (cond === undefined) {
+                cond = true;
+            }
+            if (local) {
+                return cond ? (obj.lpn || obj.lp) : obj.lp;
+            }
+            return cond ? (obj.pn || obj.p) : obj.p;
+        };
+
         if (pro.proplan.businessPlanData.isLocalInfoValid) {
             currency = pro.proplan.businessPlanData.l.lc;
-            const totalUsersCost = pro.proplan.businessPlanData.bd.us.lp * users;
-            const totalStorageCost = pro.proplan.businessPlanData.bd.sto.lp * extraStorage;
-            const totalTransferCost = pro.proplan.businessPlanData.bd.trns.lp * extraTransfer;
+            const totalUsersCost = getNetOrTotal(pro.proplan.businessPlanData.bd.us, pro.taxInfo, 1)
+                * users;
+            const totalStorageCost = getNetOrTotal(pro.proplan.businessPlanData.bd.sto, pro.taxInfo, 1)
+                * extraStorage;
+            const totalTransferCost = getNetOrTotal(pro.proplan.businessPlanData.bd.trns, pro.taxInfo, 1)
+                * extraTransfer;
 
             totalPrice = formatCurrency(
                 totalUsersCost + totalStorageCost + totalTransferCost,
@@ -644,9 +681,12 @@ lazy(pro, 'proplan2', () => {
             );
         }
         else {
-            const totalUsersCost = pro.proplan.businessPlanData.bd.us.p * users;
-            const totalStorageCost = pro.proplan.businessPlanData.bd.sto.p * extraStorage;
-            const totalTransferCost = pro.proplan.businessPlanData.bd.trns.p * extraTransfer;
+            const totalUsersCost = getNetOrTotal(pro.proplan.businessPlanData.bd.us, pro.taxInfo, 0)
+                * users;
+            const totalStorageCost = getNetOrTotal(pro.proplan.businessPlanData.bd.sto, pro.taxInfo, 0)
+                * extraStorage;
+            const totalTransferCost = getNetOrTotal(pro.proplan.businessPlanData.bd.trns, pro.taxInfo, 0)
+                * extraTransfer;
 
             totalPrice = formatCurrency(totalUsersCost + totalStorageCost + totalTransferCost);
         }
@@ -906,8 +946,6 @@ lazy(pro, 'proplan2', () => {
             $('#table-trans-mini', $tableContainer).text(excTransfer);
             $('#table-days-mini', $tableContainer).text(mega.icu.format(l.pr_up_to_days, 90));
 
-            // $('.no-ads', $tableContainer).toggleClass('hidden', !(mega.flags.ab_ads));
-
             // Set button link and text for mini plan button
             $('button.pro-exc-offer', $tableContainer)
                 .text(l.buy_plan.replace('%1', planName))
@@ -1099,6 +1137,22 @@ lazy(pro, 'proplan2', () => {
         $('.pricing-plan-price span.vl', $proFlexCard).text(formatCurrency(flexiPrice, flexiCurrency, 'narrowSymbol'));
         $('.pricing-plan-price-unit', $proFlexCard).text(`${flexiCurrency} / ${l[931]}`);
 
+        const planTaxInfo = pro.taxInfo && pro.getStandardisedTaxInfo(ProFlexiFound[pro.UTQA_RES_INDEX_EXTRAS].taxInfo);
+        const $taxInfo = $('.pricing-plan-tax', $proFlexCard).toggleClass('hidden', !planTaxInfo);
+
+        if (planTaxInfo) {
+            if (pro.taxInfo.variant === 1) {
+                $('.tax-info', $taxInfo).text(l.t_may_appy.replace('%1', pro.taxInfo.taxName));
+            }
+            else {
+                $('.tax-info', $taxInfo).text(l.before_tax);
+                $('.tax-price', $taxInfo).text(l.p_with_tax
+                    .replace('%1', formatCurrency((planTaxInfo.taxedPrice), flexiCurrency, 'narrowSymbol')
+                            + (flexiCurrency === 'EUR' ? ' ' : '* ') + flexiCurrency))
+                    .removeClass('hidden');
+            }
+        }
+
         const baseStorage = ProFlexiFound[pro.UTQA_RES_INDEX_STORAGE] / 1024;
 
         $('.pricing-plan-storage', $proFlexCard)
@@ -1156,7 +1210,9 @@ lazy(pro, 'proplan2', () => {
             return;
         }
 
-        period = period || 12;
+        if (!allowedPeriods.has(period)) {
+            period = 12; // Default is yearly
+        }
 
         if (!pro.membershipPlans.length) {
             console.error('Plans couldnt be loaded.');
@@ -1181,6 +1237,8 @@ lazy(pro, 'proplan2', () => {
         let localPriceInfo = false;
         let periodSwapped = false;
         ProFlexiFound = false;
+
+        let showYearlyPerMonth = mega.flags.ff_npabm && (period === 12);
 
         for (const currentPlan of pro.membershipPlans) {
 
@@ -1212,6 +1270,7 @@ lazy(pro, 'proplan2', () => {
                 period = pro.singleDurationPlans[planNum];
                 periodText = period === 12 ? l[932] : l[931];
                 periodSwapped = true;
+                showYearlyPerMonth = showYearlyPerMonth && (period === 12);
             }
 
             if (months !== period || planNum === pro.ACCOUNT_LEVEL_BUSINESS) {
@@ -1234,10 +1293,40 @@ lazy(pro, 'proplan2', () => {
                 }
             }
 
-            const priceText = formatCurrency(planPrice, priceCurrency, 'narrowSymbol');
+            let billingFrequencyText;
+            let priceText;
+            if (showYearlyPerMonth) {
+                billingFrequencyText = l.curr_per_month_billed_yearly
+                    .replace('%1', priceCurrency);
+                priceText = formatCurrency(planPrice / 12, priceCurrency, 'narrowSymbol');
+            }
+            else {
+                billingFrequencyText = priceCurrency + ' / ' + periodText;
+                priceText = formatCurrency(planPrice, priceCurrency, 'narrowSymbol');
+            }
 
             $('.pricing-plan-price span.vl', $planCard).text(priceText);
-            $('.pricing-plan-price-unit', $planCard).text(priceCurrency + ' / ' +  periodText);
+            $('.pricing-plan-price-unit', $planCard).text(billingFrequencyText);
+
+
+
+            const planTaxInfo = pro.taxInfo
+                && pro.getStandardisedTaxInfo(currentPlan[pro.UTQA_RES_INDEX_EXTRAS].taxInfo);
+            const $taxInfo = $('.pricing-plan-tax', $planCard).toggleClass('hidden', !planTaxInfo);
+            if (planTaxInfo) {
+                if (pro.taxInfo.variant === 1) {
+                    $('.tax-info', $taxInfo).text(l.t_may_appy.replace('%1', pro.taxInfo.taxName));
+                }
+                else {
+                    $('.tax-info', $taxInfo).text(l.before_tax);
+                    $('.tax-price', $taxInfo).text(l.p_with_tax
+                        .replace('%1', formatCurrency(
+                            planTaxInfo.taxedPrice / ((showYearlyPerMonth && 12) || 1),
+                            priceCurrency, 'narrowSymbol') + (priceCurrency === 'EUR' ? ' ' : '* ')
+                            + priceCurrency))
+                        .removeClass('hidden');
+                }
+            }
 
             if (priceText) {
                 $planCard.toggleClass('long-currency1', priceText.length >= 9 && priceText.length <= 12);
@@ -1282,6 +1371,13 @@ lazy(pro, 'proplan2', () => {
                 $('.meeting-limits span', $featuresBox).text(l.pr_no_meet_time_limits);
                 $('.meeting-participants span', $featuresBox).text(l.pr_unlimited_participants);
             }
+        }
+
+        if (showYearlyPerMonth) {
+            eventlog(500588, true);
+        }
+        else if (period === 12) {
+            eventlog(500589, true);
         }
 
         const $freeBanner = $('.pricing-pg.pricing-banner-container', $page);
@@ -1338,27 +1434,49 @@ lazy(pro, 'proplan2', () => {
         let pricePerUser = pro.proplan.businessPlanData.bd && pro.proplan.businessPlanData.bd.us
             && pro.proplan.businessPlanData.bd.us.p;
         let priceCurrency;
-        let storagePrice;
         let hasLocalPrice = false;
 
         const minStorageValue = pro.proplan.businessPlanData.bd.ba.s / 1024;
+
+        const storageLocalPrice = pro.proplan.businessPlanData.bd.sto.lpn || pro.proplan.businessPlanData.bd.sto.lp;
+        let storagePrice = !storageLocalPrice
+            && (pro.proplan.businessPlanData.bd.sto.pn || pro.proplan.businessPlanData.bd.sto.p);
 
         if (pro.proplan.businessPlanData.isLocalInfoValid) {
 
             priceCurrency = pro.proplan.businessPlanData.l.lc;
 
             pricePerUser = formatCurrency(pro.proplan.businessPlanData.bd.us.lp * 3, priceCurrency, 'narrowSymbol');
-            storagePrice = formatCurrency(pro.proplan.businessPlanData.bd.sto.lp, priceCurrency, 'narrowSymbol');
+            storagePrice = formatCurrency(storageLocalPrice, priceCurrency, 'narrowSymbol');
             hasLocalPrice = true;
         }
         else {
             priceCurrency = 'EUR';
             pricePerUser = formatCurrency(pricePerUser * 3);
-            storagePrice = formatCurrency(pro.proplan.businessPlanData.bd.sto.p);
+            storagePrice = formatCurrency(storagePrice);
         }
 
-        $('.pricing-plan-price .vl', $businessCard).text(pricePerUser);
+        const businessPlanObj = pro.planObjects.createBusinessPlanObject(pro.proplan.businessPlanData);
+        $('.pricing-plan-price .vl', $businessCard).text(businessPlanObj.getFormattedPrice('narrowSymbol'));
         $('.pricing-plan-price-unit', $businessCard).text(`${priceCurrency} / ${l[931]}`);
+
+        const planTaxInfo = businessPlanObj.taxInfo;
+        const $taxInfo = $('.pricing-plan-tax', $businessCard).toggleClass('hidden', !planTaxInfo);
+
+        if (planTaxInfo) {
+            if (pro.taxInfo.variant === 1) {
+                $('.tax-info', $taxInfo).text(l.t_may_appy.replace('%1', pro.taxInfo.taxName));
+            }
+            else {
+                $('.tax-info', $taxInfo).text(l.before_tax);
+                $('.tax-price', $taxInfo).text(l.p_with_tax
+                    .replace('%1', formatCurrency(
+                        planTaxInfo.taxedPrice, priceCurrency, 'narrowSymbol')
+                        + (priceCurrency === 'EUR' ? ' ' : '* ') + priceCurrency))
+                    .removeClass('hidden');
+            }
+        }
+
         $('.pricing-plan-storage .business-base', $businessCard)
             .text(l.bsn_base_stg_trs.replace('%1', minStorageValue));
         $('.pricing-plan-trasfer', $businessCard)
@@ -1421,7 +1539,11 @@ lazy(pro, 'proplan2', () => {
         const $strgFlexInput = $('#esti-storage', $proflexiBlock);
         const $transFlexInput = $('#esti-trans', $proflexiBlock);
 
-        const preSelectedPeriod = (sessionStorage.getItem('pro.period') | 0) || 12;
+        let preSelectedPeriod = (sessionStorage.getItem('pro.period') | 0);
+
+        if (!allowedPeriods.has(preSelectedPeriod)) {
+            preSelectedPeriod = 12;
+        }
 
         if (preSelectedPeriod === 12) {
             $radioOptions.removeClass('selected');
@@ -1442,7 +1564,7 @@ lazy(pro, 'proplan2', () => {
                 delay('pricing.plan', eventlog.bind(null, is_mobile ? 99869 : 99868));
             }
 
-            sessionStorage.setItem('pro.period', this.dataset.period);
+            setSItem('pro.period', this.dataset.period);
             fillPlansInfo({
                 duration: this.dataset.period | 0,
                 tab: pageInformation.currentTab.key || 'pro',
@@ -1781,8 +1903,17 @@ lazy(pro, 'proplan2', () => {
 
         async initPage() {
 
-            // validate the request, checking for business + proFlexi
+            // TODO: Use only one of either window or sessionStorage for accessing a mega.nz/pro tab
+            const canAccessProPage = u_attr
+                || (window.mProTab === 'exc')       // This will force the user to login, and pre-select the tab
+                || (sessionStorage.mScrollTo === 'exc')     // Does the same as above
+                || (localStorage.allowLoggedOutPricingPage);        // May be useful for future testing
 
+            if (!canAccessProPage) {
+                mega.redirect('mega.io', 'pricing', false, false);
+            }
+
+            // validate the request, checking for business + proFlexi
             if (!validatePageRequest()) {
                 return false;
             }
@@ -1798,7 +1929,8 @@ lazy(pro, 'proplan2', () => {
             await fetchBusinessPlanInfo();
             parsepage(pages.planpricing);
 
-            if (mega.ui.header) {
+            // Temporary fix for desktop propay as it does not using new header
+            if (is_mobile && mega.ui.header) {
                 mega.ui.header.update();
             }
             if (mega.ui.alerts) {
@@ -1811,7 +1943,10 @@ lazy(pro, 'proplan2', () => {
             $exclusivePlans = $('.exclusive-plans-container', $page);
             $periodPicker = $('.pick-period-container', $page);
 
-            delay('pricingpage.init', eventlog.bind(null, is_mobile ? 99936 : 99935));
+            delay('pricingpage.init', () =>{
+                eventlog(is_mobile ? 99936 : 99935);
+                eventlog(pro.taxInfo ? 500909 : 500908);
+            });
 
             // Check the user is allowed to see the low tier version of the pro page
             // (i.e. if the lowest plan returned is a mini plan)

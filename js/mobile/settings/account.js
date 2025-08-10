@@ -17,7 +17,7 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
 
 
             this.domNode = useOverlay ?
-                mCreateElement('div', {class: 'mega-mobile-settings account'}) : this.generatePage('account');
+                mCreateElement('div', {class: 'mega-mobile-settings account mob-px-6'}) : this.generatePage('account');
 
             this.overlayAccount = useOverlay;
 
@@ -170,7 +170,7 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
 
             const userInfoContainer = mCreateElement('div', {}, [userName, userEmail]);
 
-            this.renderUpgradeButton(userInfoContainer);
+            MegaMobileTopMenu.renderUpgradeButton(userInfoContainer, 99836);
 
             const accountTop = mCreateElement('div', {class: 'account-information'},
                                               [avatarContainer, userInfoContainer]);
@@ -223,44 +223,6 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
         },
     },
 
-    renderUpgradeButton: {
-        value: function(userInfoContainer) {
-            'use strict';
-
-            let btn;
-
-            if (u_attr && !u_attr.pf && !u_attr.b) {
-                btn = new MegaLink({
-                    parentNode: userInfoContainer,
-                    href: 'pro',
-                    componentClassname: 'upgrade outline',
-                    text: l[433]
-                });
-            }
-
-            // If expired business master account show reactivate button
-            else if (u_attr && (u_attr.b && u_attr.b.m && u_attr.b.s !== pro.ACCOUNT_STATUS_ENABLED
-                || u_attr.pf && u_attr.pf.s !== pro.ACCOUNT_STATUS_ENABLED)) {
-
-                btn = new MegaLink({
-                    parentNode: userInfoContainer,
-                    href: 'repay',
-                    componentClassname: 'upgrade outline',
-                    text: l.mobile_account_reactivate
-                });
-            }
-
-            if (btn) {
-                btn.rebind('beforeRedirect', () => {
-                    if (this.overlayAccount) {
-                        mega.ui.overlay.hide();
-                    }
-                    eventlog(99836);
-                });
-            }
-        }
-    },
-
     render: {
         value: function() {
 
@@ -279,13 +241,6 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
                     href: 'fm/account/achievements',
                     eventLog: 99837,
                     componentClassname: 'hidden achievement-btn'
-                },
-                {
-                    text:l[22682],
-                    icon: 'sprite-mobile-fm-mono icon-users-thin-outline',
-                    href: 'fm/refer',
-                    eventLog: 99845,
-                    componentClassname: 'hidden referrals-btn'
                 },
                 {
                     text: l[23262],
@@ -313,7 +268,7 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
                         const _gatewayCheck = async(gatewayIds) => {
                             // If Apple or Google subscription show popup dialog
                             if (gatewayIds.length === 1 && (gatewayIds.includes(2) || gatewayIds.includes(3))) {
-                                msgDialog('info', l[7165], l[16501]);
+                                msgDialog('info', l[7165], l.double_billing_sub_cancel);
                             }
                             // Otherwise check for active subscriptions
                             else {
@@ -364,13 +319,6 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
                 });
             }
 
-            if (mega.flags.refpr) {
-                const referralsBtn = this.domNode.componentSelector('.referrals-btn');
-                if (referralsBtn) {
-                    referralsBtn.show();
-                }
-            }
-
             if (u_attr && (!u_attr.b || u_attr.b.m)) {
                 this.generateMenuItem(this.domNode, {
                     text: l[16115],
@@ -412,11 +360,7 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
 
             version.rebind('tap.versionupdate', () => {
                 if (++versionClickCounter >= 3) {
-                    mega.developerSettings.show();
-
-                    if (this.overlayAccount) {
-                        mega.ui.overlay.hide();
-                    }
+                    msgDialog('info', '', 'Developer tools have moved. Ask the team for access!');
                 }
                 delay('top-version-click', () => {
                     versionClickCounter = 0;
@@ -467,7 +411,14 @@ mobile.settings.account = Object.create(mobile.settingsHelper, {
 
                 // Check if we should show the Payment Card button (uq response)
                 if (payCardBtn && mobile.settings.account.paymentCard.validateUser(M.account)) {
-                    payCardBtn.show();
+                    api.req({a: 'cci', v: 2})
+                        .then(({result}) => mobile.settings.account.paymentCard.validateCardResponse(result))
+                        .then((res) => {
+                            if (res) {
+                                payCardBtn.show();
+                            }
+                        })
+                        .catch(dump);
                 }
 
                 // Check for any subscriptions

@@ -1,4 +1,4 @@
-(function(scope) {
+mBroadcaster.once('boot_done', () => {
     "use strict"; /* jshint maxcomplexity:19, maxdepth:6 */
 
     var DYNLIST_ENABLED = true;
@@ -10,64 +10,165 @@
             // List view mode
             '<table>' +
                 '<tr>' +
-                    '<td class="space-maintainer-start"></td>' +
-                    '<td megatype="fav">' +
-                        '<span class="grid-status-icon sprite-fm-mono icon-dot"></span>' +
+                    '<td class="space-maintainer-start">' +
+                        '<i class="sprite-fm-mono icon-check selected"></i>' +
                     '</td>' +
                     '<td megatype="fname">' +
                         '<span class="item-type-icon"><img/></span>' +
                         '<span class="tranfer-filetype-txt"></span>' +
                     '</td>' +
+                    '<td megatype="fav">' +
+                        '<span class="grid-status-icon sprite-fm-mono icon-heart-thin-outline simpletip" ' +
+                            `data-simpletip="${l[5871]}" data-simpletipposition="top"></span > ` +
+                    '</td>' +
                     '<td megatype="label" class="label"></td>' +
-                    '<td megatype="size" class="size"></td>' +
-                    '<td megatype="type" class="type"></td>' +
                     '<td megatype="timeAd" class="time ad"></td>' +
                     '<td megatype="timeMd" class="time md"></td>' +
+                    '<td megatype="type" class="type"></td>' +
+                    '<td megatype="size" class="size"></td>' +
                     '<td megatype="versions" class="hd-versions"></td>' +
                     '<td megatype="playtime" class="playtime"></td>' +
                     '<td megatype="fileLoc" class="fileLoc">' +
                         '<span class="grid-file-location"></span>' +
                     '</td>' +
                     '<td megatype="extras" class="grid-url-field own-data">' +
-                        '<a class="grid-url-arrow"><i class="sprite-fm-mono icon-options"></i></a>' +
+                        '<a class="grid-url-arrow">' +
+                            '<i class="sprite-fm-mono icon-more-vertical-thin-outline simpletip" ' +
+                                `data-simpletip="${l.more_actions}" data-simpletipposition="top"></i>` +
+                        '</a>' +
                         '<span class="versioning-indicator">' +
-                            '<i class="sprite-fm-mono icon-versions-previous"></i>' +
+                            '<i class="sprite-fm-mono icon-clock-rotate"></i>' +
                         '</span>' +
-                        '<i class="sprite-fm-mono icon-link"></i>' +
+                        '<i class="sprite-fm-mono icon-link-thin-outline simpletip" ' +
+                            `data-simpletip="${l[6909]}" data-simpletipposition="top"></i>` +
                     '</td>' +
                     '<td class="space-maintainer-end" megatype="empty"></td>' +
                 '</tr>' +
             '</table>',
 
             // Icon view mode
-            '<a class="data-block-view">' +
-                '<span class="data-block-bg ">' +
-                    '<span class="data-block-indicators">' +
-                        '<span class="file-status-icon indicator sprite-fm-mono"></span>' +
-                        '<span class="versioning-indicator">' +
-                            '<i class="sprite-fm-mono icon-versions-previous"></i>' +
-                        '</span>' +
-                        '<i class="sprite-fm-mono icon-link"></i>' +
-                    '</span>' +
-                    '<span class="item-type-icon-90"><img/></span>' +
-                    '<span class="file-settings-icon"><i class="sprite-fm-mono icon-options"></i></span>' +
-                    '<div class="video-thumb-details">' +
-                        '<i class="sprite-fm-mono icon-play"></i>' +
-                        '<span>00:00</span>' +
-                    ' </div>' +
-                '</span>' +
-                '<span class="file-block-title"></span>' +
+            '<a class="mega-node fm-item">' +
+                '<i class="sprite-fm-mono icon-check selected"></i>' +
+                '<div class="fm-item-img">' +
+                    '<i class="item-type-icon-90"></i>' +
+                    '<img>' +
+                '</div>' +
+                '<div class="fm-item-name"></div>' +
+                '<div class="props">' +
+                    '<span class="num-files"></span>' +
+                    '<span class="size"></span>' +
+                    '<i class="icon-favourite sprite-fm-mono icon-heart-thin-solid icon simpletip" ' +
+                        `data-simpletip="${l[5872]}" data-simpletipposition="top" title></i>` +
+                    '<i class="icon-version sprite-fm-mono icon-clock-rotate icon simpletip" ' +
+                        `data-simpletip="${l[16474]}" data-simpletipposition="top" title></i>` +
+                    '<i class="icon-link sprite-fm-mono icon-link-thin-outline icon simpletip" ' +
+                        `data-simpletip="${l[6909]}" data-simpletipposition="top" title></i>` +
+                    '<span class="duration"></span>' +
+                '</div>' +
+                '<div class="props-bottom-left">' +
+                    '<i class="colour-label"></i>' +
+                '</div>' +
+                '<div class="props-bottom-right">' +
+                    '<button class="mega-component context-btn open-context-menu text-icon nav-elem icon-only' +
+                        ` simpletip" data-simpletip="${l.more_actions}" title>` +
+                        '<i class="sprite-fm-mono icon-more-vertical-thin-outline left-icon icon-size-20"></i>' +
+                    '</button>' +
+                '</div>' +
             '</a>'
+        ],
+
+        'device-centre-devices': [
+            // List view mode
+            '<table>' +
+                '<tr>' +
+                    '<td></td>' +
+                    '<td megatype="fname">' +
+                        '<div ' +
+                            'class="device-centre-item-icon medium-file-icon sprite-fm-theme"' +
+                        '>' +
+                        '</div>' +
+                        '<div class="device-centre-item-info-block">' +
+                            '<div class="device-centre-item-name"></div>' +
+                            '<div class="device-centre-item-info"></div>' +
+                        '</div>' +
+                    '</td>' +
+                    '<td megatype="numFolders">' +
+                        '<div class="device-centre-item-contain"></div>' +
+                    '</td>' +
+                    '<td megatype="size">' +
+                        '<div class="device-centre-item-size"></div>' +
+                    '</td>' +
+                    '<td class="grid-url-header-nw">' +
+                        '<a class="grid-url-arrow">' +
+                            '<i class="sprite-fm-mono icon-more-vertical-thin-outline simpletip" ' +
+                                `data-simpletip="${l.more_actions}" data-simpletipposition="top"></i>` +
+                        '</a>' +
+                    '</td>' +
+                    '<td class="space-maintainer-end" megatype="empty"></td>' +
+                '</tr>' +
+            '</table>',
+
+            // Icon view mode: view not available
+            '<span></span>'
+        ],
+
+        'device-centre-folders': [
+            // List view mode
+            '<table>' +
+                '<tr>' +
+                    '<td></td>' +
+                    '<td megatype="fname">' +
+                        '<div ' +
+                            'class="device-centre-item-icon medium-file-icon item-type-icon-90"' +
+                        '>' +
+                        '</div>' +
+                        '<div class="device-centre-item-info-block">' +
+                            '<div class="device-centre-item-name"></div>' +
+                            '<div class="device-centre-item-info"></div>' +
+                        '</div>' +
+                    '</td>' +
+                    '<td megatype="label" class="label"></td>' +
+                    '<td megatype="type">' +
+                        '<div class="device-centre-item-type"></div>' +
+                    '</td>' +
+                    '<td megatype="size">' +
+                        '<div class="device-centre-item-size"></div>' +
+                    '</td>' +
+                    '<td megatype="timeAd">' +
+                        '<div class="device-centre-item-added"></div>' +
+                    '</td>' +
+                    '<td megatype="hbtime">' +
+                        '<div class="device-centre-item-modified"></div>' +
+                    '</td>' +
+                    '<td megatype="extras" class="grid-url-field own-data">' +
+                        '<a class="grid-url-arrow">' +
+                            '<i class="sprite-fm-mono icon-more-vertical-thin-outline simpletip" ' +
+                                `data-simpletip="${l.more_actions}" data-simpletipposition="top"></i>` +
+                        '</a>' +
+                        '<span class="versioning-indicator">' +
+                            '<i class="sprite-fm-mono icon-clock-rotate"></i>' +
+                        '</span>' +
+                        '<i class="sprite-fm-mono icon-link-thin-outline simpletip" ' +
+                            `data-simpletip="${l[6909]}" data-simpletipposition="top"></i>` +
+                    '</td>' +
+                    '<td class="space-maintainer-end" megatype="empty"></td>' +
+                '</tr>' +
+            '</table>',
+
+            // Icon view mode: view not available
+            '<span></span>'
         ],
 
         'shares': [
             // List view mode
             '<table>' +
                 '<tr>' +
-                    '<td></td>' +
+                    '<td>' +
+                        '<i class="sprite-fm-mono icon-check selected"></i>' +
+                    '</td>' +
                     '<td>' +
                         '<div ' +
-                            'class="item-type-icon-90 icon-folder-incoming-90 sprite-fm-uni-after icon-warning-after"' +
+                            'class="item-type-icon-90 icon-folder-users-90 sprite-fm-uni-after icon-warning-after"' +
                         '>' +
                         '</div>' +
                         '<div class="shared-folder-info-block">' +
@@ -75,6 +176,7 @@
                             '<div class="shared-folder-info"></div>' +
                         '</div>' +
                     '</td>' +
+                    '<td class="label"></td>' +
                     '<td>' +
                         '<div class="fm-chat-user-info todo-star ustatus">' +
                             '<div class="todo-fm-chat-user-star"></div>' +
@@ -83,124 +185,103 @@
                             '<div class="clear"></div>' +
                         '</div>' +
                     '</td>' +
-                    '<td>' +
+                    '<td class="size-col">' +
                         '<div class="shared-folder-size"></div>' +
                     '</td>' +
                     '<td>' +
                         '<div class="shared-folder-access"><i class="sprite-fm-mono"></i><span></span></div>' +
                     '</td>' +
                     '<td class="grid-url-header-nw">' +
-                        '<a class="grid-url-arrow"><i class="sprite-fm-mono icon-options"></i></a>' +
+                        '<a class="grid-url-arrow">' +
+                            '<i class="sprite-fm-mono icon-more-vertical-thin-outline simpletip" ' +
+                                `data-simpletip="${l.more_actions}" data-simpletipposition="top"></i>` +
+                        '</a>' +
                     '</td>' +
                     '<td class="space-maintainer-end" megatype="empty"></td>' +
                 '</tr>' +
-            '</table>',
-
-            // Icon view mode
-            '<a class="data-block-view folder">' +
-                '<span class="data-block-bg">' +
-                    '<span class="data-block-indicators">' +
-                       '<span class="file-status-icon indicator sprite-fm-mono"></span>' +
-                       '<span class="shared-folder-access indicator sprite-fm-mono"></span>' +
-                    '</span>' +
-                    '<span class="item-type-icon-90 icon-folder-incoming-90"></span>' +
-                    '<span class="file-settings-icon"><i class="sprite-fm-mono icon-options"></i></span>' +
-                    '<div class="video-thumb-details">' +
-                        '<i class="sprite-fm-mono icon-play"></i>' +
-                        '<span>00:00</span>' +
-                    '</div>' +
-                '</span>' +
-                '<span class="shared-folder-info-block">' +
-                    '<span class="shared-folder-name"></span>' +
-                    '<span class="shared-folder-info"></span>' +
-                    '<div class="fm-user-verification"><span></span></div>' +
-                '</span>' +
-            '</a>'
+            '</table>'
         ],
 
         'out-shares': [
             // List view mode
             '<table>' +
                 '<tr>' +
-                    '<td width="50">' +
-                        '<span class="grid-status-icon sprite-fm-mono icon-dot"></span>' +
+                    '<td>' +
+                        '<i class="sprite-fm-mono icon-check selected"></i>' +
                     '</td>' +
                     '<td>' +
-                        '<div class="item-type-icon-90 icon-folder-outgoing-90"></div>' +
+                        '<div class="item-type-icon-90 icon-folder-users-90"></div>' +
                         '<div class="shared-folder-info-block">' +
                             '<div class="shared-folder-name"></div>' +
                             '<div class="shared-folder-info"></div>' +
                         '</div>' +
                     '</td>' +
+                    '<td width="50" megatype="fav">' +
+                        '<span class="grid-status-icon sprite-fm-mono icon-heart-thin-outline simpletip" ' +
+                            `data-simpletip="${l[5871]}" data-simpletipposition="top"></span > ` +
+                    '</td>' +
+                    '<td width="96" class="label"></td>' +
                     '<td width="240" class="simpletip-parent">' +
                         '<div class="fm-chat-users-wrapper">' +
                             '<div class="fm-chat-users"></div>' +
                             '<div class="fm-chat-users-other"></div>' +
                         '</div>' +
                     '</td>' +
-                    '<td width="100">' +
+                    '<td width="100" class="size-col">' +
                         '<div class="shared-folder-size"></div>' +
                     '</td>' +
                     '<td width="200">' +
                         '<div class="last-shared-time"></div>' +
                     '</td>' +
                     '<td class="grid-url-header-nw">' +
-                        '<a class="grid-url-arrow"><i class="sprite-fm-mono icon-options"></i></a>' +
+                    '<a class="grid-url-arrow">' +
+                        '<i class="sprite-fm-mono icon-more-vertical-thin-outline simpletip" ' +
+                            `data-simpletip="${l.more_actions}" data-simpletipposition="top"></i>` +
+                    '</a>' +
                     '</td>' +
                     '<td class="space-maintainer-end" megatype="empty"></td>' +
                 '</tr>' +
-            '</table>',
-
-            // Icon view mode
-            '<a class="data-block-view folder">' +
-                '<span class="data-block-bg">' +
-                    '<span class="data-block-indicators">' +
-                       '<span class="file-status-icon indicator sprite-fm-mono"></span>' +
-                    '</span>' +
-                    '<span class="item-type-icon-90 icon-folder-outgoing-90"></span>' +
-                    '<span class="file-settings-icon"><i class="sprite-fm-mono icon-options"></i></span>' +
-                    '<div class="video-thumb-details">' +
-                        '<i class="sprite-fm-mono icon-play"></i>' +
-                        '<span>00:00</span>' +
-                    ' </div>' +
-                '</span>' +
-                '<span class="shared-folder-info-block">' +
-                    '<span class="shared-folder-name"></span>' +
-                    '<span class="shared-contact-info"></span>' +
-                '</span>' +
-            '</a>'
+            '</table>'
         ],
 
         'file-requests': [
             // List view mode
             '<table>' +
                 '<tr>' +
-                    '<td class="space-maintainer-start"></td>' +
-                    '<td megatype="fav">' +
-                        '<span class="grid-status-icon sprite-fm-mono icon-dot"></span>' +
+                    '<td class="space-maintainer-start">' +
+                        '<i class="sprite-fm-mono icon-check selected"></i>' +
                     '</td>' +
                     '<td megatype="fname">' +
                         '<span class="item-type-icon"><img/></span>' +
                         '<span class="tranfer-filetype-txt"></span>' +
                     '</td>' +
+                    '<td megatype="fav">' +
+                        '<span class="grid-status-icon sprite-fm-mono icon-heart-thin-outline simpletip" ' +
+                            `data-simpletip="${l[5871]}" data-simpletipposition="top"></span > ` +
+                    '</td>' +
                     '<td megatype="label" class="label"></td>' +
-                    '<td megatype="size" class="size"></td>' +
-                    '<td megatype="type" class="type"></td>' +
                     '<td megatype="timeAd" class="time ad"></td>' +
                     '<td megatype="timeMd" class="time md"></td>' +
+                    '<td megatype="type" class="type"></td>' +
+                    '<td megatype="size" class="size"></td>' +
                     '<td megatype="versions" class="hd-versions"></td>' +
                     '<td megatype="playtime" class="playtime"></td>' +
                     '<td megatype="fileLoc" class="fileLoc">' +
                         '<span class="grid-file-location"></span>' +
                     '</td>' +
                     '<td megatype="extras" class="grid-url-field own-data">' +
-                        '<a class="grid-url-arrow"><i class="sprite-fm-mono icon-options"></i></a>' +
+                        '<a class="grid-url-arrow">' +
+                            '<i class="sprite-fm-mono icon-more-vertical-thin-outline simpletip" ' +
+                                `data-simpletip="${l.more_actions}" data-simpletipposition="top"></i>` +
+                        '</a>' +
                         '<span class="versioning-indicator">' +
-                            '<i class="sprite-fm-mono icon-versions-previous"></i>' +
+                        '<i class="sprite-fm-mono icon-clock-rotate"></i>' +
                         '</span>' +
-                        '<i class="sprite-fm-mono icon-link"></i>' +
+                        '<i class="sprite-fm-mono icon-link-thin-outline simpletip" ' +
+                            `data-simpletip="${l[6909]}" data-simpletipposition="top"></i>` +
                         '<a class="grid-file-request-manage hidden">' +
-                            '<i class="sprite-fm-mono icon-manage-folders"></i>' +
+                            '<i class="sprite-fm-mono icon-manage-folders simpletip" ' +
+                                `data-simpletip="${l.file_request_dropdown_manage}" data-simpletipposition="top"></i>` +
                         '</a>' +
                     '</td>' +
                     '<td class="space-maintainer-end" megatype="empty"></td>' +
@@ -208,23 +289,33 @@
             '</table>',
 
             // Icon view mode
-            '<a class="data-block-view">' +
-                '<span class="data-block-bg ">' +
-                    '<span class="data-block-indicators">' +
-                        '<span class="file-status-icon indicator sprite-fm-mono"></span>' +
-                        '<span class="versioning-indicator">' +
-                            '<i class="sprite-fm-mono icon-versions-previous"></i>' +
-                        '</span>' +
-                        '<i class="sprite-fm-mono icon-link"></i>' +
-                    '</span>' +
-                    '<span class="item-type-icon-90"><img/></span>' +
-                    '<span class="file-settings-icon"><i class="sprite-fm-mono icon-options"></i></span>' +
-                    '<div class="video-thumb-details">' +
-                        '<i class="sprite-fm-mono icon-play"></i>' +
-                        '<span>00:00</span>' +
-                    ' </div>' +
-                '</span>' +
-                '<span class="file-block-title"></span>' +
+            '<a class="mega-component mega-node fm-item">' +
+                '<i class="sprite-fm-mono icon-check selected"></i>' +
+                '<div class="fm-item-img">' +
+                    '<i class="item-type-icon-90"></i>' +
+                    '<img>' +
+                '</div>' +
+                '<div class="fm-item-name"></div>' +
+                '<div class="props">' +
+                    '<span class="num-files"></span>' +
+                    '<span class="size"></span>' +
+                    '<i class="icon-favourite sprite-fm-mono icon-heart-thin-solid icon simpletip" ' +
+                        `data-simpletip="${l[5872]}" data-simpletipposition="top" title></i>` +
+                    '<i class="icon-version sprite-fm-mono icon-clock-rotate icon simpletip" ' +
+                        `data-simpletip="${l[16474]}" data-simpletipposition="top" title></i>` +
+                    '<i class="icon-link sprite-fm-mono icon-link-thin-outline icon simpletip" ' +
+                        `data-simpletip="${l[6909]}" data-simpletipposition="top" title></i>` +
+                    '<span class="duration"></span>' +
+                '</div>' +
+                '<div class="props-bottom-left">' +
+                    '<i class="colour-label"></i>' +
+                '</div>' +
+                '<div class="props-bottom-right">' +
+                    '<button class="mega-component context-btn open-context-menu text-icon nav-elem icon-only' +
+                        ` simpletip" data-simpletip="${l.more_actions}" title>` +
+                        '<i class="sprite-fm-mono icon-more-vertical-thin-outline left-icon icon-size-20"></i>' +
+                    '</button>' +
+                '</div>' +
             '</a>'
         ],
 
@@ -252,17 +343,23 @@
             '.grid-table.fm',
             '.fm-blocks-view.fm .file-block-scrolling',
         ],
+        'device-centre-devices': [
+            '.device-centre-grid-view .devices .grid-table.device-centre',
+            '.device-centre-blocks-scrolling'
+        ],
+        'device-centre-folders': [
+            '.device-centre-grid-view .folders .grid-table.device-centre',
+            '.device-centre-blocks-scrolling'
+        ],
         'shares': [
-            '.shared-grid-view .grid-table.shared-with-me',
-            '.shared-blocks-scrolling'
+            '.shared-grid-view .grid-table.shared-with-me'
         ],
         'out-shares': [
-            '.out-shared-grid-view .grid-table.out-shares',
-            '.out-shared-blocks-scrolling'
+            '.out-shared-grid-view .grid-table.out-shares'
         ],
         'file-requests': [
             '.grid-table.fm',
-            '.fm-blocks-view.fm .file-block-scrolling',
+            '.fm-blocks-view.fm .file-block-scrolling'
         ],
         'subtitles': [
             '.mega-dialog .grid-table'
@@ -273,10 +370,9 @@
         var versionsTemplate = '<div class="ver-col-container">' +
             '<div class="ver-nb">' + versionsNb + '</div>' +
             '<div class="ver-icon versioning">' +
-            '<span class="versioning-indicator"><i class="sprite-fm-mono icon-versions-previous"></i></span>' +
-            '</div>' +
-            '<div class="ver-size">' +
-            '<div class="ver-size-nb">' + bytesToSize(VersionsSize) + '</div>' +
+            '<span class="versioning-indicator">' +
+            '<i class="sprite-fm-mono icon-clock-rotate"></i>' +
+            '</span>' +
             '</div>' +
             '</div>';
 
@@ -288,6 +384,7 @@
         logger = MegaLogger.getLogger('MegaRender');
 
         var parser = function(template) {
+
             template = parseHTML(template).firstChild;
 
             if (template.nodeName === 'TABLE') {
@@ -328,14 +425,26 @@
         var section = 'cloud-drive';
         var location = 'default';
 
+        // Force to set viewMode 0 (list) for file-requests and in/out shares
         if (M.currentdirid === 'shares') {
             section = 'shares';
+            aViewMode = 0;
         }
         else if (M.currentdirid === 'out-shares') {
             section = 'out-shares';
+            aViewMode = 0;
         }
         else if (M.currentrootid === 'file-requests') {
             section = 'file-requests';
+            if (M.currentdirid === 'file-requests') {
+                aViewMode = 0;
+            }
+        }
+        if (M.getS4NodeType(M.currentdirid) === 'container') {
+            aViewMode = 0;
+        }
+        else if (mega.devices.ui.isCustomRender()) {
+            section = mega.devices.ui.getRenderSection();
         }
         else if (typeof aViewMode === 'string') {
             section = aViewMode;
@@ -353,11 +462,18 @@
             location =
                 M.currentdirid === 'public-links' ? 'mixed-content' :
                     M.currentrootid === M.RubbishID ? 'trashcan' :
-                        M.currentrootid === M.InboxID ? 'backups' :
-                            M.isDynPage(M.currentdirid) ? 'dyn-page' : location;
+                        M.isDynPage(M.currentdirid) ? 'dyn-page' : location;
         }
         else {
             this.chatIsReady = megaChatIsReady;
+        }
+
+        this.fat = false;
+
+        // View mode 3 is treated as list on MegaRender, but has fat mode enabled
+        if (aViewMode === 3) {
+            this.fat = true;
+            aViewMode = 0;
         }
 
         this.labelsColors = {
@@ -384,7 +500,7 @@
         define(this, 'location',            location);
         this.versionColumnPrepare = versionColumnPrepare;
 
-        if (scope.d) {
+        if (self.d) {
             var options = {
                 levelColors: {
                     'ERROR': '#DE1F35',
@@ -427,8 +543,6 @@
 
                 $('.grid-table tbody tr').not('.conversationsApp .grid-table tbody tr').remove();
                 $('.file-block-scrolling a').remove();
-                $('.shared-blocks-scrolling a').remove();
-                $('.out-shared-blocks-scrolling a').remove();
 
                 // eslint-disable-next-line local-rules/jquery-replacements
                 $(aListSelector).show().parent().children('table').show();
@@ -452,10 +566,10 @@
 
                 if (M.RubbishID && M.currentdirid === M.RubbishID) {
                     $('.fm-empty-trashbin').removeClass('hidden');
-                    $('.fm-clearbin-button').addClass('hidden');
+                    mega.ui.secondaryNav.hideActionButtons();
                 }
                 else if (String(M.currentdirid).substr(0, 7) === 'search/'
-                        || mega.ui.mNodeFilter.selectedFilters
+                        || mega.ui.mNodeFilter.selectedFilters.value
                         && M.currentrootid !== 'shares') {
                     $('.fm-empty-search').removeClass('hidden');
                 }
@@ -476,10 +590,14 @@
                         $('.fm-empty-filter').removeClass('hidden');
                     }
                     else if (M.currentdirid === M.RootID) {
-                        $('.fm-empty-cloud').removeClass('hidden');
+                        mega.ui.empty.root();
                     }
                     else if (M.currentrootid) {
-                        $('.fm-empty-folder').removeClass('hidden');
+                        onIdle(() => {
+                            if (!M.v.length) {
+                                mega.ui.empty.folder();
+                            }
+                        });
                     }
                 }
                 else if (M.currentrootid === 'out-shares') {
@@ -524,6 +642,28 @@
                 else if (M.isDynPage(M.currentdirid)) {
                     if (d > 2) {
                         console.log('Deferred dyn-page.', M.currentdirid);
+                    }
+                }
+                else if (M.onDeviceCenter
+                    && mega.devices.ui.getRenderSection() !== 'cloud-drive') {
+
+                    // TODO: [iha] Add new empty states for (1. devices, 2. folders)
+                    // TODO: [iha] Check if we have the correct option selected
+                    const currSect = mega.devices.ui.getRenderSection();
+                    const filterData = mega.devices.ui.filterChipUtils.selectedFilters.data;
+
+                    switch (currSect) {
+                        case 'device-centre-devices':
+                            if (filterData && filterData.name === 'deviceactivity' && filterData.index === 0) {
+                                $('.fm-no-active-devices', '.fm-right-files-block').removeClass('hidden');
+                            }
+                            break;
+                        case 'device-centre-folders':
+                            if (filterData && filterData.name === 'folderactivity' && filterData.index === 0) {
+                                $('.fm-no-active-folders', '.fm-right-files-block').removeClass('hidden');
+                            }
+                            break;
+
                     }
                 }
                 else if (this.logger) {
@@ -600,6 +740,8 @@
                 siteLoadError(l[1311], this);
                 return 0;
             }
+
+            this.container.classList.toggle('fat', this.fat);
 
             if (this.container.nodeName === 'TABLE') {
                 var tbody = this.container.querySelector('tbody');
@@ -878,22 +1020,32 @@
              */
             '*': function(aNode, aHandle, aExtendedInfo) {
                 const props = {classNames: []};
-                const share = M.getNodeShare(aNode);
+                const share = M.getNodeShare(aNode.d ? aNode.h : aNode);
                 let itemIcon = fileIcon(aNode);
 
                 if (aNode.su) {
                     props.classNames.push('inbound-share');
                 }
 
-                if (aNode.s4 && M.getS4NodeType(aNode) === 'bucket') {
+                if (M.dcd[aNode.h]) {
+                    props.classNames.push('device-item');
+                }
+                else if (aNode.isDeviceFolder) {
+                    props.size = bytesToSize(aNode.tb || 0);
+                }
+                else if (aNode.s4 && M.getS4NodeType(aNode) === 'bucket') {
                     props.type = l.s4_bucket_type;
                     props.classNames.push('folder');
-                    props.size = bytesToSize(aNode.tb || 0);
+                    if (!mega.lite.inLiteMode) {
+                        props.size = bytesToSize(aNode.tb || 0);
+                    }
                 }
                 else if (aNode.t) {
                     props.type = l[1049];
                     props.classNames.push('folder');
-                    props.size = bytesToSize(aNode.tb || 0);
+                    if (!mega.lite.inLiteMode) {
+                        props.size = bytesToSize(aNode.tb || 0);
+                    }
                 }
                 else {
                     props.classNames.push('file');
@@ -966,6 +1118,10 @@
                         props.labelC = this.labelsColors[colourLabel];
                     }
                 }
+                else if (!aExtendedInfo && aNode.d && share) {
+                    props.linked = true;
+                    props.classNames.push('linked');
+                }
                 if (aNode.su) {
                     props.parentName = l[5542];
                 }
@@ -977,6 +1133,20 @@
                     props.parentName = M.getNameByHandle(pHandle);
                 }
 
+                return props;
+            },
+            'device-centre-devices'(aNode, aHandle) {
+                const props = this.nodeProperties['*'].call(this, aNode, aHandle, false);
+                if (mega.devices.main) {
+                    mega.devices.main.run('updateProps', props, aNode);
+                }
+                return props;
+            },
+            'device-centre-folders'(aNode, aHandle) {
+                const props = this.nodeProperties['*'].call(this, aNode, aHandle, true);
+                if (mega.devices.main) {
+                    mega.devices.main.run('updateProps', props, aNode);
+                }
                 return props;
             },
             'shares': function(aNode, aHandle, aExtendedInfo) {
@@ -1003,26 +1173,19 @@
                     props.accessRightsIcon = 'icon-read-only';
                 }
 
-                if (this.viewmode) {
-                    if (aExtendedInfo !== false) {
-                        avatar = useravatar.contact(props.userHandle, '', 'span');
+                props.shareInfo = fm_contains(aNode.tf, aNode.td);
+
+                if (this.chatIsReady) {
+                    var contact = M.u[props.userHandle];
+                    if (contact) {
+                        props.onlineStatus = M.onlineStatusClass(
+                            contact.presence || "unavailable"
+                        );
                     }
                 }
-                else {
-                    props.shareInfo = fm_contains(aNode.tf, aNode.td);
 
-                    if (this.chatIsReady) {
-                        var contact = M.u[props.userHandle];
-                        if (contact) {
-                            props.onlineStatus = M.onlineStatusClass(
-                                contact.presence ? contact.presence : "unavailable"
-                            );
-                        }
-                    }
-
-                    if (aExtendedInfo !== false) {
-                        avatar = useravatar.contact(props.userHandle);
-                    }
+                if (aExtendedInfo !== false) {
+                    avatar = useravatar.contact(props.userHandle);
                 }
 
                 if (avatar) {
@@ -1034,6 +1197,7 @@
                     var colourLabel = M.getLabelClassFromId(aNode.lbl);
                     props.classNames.push('colour-label');
                     props.classNames.push(colourLabel);
+                    props.labelC = this.labelsColors[colourLabel];
                 }
 
                 return props;
@@ -1066,24 +1230,14 @@
                 props.userNames = props.userNames.sort();
                 props.lastSharedAt = time2date(props.lastSharedAt);
                 props.folderSize = bytesToSize(aNode.tb + (aNode.tvb || 0));
-
-                if (this.viewmode) {
-                    if (aExtendedInfo !== false) {
-                        for (i = 0; i < props.userHandles.length && i < 4; i++) {
-                            props.avatars.push(parseHTML(useravatar.contact(props.userHandles[i], '', 'span'))
-                                .firstChild);
-                        }
-                    }
-                }
-                else {
-                    props.shareInfo = fm_contains(aNode.tf, aNode.td);
-                }
+                props.shareInfo = fm_contains(aNode.tf, aNode.td);
 
                 // Colour label
                 if (aNode.lbl && !folderlink && (aNode.su !== u_handle)) {
                     var colourLabel = M.getLabelClassFromId(aNode.lbl);
                     props.classNames.push('colour-label');
                     props.classNames.push(colourLabel);
+                    props.labelC = this.labelsColors[colourLabel];
                 }
 
                 return props;
@@ -1104,21 +1258,22 @@
                 var tmp;
                 var title = [];
                 let elm;
-                const isBackup = this.location === 'backups'
-                    || this.location === 'mixed-content' && M.getNodeRoot(aNode.h) === M.InboxID;
 
                 if (aNode.fav && !folderlink && this.location !== 'trashcan' && M.currentrootid !== 'shares') {
-                    elm = aTemplate.querySelector(this.viewmode ? '.file-status-icon' : '.grid-status-icon');
-                    elm.classList.add('icon-favourite-filled');
-                    elm.classList.remove('icon-dot');
-                }
-
-                if (isBackup) {
-
-                    elm = aTemplate.querySelector(this.viewmode ? '.file-status-icon' : '.grid-status-icon');
-                    if (elm) {
-                        elm.classList.add('read-only');
+                    if (this.viewmode === 1) {
+                        aTemplate.classList.add('favourited');
+                        elm = aTemplate.querySelector('.icon-favourite');
+                        elm.dataset.simpletip = l[5872];
                     }
+                    else {
+                        elm = aTemplate.querySelector('.grid-status-icon');
+                        elm.classList.add('icon-heart-thin-solid');
+                        elm.classList.remove('icon-heart-thin-outline');
+                        elm.dataset.simpletip = l[5872];
+                    }
+                }
+                if (mega.sensitives.shouldBlurNode(aNode)) {
+                    aTemplate.classList.add('is-sensitive');
                 }
 
                 if (!aNode.t && aNode.tvf) {
@@ -1149,27 +1304,35 @@
                         title.push(aProperties.name);
                     }
                 }
+
                 title = title.join(' ');
 
-                if (this.viewmode) {
+                if (title) {
+                    aTemplate.setAttribute('title', title);
+                }
+
+                if (this.viewmode === 1) {
                     tmp = aTemplate.querySelector('.item-type-icon-90');
 
                     tmp.classList.add(aProperties.blockIcon);
 
                     if (aProperties.playtime !== undefined) {
-                        aTemplate.querySelector('.data-block-bg').classList.add('video');
-                        aTemplate.querySelector('.video-thumb-details span').textContent
-                            = secondsToTimeShort(aProperties.playtime);
+                        // aTemplate.querySelector('.data-block-bg').classList.add('video');
+                        aTemplate.querySelector('.duration').textContent = secondsToTimeShort(aProperties.playtime);
                     }
 
-                    aTemplate.querySelector('.file-block-title').textContent = aProperties.name;
-                    if (title) {
-                        aTemplate.setAttribute('title', title);
-                    }
+                    aTemplate.querySelector('.fm-item-name').textContent = aProperties.name;
+
+                    tmp = aTemplate.querySelector('i.colour-label');
                 }
                 else {
                     if (aProperties.linked) {
-                        aTemplate.querySelector('.grid-url-field').classList.add('linked');
+                        if (this.viewmode === 1) {
+                            aTemplate.classList.add('linked');
+                        }
+                        else {
+                            aTemplate.querySelector('.grid-url-field').classList.add('linked');
+                        }
                     }
 
                     if (aProperties.size !== undefined) {
@@ -1186,9 +1349,6 @@
 
                     tmp = aTemplate.querySelector('.tranfer-filetype-txt');
                     tmp.textContent = aProperties.name;
-                    if (title) {
-                        tmp.setAttribute('title', title);
-                    }
 
                     tmp = aTemplate.querySelector('.item-type-icon');
 
@@ -1197,7 +1357,10 @@
                         aTemplate = s4.ui.updateNodePublicAccess(aNode, aTemplate);
                     }
 
-                    if (aProperties.icon) {
+                    if (aProperties.takenDown) {
+                        tmp.classList.add('icon-takedown-24');
+                    }
+                    else if (aProperties.icon) {
                         tmp.classList.add(aProperties.icon);
                     }
                 }
@@ -1206,32 +1369,44 @@
 
                 if (aProperties.undecryptable) {
 
-                    if (this.viewmode) {
-                        elm = aTemplate.querySelector('.file-status-icon');
-                        elm.classList.remove('icon-favourite-filled');
+                    if (this.viewmode === 1) {
+                        elm = aTemplate.querySelector('.icon-favourite');
+                        elm.classList.remove('icon-heart-thin-solid');
                         elm.classList.add('icon-info');
+                        delete elm.dataset.simpletip;
                     }
                     else {
                         elm = aTemplate.querySelector('.grid-status-icon');
-                        elm.classList.remove('icon-dot', 'icon-favourite-filled');
+                        elm.classList.remove('icon-heart-thin-outline', 'icon-heart-thin-solid');
                         elm.classList.add('icon-info');
                     }
                 }
 
                 if (aProperties.takenDown) {
 
-                    if (this.viewmode) {
-                        elm = aTemplate.querySelector('.file-status-icon');
-                        elm.classList.remove('icon-favourite-filled');
-                        elm.classList.add('icon-takedown');
+                    if (this.viewmode === 1) {
+                        elm = aTemplate.querySelector('.item-type-icon-90');
+                        elm.className = 'item-type-icon-90 icon-takedown-90';
                     }
                     else {
                         elm = aTemplate.querySelector('.grid-status-icon');
-                        elm.classList.remove('icon-dot', 'icon-favourite-filled');
+                        elm.classList.remove('icon-heart-thin-outline', 'icon-heart-thin-solid');
                         elm.classList.add('icon-takedown');
                     }
                 }
 
+                return aTemplate;
+            },
+            'device-centre-devices'(aNode, aProperties, aTemplate) {
+                if (mega.devices.main) {
+                    mega.devices.main.run('updateTemplate', aNode, aProperties, aTemplate);
+                }
+                return aTemplate;
+            },
+            'device-centre-folders'(aNode, aProperties, aTemplate) {
+                if (mega.devices.main) {
+                    mega.devices.main.run('updateTemplate', aNode, aProperties, aTemplate);
+                }
                 return aTemplate;
             },
             'shares': function(aNode, aProperties, aTemplate) {
@@ -1240,43 +1415,27 @@
                 var tmp = aTemplate.querySelector('.shared-folder-access');
 
                 if (aProperties.avatar) {
-                    var avatar = this.viewmode ? '.shared-folder-info-block' : '.fm-chat-user-info';
-                    avatar = aTemplate.querySelector(avatar);
+                    var avatar = aTemplate.querySelector('.fm-chat-user-info');
 
                     avatar.parentNode.insertBefore(aProperties.avatar, avatar);
                 }
 
-                if (this.viewmode) {
+                tmp.querySelector('span').textContent = aProperties.accessRightsText;
+                tmp.querySelector('i').classList.add(aProperties.accessRightsIcon);
 
-                    aTemplate.querySelector('.item-type-icon-90').classList.add(aProperties.blockIcon);
-                    tmp.classList.add(aProperties.accessRightsIcon);
-
-                    aTemplate.querySelector('.shared-folder-info')
-                        .textContent = l[17590].replace('%1', aProperties.userName);
-
-                    if (String(aProperties.name).length > 20) {
-                        aTemplate.setAttribute('title', aProperties.name);
-                    }
+                tmp = aTemplate.querySelector('.fm-chat-user-info');
+                tmp.classList.add(aProperties.userHandle);
+                if (aProperties.onlineStatus) {
+                    tmp.classList.add(aProperties.onlineStatus[1]);
                 }
-                else {
 
-                    tmp.querySelector('span').textContent = aProperties.accessRightsText;
-                    tmp.querySelector('i').classList.add(aProperties.accessRightsIcon);
+                aTemplate.querySelector('.fm-chat-user span').textContent = aProperties.userName;
+                aTemplate.querySelector('.shared-folder-info').textContent = aProperties.shareInfo;
+                aTemplate.querySelector('.shared-folder-size').textContent = aProperties.folderSize;
+                aTemplate.querySelector('.label').textContent = aProperties.labelC || '';
 
-                    tmp = aTemplate.querySelector('.fm-chat-user-info');
-                    tmp.classList.add(aProperties.userHandle);
-                    if (aProperties.onlineStatus) {
-                        tmp.classList.add(aProperties.onlineStatus[1]);
-                    }
-
-                    aTemplate.querySelector('.fm-chat-user span').textContent = aProperties.userName;
-                    aTemplate.querySelector('.shared-folder-info').textContent = aProperties.shareInfo;
-                    aTemplate.querySelector('.shared-folder-size').textContent = aProperties.folderSize;
-
-                    if (String(aProperties.name).length > 78) {
-                        aTemplate.setAttribute('title', aProperties.name);
-                    }
-
+                if (String(aProperties.name).length > 78) {
+                    aTemplate.setAttribute('title', aProperties.name);
                 }
 
                 const contactVerification = mega.keyMgr.getWarningValue('cv') | 0;
@@ -1301,88 +1460,45 @@
             },
             'out-shares': function(aNode, aProperties, aTemplate) {
 
-                let elm;
+                const elm = aTemplate.querySelector('.grid-status-icon');
 
                 if (aNode.fav && !folderlink) {
-                    elm = aTemplate.querySelector(this.viewmode ? '.file-status-icon' : '.grid-status-icon');
-                    elm.classList.add('icon-favourite-filled');
-                    elm.classList.remove('icon-dot');
+                    elm.classList.add('icon-heart-thin-solid');
+                    elm.classList.remove('icon-heart-thin-outline');
+                    elm.dataset.simpletip = l[5872];
                 }
 
                 if (M.getNodeRoot(aNode.h) === M.InboxID) {
-                    elm = aTemplate.querySelector(this.viewmode ? '.file-status-icon' : '.grid-status-icon');
                     elm.classList.add('read-only');
                 }
 
                 aTemplate.querySelector('.shared-folder-name').textContent = aProperties.name;
 
-                if (this.viewmode) {
-                    elm = aTemplate.querySelector('.item-type-icon-90');
+                tmp = aTemplate.querySelector('.fm-chat-user-info');
 
-                    if (aProperties.avatars) {
-
-                        var avatarElement;
-                        var avatar = this.viewmode ? '.shared-folder-info-block' : '.fm-chat-user-info';
-                        avatar = aTemplate.querySelector(avatar);
-
-                        if (aProperties.avatars.length === 1) {
-                            avatarElement = aProperties.avatars[0];
-                        }
-                        else {
-                            avatarElement = document.createElement("div");
-                            avatarElement.classList = 'multi-avatar multi-avatar-' + aProperties.avatars.length;
-
-                            for (var i in aProperties.avatars) {
-                                if (aProperties.avatars[i]) {
-                                    aProperties.avatars[i].classList += ' avatar-' + i;
-                                    avatarElement.appendChild(aProperties.avatars[i]);
-                                }
-                            }
-                        }
-
-                        avatar.parentNode.insertBefore(avatarElement, avatar);
-
-                    }
-
-                    if (aProperties.blockIcon) {
-                        aTemplate.querySelector('.item-type-icon-90').classList.add(aProperties.blockIcon);
-                    }
-
-                    if (String(aProperties.name).length > 20) {
-                        aTemplate.setAttribute('title', aProperties.name);
-                    }
-
-                    var shareContactInfo = aTemplate.querySelector('.shared-contact-info');
-                    shareContactInfo.textContent = mega.icu.format(l.contact_count, aProperties.userNames.length);
-                    shareContactInfo.classList += ' simpletip';
-                    shareContactInfo.dataset.simpletip = aProperties.userNames.join(",[BR]");
+                var otherCount = 0;
+                var userNames = aProperties.userNames;
+                if (aProperties.userNames.length > 3) {
+                    userNames = userNames.slice(0, 3);
+                    otherCount = aProperties.userNames.length - 3;
+                    var sharedUserWrapper = aTemplate.querySelector('.fm-chat-users-wrapper');
+                    sharedUserWrapper.classList += ' simpletip';
+                    sharedUserWrapper.dataset.simpletip = aProperties.userNames.join(",[BR]");
+                    aTemplate.querySelector('.fm-chat-users-other').textContent = mega.icu
+                        .format(l.users_share_other_count, otherCount);
                 }
-                else {
-                    tmp = aTemplate.querySelector('.fm-chat-user-info');
+                aTemplate.querySelector('.fm-chat-users').textContent = userNames.join(', ');
+                aTemplate.querySelector('.shared-folder-info').textContent = aProperties.shareInfo;
+                aTemplate.querySelector('.shared-folder-size').textContent = aProperties.folderSize;
+                aTemplate.querySelector('.last-shared-time').textContent = aProperties.lastSharedAt;
+                aTemplate.querySelector('.label').textContent = aProperties.labelC || '';
 
-                    var otherCount = 0;
-                    var userNames = aProperties.userNames;
-                    if (aProperties.userNames.length > 3) {
-                        userNames = userNames.slice(0, 3);
-                        otherCount = aProperties.userNames.length - 3;
-                        var sharedUserWrapper = aTemplate.querySelector('.fm-chat-users-wrapper');
-                        sharedUserWrapper.classList += ' simpletip';
-                        sharedUserWrapper.dataset.simpletip = aProperties.userNames.join(",[BR]");
-                        aTemplate.querySelector('.fm-chat-users-other').textContent = mega.icu
-                            .format(l.users_share_other_count, otherCount);
-                    }
-                    aTemplate.querySelector('.fm-chat-users').textContent = userNames.join(', ');
-                    aTemplate.querySelector('.shared-folder-info').textContent = aProperties.shareInfo;
-                    aTemplate.querySelector('.shared-folder-size').textContent = aProperties.folderSize;
-                    aTemplate.querySelector('.last-shared-time').textContent = aProperties.lastSharedAt;
+                if (String(aProperties.name).length > 78) {
+                    aTemplate.setAttribute('title', aProperties.name);
+                }
 
-                    if (String(aProperties.name).length > 78) {
-                        aTemplate.setAttribute('title', aProperties.name);
-                    }
-
-                    if (aProperties.icon) {
-                        aTemplate.querySelector('.item-type-icon-90').classList.add(aProperties.icon);
-                    }
+                if (aProperties.icon) {
+                    aTemplate.querySelector('.item-type-icon-90').classList.add(aProperties.icon);
                 }
 
                 return aTemplate;
@@ -1440,6 +1556,10 @@
                 }
 
                 this.addClasses(tmp, aProperties.classNames);
+
+                if (mega.sensitives.isSensitive(aNode)) {
+                    aTemplate.classList.add('is-sensitive');
+                }
 
                 return aTemplate;
             }
@@ -1517,16 +1637,17 @@
                         var megaListContainer;
 
                         if (this.viewmode) {
-                            megaListOptions.itemWidth = 192 + 4 + 4 + 16 /* 16 = margin-left */;
-                            megaListOptions.itemHeight = 192 + 4 + 4 + 16 /* 16 = margin-top */;
+                            megaListOptions.itemWidth = 180 + 4 + 4 + 24 /* 24 = margin-left */;
+                            megaListOptions.itemHeight = 212 + 4 + 4 + 24 /* 24 = margin-top */;
                             megaListContainer = this.container;
                             megaListOptions.bottomSpacing = 24;
+                            megaListOptions.renderAdapter = new MegaList.RENDER_ADAPTERS.Grid();
                         }
                         else {
                             megaListOptions.extraRows = 4;
                             megaListOptions.itemWidth = false;
-                            megaListOptions.itemHeight = 32;
-                            megaListOptions.headerHeight = 34;
+                            megaListOptions.itemHeight = this.fat ? 48 : 32;
+                            megaListOptions.headerHeight = 56;
                             megaListOptions.bottomSpacing = 6;
                             megaListOptions.appendTo = 'tbody';
                             megaListOptions.renderAdapter = new MegaList.RENDER_ADAPTERS.Table();
@@ -1569,8 +1690,6 @@
                 return result;
             },
             'file-requests': function(aUpdate, aNodeList) {
-
-
                 return this.initializers['cloud-drive'].call(this, aUpdate, aNodeList);
             }
         }),
@@ -1586,10 +1705,11 @@
                 if (DYNLIST_ENABLED) {
                     if (!aUpdate) {
                         var container = document.querySelector(viewModeContainers[this.section][this.viewmode]);
-                        this.addClasses(
-                            document.querySelector(viewModeContainers[this.section][0 + !this.viewmode]),
-                            ["hidden"]
-                        );
+                        var toHide = document.querySelector(viewModeContainers[this.section][0 + !this.viewmode]);
+
+                        if (toHide) {
+                            this.addClasses(toHide, ["hidden"]);
+                        }
 
                         this.addClasses(container, ['megaListContainer']);
 
@@ -1636,5 +1756,5 @@
         }
     });
 
-    define(scope, 'MegaRender', Object.freeze(MegaRender));
-})(this);
+    define(self, 'MegaRender', freeze(MegaRender));
+});

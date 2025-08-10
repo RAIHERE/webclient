@@ -40,8 +40,7 @@ var useravatar = (function() {
      * @returns {String}
      * @private
      */
-    function _getAvatarSVGDataURI(user) {
-
+    ns.getAvatarSVGDataURI = function(user) {
         var s = _getAvatarProperties(user);
         var $template = $('#avatar-svg').clone().removeClass('hidden')
             .find('svg').addClass('color' + s.colorIndex).end()
@@ -60,7 +59,7 @@ var useravatar = (function() {
      * @private
      */
     function _getAvatarProperties(user) {
-        user = String(user.u || user);
+        user = String(user.u || user.h || user);
         var name  = M.getNameByHandle(user) || user;
         if (name === user && M.suba[user] && M.suba[user].firstname) {
             // Acquire the avatar matches the first letter for pending accounts in business account
@@ -93,7 +92,7 @@ var useravatar = (function() {
         var bgBlock = '';
 
         if (element === 'ximg') {
-            return _getAvatarSVGDataURI(user);
+            return ns.getAvatarSVGDataURI(user);
         }
 
         var s = _getAvatarProperties(user);
@@ -305,6 +304,9 @@ var useravatar = (function() {
         if (M.u[user]) {
             // .trackDataChange() will trigger some parts in the Chat UI to re-render.
             M.u[user].trackDataChange(M.u[user], "avatar");
+            if (M.currentrootid === 'shares' && mega.ui.secondaryNav) {
+                mega.ui.secondaryNav.updateCard(user);
+            }
         }
 
         var $avatar = null;
@@ -402,7 +404,7 @@ var useravatar = (function() {
          * Load the avatar associated with an user handle
          * @param {String} handle The user handle
          * @param {String} chathandle The chat handle
-         * @return {MegaPromise}
+         * @return {Promise}
          */
         ns.loadAvatar = function(handle, chathandle) {
             // Ensure this is a sane call...
@@ -410,14 +412,14 @@ var useravatar = (function() {
                 if (DEBUG) {
                     logger.error('Unable to retrieve user-avatar, invalid handle!', handle);
                 }
-                return MegaPromise.reject(EARGS);
+                return Promise.reject(EARGS);
             }
             if (missingAvatars[handle]) {
                 // If the retrieval already failed for the current session
                 if (DEBUG) {
                     logger.warn('User-avatar retrieval for "%s" had failed...', handle, missingAvatars[handle]);
                 }
-                return MegaPromise.reject(missingAvatars[handle]);
+                return Promise.reject(missingAvatars[handle]);
             }
             if (pendingGetters[handle]) {
                 // It's already pending, return associated promise
@@ -430,10 +432,10 @@ var useravatar = (function() {
                 if (DEBUG) {
                     logger.warn('User-avatar for "%s" is already loaded...', handle, avatars[handle]);
                 }
-                return MegaPromise.resolve(EEXIST);
+                return Promise.resolve(EEXIST);
             }
 
-            var promise = new MegaPromise();
+            const { promise } = mega;
             pendingGetters[handle] = promise;
 
             var reject = function(error) {

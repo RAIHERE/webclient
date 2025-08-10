@@ -198,7 +198,12 @@ lazy(s4, 'utils', () => {
                     message,
                     null,
                     cfgName
-                );
+                ).then(res => {
+                    if (res) {
+                        return res;
+                    }
+                    throw EBLOCKED;
+                });
             }
 
             // Confirm action other actions
@@ -314,10 +319,12 @@ lazy(s4, 'utils', () => {
             else {
                 cfgName = 'skips4tocd';
 
-                // Buckets to Cloud drive
+                // Move Buckets to Cloud drive
                 if (type === 'bucket') {
-                    title = l[`s4_title_${ action }_bucket_to_cd${ suffix }`];
-                    message = l[`s4_warn_copy_move_bucket_to_cd${ suffix }`];
+                    if (action === 'move') {
+                        title = l[`s4_title_${ action }_bucket_to_cd${ suffix }`];
+                        message = l[`s4_warn_copy_move_bucket_to_cd${ suffix }`];
+                    }
                 }
                 // Objects or sub-folders to Cloud drive
                 else if (type === 'object' || type === 'bucket-child' && s4Nodes.length === 1) {
@@ -326,7 +333,7 @@ lazy(s4, 'utils', () => {
                 }
                 // Multiple items to Cloud drive
                 else if (type) {
-                    title = l[`s4_title_${ action }_items_to_cd${ suffix }`];
+                    title = l[`s4_title_${ action }_items_to_cd_plural`];
                     message = l.s4_warn_copy_move_items_to_cd;
                 }
             }
@@ -394,7 +401,7 @@ lazy(s4, 'utils', () => {
             const bucket = this.getBucketNode(path[1]);
 
             if (path[0] !== 's4' || bucket) {
-                return bucket.p ? `${bucket.p}/${path[1]}` : false;
+                return bucket.p ? `${bucket.p}/${path[path.length - 1]}` : false;
             }
 
             if (path.length > 2 && !(allowedPages.has(path[2]) || M.d[path[2]])) {
@@ -408,23 +415,30 @@ lazy(s4, 'utils', () => {
             return path.slice(1).join('/');
         },
 
-        renderContainerTree(dialog) {
+        renderContainerTree(dialog, sSubMap) {
             const wrapperClass = typeof dialog === 'string' && dialog || 'js-s4-tree-panel';
-            const s4Tree = document.querySelector(`.${wrapperClass}`);
-            const expIcon = s4Tree.querySelector('.js-cloudtree-expander');
+            const treeWrap = document.querySelector(`.${wrapperClass}`);
             const cn = this.getContainersList();
             const prefix = dialog ? 'mc' : '';
-            let ctrTree = s4Tree.querySelector('.s4 .tree');
+            let treeNode = treeWrap && treeWrap.querySelector('.s4 .tree');
 
-            const createItem = (node, id, name, icon, staticItem) => {
+            if (!treeNode) {
+                if (self.d) {
+                    console.warn(`Cannot render S4 Container tree, ${wrapperClass} missing.`);
+                }
+                return false;
+            }
+
+            const createItem = (node, id, name, icon, staticItem, eventId) => {
                 const itemWrap = mCreateElement('li', {
                     'class': staticItem ? 's4-static-item' : 's4-item',
                     'id': `${prefix}treeli_${id}`
                 }, node);
 
                 const itemNode = mCreateElement('span', {
-                    'class': `nw-fm-tree-item${M.tree[id] ? ' contains-folders' : ''}`,
-                    'id': `${prefix}treea_${id}`
+                    'class': `nw-fm-tree-item${M.tree[id] || M.tree.s4[id] ? ' contains-folders' : ''}`,
+                    'id': `${prefix}treea_${id}`,
+                    'data-eventid': eventId,
                 }, itemWrap);
                 mCreateElement('span', {'class': 'nw-fm-tree-arrow'}, itemNode);
                 mCreateElement('span', {
@@ -434,40 +448,50 @@ lazy(s4, 'utils', () => {
                 return itemWrap;
             };
 
-            ctrTree.textContent = '';
-            if (expIcon) {
-                expIcon.classList.add('hidden');
+            if (dialog !== undefined) {
+                treeNode.textContent = '';
             }
+
+            const treeClone = treeNode.cloneNode(true);
+            treeNode.textContent = '';
 
             // Show container if multiple containers
             if (cn.length > 1) {
-                ctrTree = mCreateElement('ul', {'id': `${prefix}treesub_s4`}, ctrTree);
+                treeNode = mCreateElement('ul', {'id': `${prefix}treesub_s4`}, treeNode);
             }
 
             for (let i = 0; i < cn.length; i++) {
-                if (cn.length > 1) {
-                    ctrTree = createItem(ctrTree, cn[i].h, cn[i].name, 'icon-container-filled');
+                const cnNode = treeClone.querySelector(
+                    `#${prefix}tree${cn.length === 1 ? 'sub' : 'li'}_${cn[i].h}`
+                );
+
+                if (cnNode) {
+                    treeNode.appendChild(cnNode);
+                    M.buildtree({h: cn[i].h}, dialog, 's4', sSubMap);
+                    continue;
                 }
 
-                ctrTree = mCreateElement('ul', {
+                let wrapNode = treeNode;
+
+                if (cn.length > 1) {
+                    wrapNode = createItem(wrapNode, cn[i].h, cn[i].name, 'icon-bucket-triangle-thin-outline');
+                }
+
+                wrapNode = mCreateElement('ul', {
                     'data-s4': cn[i].h,
                     'id': `${prefix}treesub_${cn[i].h}`,
-                }, ctrTree);
+                }, wrapNode);
 
                 if (!dialog) {
-                    createItem(ctrTree, `${cn[i].h}_keys`, l.s4_keys, 'icon-key', true);
+                    createItem(wrapNode, `${cn[i].h}_keys`, l.s4_keys, 'icon-key-01-thin-outline', true, 500637);
                     createItem(
-                        ctrTree, `${cn[i].h}_policies`, l.s4_policies, 'icon-policy-filled', true
+                        wrapNode, `${cn[i].h}_policies`, l.s4_policies, 'icon-shield-thin-outline', true, 500638
                     );
-                    createItem(ctrTree, `${cn[i].h}_groups`, l.s4_groups, 'icon-contacts', true);
-                    createItem(ctrTree, `${cn[i].h}_users`, l.s4_users, 'icon-user-filled', true);
+                    createItem(wrapNode, `${cn[i].h}_groups`, l.s4_groups, 'icon-users-thin-outline', true, 500639);
+                    createItem(wrapNode, `${cn[i].h}_users`, l.s4_users, 'icon-user-thin-outline', true, 500640);
                 }
 
-                if (expIcon) {
-                    expIcon.classList.remove('hidden');
-                }
-
-                M.buildtree({h: cn[i].h}, dialog, 's4');
+                M.buildtree({h: cn[i].h}, dialog, 's4', sSubMap);
             }
         },
 
@@ -483,24 +507,29 @@ lazy(s4, 'utils', () => {
             const endpoints = [
                 [
                     'eu-central-1.s4.mega.io',
-                    l.location_amsterdam
+                    l.location_amsterdam,
+                    'Amsterdam'
                 ],
                 [
                     'eu-central-2.s4.mega.io',
-                    l.location_bettembourg
+                    l[18922],
+                    'Bettembourg'
                 ],
                 [
                     'ca-central-1.s4.mega.io',
-                    l.location_montreal
+                    l.location_montreal,
+                    'Montreal'
                 ],
                 [
                     'ca-west-1.s4.mega.io',
-                    l.location_vancouver
+                    l.location_vancouver,
+                    'Vancouver'
                 ]
             ];
 
             const tableNode = parentNode.querySelector('.js-endpoints-table');
             const tipsNode = parentNode.querySelector('.js-endpoints-desc');
+            const s4TipNode = parentNode.querySelector('.js-endpoints-s4');
             let rowNode = null;
 
             if (!tableNode || !tipsNode) {
@@ -521,33 +550,40 @@ lazy(s4, 'utils', () => {
                 let subNode = null;
 
                 // Create table header
-                rowNode = mCreateElement('tr', undefined, tableNode);
-                subNode = mCreateElement('td', undefined, rowNode);
-                mCreateElement('a', { class: 'settings-lnk' }, subNode).textContent = item[0];
-                mCreateElement('td', undefined, rowNode).textContent = item[1];
-                subNode = mCreateElement('td', undefined, rowNode);
+                rowNode = mCreateElement('tr', null, tableNode);
+                subNode = mCreateElement('td', null, rowNode);
+                mCreateElement('span', null, subNode).textContent = `s3.${item[0]}`;
+                mCreateElement('td', null, rowNode).textContent = item[1];
+                subNode = mCreateElement('td', null, rowNode);
 
                 // Create copy to clipboard button
                 subNode = mCreateElement('button', {
                     'class': 'mega-button small action copy',
-                    'data-url': item[0]
+                    'data-url': `s3.${item[0]}`,
+                    'data-location': item[2]
                 }, subNode);
                 mCreateElement('i', { class: 'sprite-fm-mono icon-copy' }, subNode);
             }
 
             // Fill URL exapmles in the tips
+            mCreateElement('li', undefined, tipsNode).append(parseHTML(l.s4_s3_prefix_usage));
             mCreateElement('li', undefined, tipsNode).append(parseHTML(
-                l.s4_s3_prefix_example.replace('%1', `s3.${endpoints[0][0]}`)
+                l.s4_iam_prefix_usage.replace('%1', `iam.${endpoints[0][0]}`)
             ));
-            mCreateElement('li', undefined, tipsNode).append(parseHTML(
-                l.s4_iam_prefix_example.replace('%1', `iam.${endpoints[0][0]}`)
-            ));
+
+            if (s4TipNode) {
+                $(s4TipNode).safeHTML(
+                    l.s4_s3_g_endpoint_tip
+                        .replace('%1', `<span class="code">s3.g.s4.mega.io</span>`)
+                        .replace('%2', `<span class="code">s3.eu-central-1.s4.mega.io</span>`)
+                );
+            }
 
             // Copy to clipboard buttons
             $('.mega-button.copy', parentNode).rebind('click.copyUrl', (e) => {
                 if ($.dialog === 's4-managed-setup') {
-                    // Copy endpoints ID: 2
-                    eventlog(500572, JSON.stringify([1, 2]));
+                    // Copy endpoints btn evt
+                    eventlog(500582, JSON.stringify([e.currentTarget.dataset.location]));
                 }
 
                 copyToClipboard(e.currentTarget.dataset.url, l.s4_endpoint_copied, 'hidden');

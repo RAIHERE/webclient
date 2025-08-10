@@ -219,6 +219,18 @@
         isAttachable,
         getBroadcastChannel,
 
+        async setup() {
+            if (self.u_type > 2) {
+                const {handle} = this.crossTab;
+
+                console.assert(!handle, 'FIXME: cross-tab already initialized.', handle, u_handle);
+                console.assert(!handle || handle === u_handle, 'Unmatched cross-tab handle', handle, u_handle);
+
+                assert(!isPublicLink(), `shall not run on public-link(s)...`);
+                return this.crossTab.initialize();
+            }
+        },
+
         /**
          * Add broadcast event listener.
          * @param {String} topic A string representing the event type to listen for.
@@ -331,7 +343,9 @@
                     args = [{type: topic}];
                 }
 
-                // if (d) console.log('Broadcasting ' + topic, args);
+                if (self.d > 1) {
+                    console.warn(`\u{1F4FB} Broadcasting message '${topic}'`, args);
+                }
 
                 for (let i = 0; i < blk.length; ++i) {
                     const [id, obj] = blk[i];
@@ -435,9 +449,11 @@
                             if (self.d) {
                                 crossTab.logger.info(`\u{1F9F2} CROSS-TAB MESSAGING INITIALIZED AS ${type} \u{1F440}`);
 
-                                console.log(str(ua));
-                                console.log(buildVersion);
-                                console.log(browserdetails(ua).prod + u_handle);
+                                console.log(str(self.ua));
+                                console.log(self.buildVersion);
+                                if (self.browserdetails) {
+                                    console.log(browserdetails(ua).prod + u_handle);
+                                }
                             }
                             mBroadcaster.sendMessage('crossTab:setup', this.owner);
 

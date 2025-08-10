@@ -157,7 +157,6 @@ export default class ChatRouting {
         if (resolve) {
             onIdle(resolve);
         }
-        megaChat.safeForceUpdate();
 
         if (args.route.location !== location) {
             location = args.route.location;
@@ -172,6 +171,10 @@ export default class ChatRouting {
         if (location.substr(0, 13) === "chat/contacts") {
             // ensure that chat/contacts is always opened with fm/ prefix
             location = "fm/" + location;
+        }
+        if (location === 'chat') {
+            // ensure that /chat ends up on and fm route.
+            location = 'fm/chat';
         }
 
         history[method]({subpage: location}, "", (hashLogic ? '#' : '/') + location);

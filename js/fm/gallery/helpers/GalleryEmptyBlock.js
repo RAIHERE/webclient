@@ -24,6 +24,8 @@ class GalleryEmptyBlock {
 
         switch (this._type) {
             case mega.gallery.sections.photos.path:
+                this._child = new GalleryEmpty(this.el);
+                break;
             case mega.gallery.sections[mega.gallery.secKeys.cuphotos].path:
             case mega.gallery.sections[mega.gallery.secKeys.cdphotos].path:
                 this._child = new GalleryEmptyPhotos(this.el);
@@ -38,11 +40,8 @@ class GalleryEmptyBlock {
             case mega.gallery.sections[mega.gallery.secKeys.cdvideos].path:
                 this._child = new GalleryEmptyVideos(this.el);
                 break;
-            case mega.gallery.sections.favourites.path:
-                this._child = new GalleryEmptyFavourites(this.el);
-                break;
             default:
-                if (M.currentrootid === 'discovery' || M.gallery) {
+                if (M.currentrootid === 'discovery' || M.gallery || pfid) {
                     this._child = new GalleryEmptyDiscovery(this.el);
                 }
                 break;

@@ -1,55 +1,47 @@
 import React from 'react';
-import { MegaRenderMixin } from '../mixins.js';
 import { ContactPickerWidget } from './contacts';
 import ModalDialogsUI from '../../ui/modalDialogs.jsx';
+import { MegaRenderMixin } from '../mixins.js';
 
-export default class ContactSelectorDialog extends MegaRenderMixin {
-    static defaultProps = {
-        requiresUpdateOnResize: true
-    };
+class ContactSelectorDialog extends MegaRenderMixin {
+    dialogName = 'contact-selector-dialog';
 
-    constructor(props) {
-        super(props);
-        this.state = {
-            selected: this.props.selected || []
-        };
-        this.onSelectClicked = this.onSelectClicked.bind(this);
-        this.onSelected = this.onSelected.bind(this);
+    componentDidMount() {
+        super.componentDidMount();
+        M.safeShowDialog(this.dialogName, () => $(`.${this.dialogName}`));
     }
 
-    specShouldComponentUpdate(nextProps, nextState) {
-        if (
-            this.props.active !== nextProps.active ||
-            this.props.focused !== nextProps.focused ||
-            this.state && this.state.active !== nextState.active ||
-            this.state && JSON.stringify(this.state.selected) !== JSON.stringify(nextState.selected)
-        ) {
-            return true;
+    componentWillUnmount() {
+        super.componentWillUnmount();
+        if ($.dialog === this.dialogName) {
+            closeDialog();
         }
-        // not sure, leave to the render mixing to decide.
-        return undefined;
-    }
-
-    onSelected(nodes) {
-        this.setState({ selected: nodes });
-        this.props.onSelected?.(nodes);
-        this.safeForceUpdate();
-    }
-
-    onSelectClicked() {
-        this.props.onSelectClicked();
     }
 
     render() {
         const {
-            active, selectFooter, exclude, allowEmpty, multiple, topButtons, showAddContact, className,
-            multipleSelectedButtonLabel, singleSelectedButtonLabel, nothingSelectedButtonLabel, onClose, onSelectDone
+            active,
+            selectFooter,
+            exclude,
+            allowEmpty,
+            multiple,
+            topButtons,
+            showAddContact,
+            className,
+            multipleSelectedButtonLabel,
+            singleSelectedButtonLabel,
+            nothingSelectedButtonLabel,
+            onClose,
+            onSelectDone
         } = this.props;
+
         return (
             <ModalDialogsUI.ModalDialog
                 className={`
-                    popup contacts-search
+                    popup
+                    contacts-search
                     ${className}
+                    ${this.dialogName}
                 `}
                 onClose={onClose}>
                 <ContactPickerWidget
@@ -58,6 +50,7 @@ export default class ContactSelectorDialog extends MegaRenderMixin {
                     contacts={M.u}
                     selectFooter={selectFooter}
                     megaChat={megaChat}
+                    withSelfNote={megaChat.WITH_SELF_NOTE}
                     exclude={exclude}
                     allowEmpty={allowEmpty}
                     multiple={multiple}
@@ -81,3 +74,10 @@ export default class ContactSelectorDialog extends MegaRenderMixin {
         );
     }
 }
+
+
+window.ContactSelectorDialogUI = {
+    ContactSelectorDialog
+};
+
+export default ContactSelectorDialog;

@@ -1,0 +1,416 @@
+/* .nav-elem Semantic element */
+.password-wrapper .nav-elem,
+.password-wrapper .nav-elem button,
+.password-wrapper .nav-elem button.mega-pm-button,
+.password-wrapper .nav-elem a {
+    display: inline-flex;
+    flex-flow: row nowrap;
+    justify-content: center;
+    align-items: center;
+    padding: 0 24px;
+    border: none;
+}
+
+.password-wrapper .nav-elem > *:not(:last-child),
+.password-wrapper .nav-elem button > *:not(:last-child),
+.password-wrapper .nav-elem button.mega-pm-button > *:not(:last-child),
+.password-wrapper .nav-elem a > *:not(:last-child) {
+    margin-inline-end: 10px;
+}
+
+.password-wrapper .nav-elem.password-item:hover {
+    background: var(--mobile-surface-1);
+}
+
+.password-wrapper .nav-elem:active {
+    background: inherit;
+    color: inherit;
+}
+
+.password-wrapper .nav-elem.primary:not(.icon-only):active,
+.password-wrapper .nav-elem.primary:active {
+    background: var(--mobile-button-primary-pressed);
+    color: var(--mobile-text-inverse);
+}
+.password-wrapper .nav-elem.password-item.sk-loading:hover {
+    background: var(--mobile-page-background);
+}
+
+.password-wrapper .nav-elem.active,
+.password-wrapper .nav-elem:hover {
+    background: var(--mobile-surface-2);
+}
+
+.password-wrapper .nav-elem.nav-elem.icon-only.active,
+.password-wrapper .nav-elem.nav-elem.icon-only:active {
+    background: var(--mobile-surface-3);
+}
+
+/* Button and Link styles */
+.password-wrapper .nav-elem.text-only.link {
+    font: var(--mobile-font-label-underline);
+    text-decoration: none;
+}
+.password-wrapper .nav-elem.text-only.link:hover .primary-text,
+.password-wrapper .nav-elem.text-only.link:active .primary-text,
+.password-wrapper .nav-elem.text-only.link:focus .primary-text {
+    color: var(--mobile-button-primary-pressed);
+}
+.password-wrapper .nav-elem.text-only.link:active .primary-text {
+    color: var(--mobile-button-primary-pressed);
+}
+.password-wrapper .nav-elem.text-only.link:focus {
+    outline: var(--outline);
+}
+.password-wrapper .nav-elem i.notification-loading-spinner {
+    display: none;
+}
+
+.password-wrapper .nav-elem.loading.sprite-fm-theme-after::after,
+.password-wrapper .nav-elem.mega-pm-loading.sprite-fm-theme-after::after,
+.password-wrapper .nav-elem.loading.sprite-fm-uni-after::after,
+.password-wrapper .nav-elem.mega-pm-loading.sprite-fm-uni-after::after  {
+    animation-name: rotate;
+    animation-duration: 1000ms;
+    animation-iteration-count: infinite;
+    animation-timing-function: steps(8, end);
+    margin: auto; /* Justify in center */
+    display: block;
+    --icon-size: 22px;
+    position: absolute;
+}
+
+.password-wrapper .nav-elem.loading .text-box-wrapper.sk-elm,
+.password-wrapper .nav-elem.mega-pm-loading span {
+    opacity: 0;
+}
+
+/* Default type */
+.password-wrapper .nav-elem,
+.password-wrapper .nav-elem.normal {
+    height: 48px;
+    width: auto;
+    border-radius: var(--mobile-border-radius-medium);
+    box-sizing: border-box;
+    text-decoration: none;
+    --icon-size: 22px;
+    color: var(--mobile-text-primary);
+}
+
+.password-wrapper button.nav-elem,
+.password-wrapper button.nav-elem.normal,
+.password-wrapper button.mega-pm-button.nav-elem,
+.password-wrapper button.mega-pm-button.nav-elem.normal,
+.password-wrapper .nav-elem.primary {
+    color: var(--mobile-text-inverse);
+    background: var(--mobile-button-primary);
+    font: var(--mobile-font-label-underline);
+}
+
+.password-wrapper button.nav-elem.outline,
+.password-wrapper button.mega-pm-button.nav-elem.outline {
+    background: none;
+    border: solid 2px var(--mobile-button-outline);
+    color: var(--mobile-button-outline);
+}
+.password-wrapper button.nav-elem.normal.outline span.primary-text {
+    color: var(--mobile-button-outline);
+}
+.password-wrapper button.nav-elem.outline.disabled,
+.password-wrapper button.nav-elem.outline.disabled:active {
+    background: none;
+    border: solid 2px var(--mobile-border-disabled);
+    color: var(--mobile-text-disabled);
+}
+.password-wrapper button.nav-elem.normal.outline:not(.icon-only):active {
+    background: none;
+    border: solid 2px var(--mobile-button-primary-pressed);
+    color: var(--mobile-button-primary-pressed);
+}
+.password-wrapper button.nav-elem.text-icon.outline:not(.icon-only):focus span.primary-text,
+.password-wrapper button.nav-elem.text-icon.outline:not(.icon-only):focus .sprite-pm-mono {
+    color: var(--mobile-text-primary);
+}
+.password-wrapper button.nav-elem.outline:not(.icon-only):active .primary-text,
+.password-wrapper button.nav-elem.normal.outline:active .sprite-pm-mono {
+    color: var(--mobile-button-primary-pressed);
+}
+.password-wrapper button.nav-elem:focus {
+    background: var(--mobile-button-primary-pressed);
+    color: var(--mobile-text-inverse-accent);
+}
+.password-wrapper .nav-elem.normal.block {
+    width: 100%;
+    max-width: 380px;
+}
+
+.password-wrapper .nav-elem.normal.block .primary-text {
+    font-weight: var(--mobile-font-weight-semibold);
+}
+
+/* Full width of container */
+.password-wrapper .nav-elem.full-width {
+    width: 100%;
+    height: 56px;
+    border-radius: 0;
+    display: flex;
+    justify-content: flex-start;
+    --icon-size: 24px;
+}
+
+.password-wrapper .nav-elem.full-width > *:not(:last-child) {
+    margin-inline-end: 16px;
+}
+
+/* .nav-elem text */
+.password-wrapper .nav-elem span {
+    color: inherit;
+    text-decoration: inherit;
+    font: var(--mobile-font-copy-regular);
+}
+.password-wrapper .nav-elem.semibold span {
+    font-weight: var(--mobile-font-weight-semibold);
+}
+
+.password-wrapper button.nav-elem.normal span.primary-text {
+    color: var(--mobile-text-inverse-accent);
+}
+
+.password-wrapper .nav-elem.button span.primary-text {
+    font: var(--font-button-label);
+}
+
+.password-wrapper .nav-elem.semibold span {
+    font-weight: var(--mobile-font-weight-semibold);
+}
+
+.password-wrapper .nav-elem .text-box-wrapper {
+    display: inline-flex;
+    flex-flow: column nowrap;
+    align-items: flex-start;
+}
+
+.password-wrapper .nav-elem .multi-text-box > *:not(:last-child) {
+    margin-bottom: 2px;
+}
+
+.password-wrapper .nav-elem .multi-text-box .sub-text {
+    font: var(--mobile-font-caption-small-regular);
+    color: var(--mobile-text-secondary);
+    line-height: 120%;
+}
+
+/* Only enforce a default background for
+button-type elements.
+ */
+.password-wrapper button.nav-elem {
+    color: var(--mobile-text-inverse-accent);
+    background: var(--mobile-button-primary);
+    cursor: pointer;
+}
+.nav-elem {
+    cursor: pointer;
+}
+
+.password-wrapper button.nav-elem.destructive,
+.password-wrapper .nav-elem.destructive,
+.password-wrapper .nav-elem.destructive.no-active:active,
+.password-wrapper button.nav-elem.normal.destructive:not(.icon-only):hover,
+.password-wrapper button.nav-elem.loading.destructive:focus {
+    background: var(--mobile-button-error);
+    color: var(--mobile-text-on-color);
+}
+.password-wrapper .nav-elem.destructive.disabled,
+.password-wrapper .nav-elem.destructive.disabled:active {
+    background: var(--mobile-button-disabled);
+    color: var(--mobile-text-on-color-disabled);
+}
+.password-wrapper button.nav-elem.normal.destructive:active,
+.password-wrapper .nav-elem.destructive:active {
+    background: var(--mobile-button-error-pressed);
+    color: var(--mobile-text-on-color);
+}
+
+.password-wrapper button.nav-elem.destructive span.primary-text {
+    color: inherit;
+}
+
+.password-wrapper .nav-elem.text-only,
+.password-wrapper button.mega-pm-button.nav-elem.text-only,
+.password-wrapper button.nav-elem.text-icon,
+.password-wrapper button.mega-pm-button.nav-elem.text-icon {
+    background: none;
+    color: var(--mobile-text-primary);
+    text-decoration: none;
+}
+.password-wrapper .nav-elem.text-only,
+.password-wrapper button.nav-elem.text-icon {
+    text-decoration: underline;
+}
+.password-wrapper .nav-elem.text-only.no-deco,
+.password-wrapper .nav-elem.full-width.text-icon,
+.password-wrapper .nav-elem.full-width.text-only {
+    text-decoration: none;
+}
+.password-wrapper button.nav-elem.text-icon.normal span.primary-text,
+.password-wrapper button.mega-pm-button.nav-elem.text-icon span.primary-text {
+    background: none;
+    color: var(--mobile-text-primary);
+}
+.password-wrapper button.nav-elem.text-icon.normal:not(.icon-only):hover,
+.password-wrapper button.nav-elem.text-icon.normal:not(.icon-only):active,
+.password-wrapper button.nav-elem.text-icon.normal:not(.icon-only):active .sprite-pm-mono {
+    background: none;
+    color: var(--mobile-button-primary-pressed);
+}
+.password-wrapper button.nav-elem.text-icon.normal:active .sprite-pm-mono,
+.password-wrapper button.nav-elem.text-icon.normal:active span.primary-text {
+    color: var(--mobile-button-primary-pressed);
+}
+.password-wrapper button.nav-elem.text-icon.normal:not(.icon-only):hover span.primary-text,
+.password-wrapper button.nav-elem.text-icon.normal:not(.icon-only):hover .sprite-pm-mono,
+.password-wrapper button.nav-elem.text-icon.normal:not(.icon-only):focus span.primary-text,
+.password-wrapper button.nav-elem.text-icon.normal:not(.icon-only):focus .sprite-pm-mono {
+    color: var(--mobile-button-primary-pressed);
+}
+.password-wrapper .nav-elem.text-icon.disabled,
+.password-wrapper .nav-elem.text-icon.disabled:active {
+    color: var(--mobile-text-disabled);
+}
+.password-wrapper .nav-elem.text-icon.disabled span,
+.password-wrapper .nav-elem.text-icon.disabled:active span {
+    border-bottom: 1px solid var(--mobile-text-disabled);
+}
+.password-wrapper button.nav-elem.normal:not(.icon-only):hover {
+    background: var(--mobile-button-primary-hover);
+}
+.password-wrapper button.nav-elem.normal.secondary:not(.icon-only):hover,
+.password-wrapper button.nav-elem.normal.secondary:focus {
+    background: var(--mobile-button-secondary-hover);
+}
+.password-wrapper button.nav-elem.normal:not(.icon-only):active {
+    background: var(--mobile-button-primary-pressed);
+}
+.password-wrapper button.nav-elem.normal.secondary:active {
+    background: var(--mobile-button-secondary-pressed);
+}
+.password-wrapper button.nav-elem.normal:hover span.primary-text,
+.password-wrapper button.nav-elem.normal:focus span.primary-text,
+.password-wrapper button.nav-elem.normal:hover .sprite-pm-mono,
+.password-wrapper button.nav-elem.normal:focus .sprite-pm-mono {
+    color: var(--mobile-text-on-color);
+}
+.password-wrapper button.nav-elem.normal.secondary:hover span.primary-text,
+.password-wrapper button.nav-elem.normal.secondary:hover i,
+.password-wrapper button.nav-elem.icon-only.secondary:hover i,
+.password-wrapper button.nav-elem.normal.secondary:focus span.primary-text,
+.password-wrapper button.nav-elem.normal.secondary:focus i,
+.password-wrapper button.nav-elem.icon-only.secondary:focus i {
+    color: var(--mobile-text-secondary);
+}
+.password-wrapper button.nav-elem.normal.secondary:active span.primary-text,
+.password-wrapper button.nav-elem.normal.secondary:active i,
+.password-wrapper button.nav-elem.icon-only.secondary:active i {
+    color: var(--mobile-text-placeholder);
+}
+.password-wrapper button.nav-elem.normal:active span.primary-text,
+.password-wrapper button.nav-elem.normal:active .sprite-pm-mono {
+    color: var(--mobile-text-inverse-accent);
+}
+.password-wrapper button.nav-elem.loading {
+    pointer-events: none;
+}
+.password-wrapper button.nav-elem.loading:hover,
+.password-wrapper button.nav-elem.loading:focus,
+.password-wrapper button.nav-elem.loading:active,
+.password-wrapper button.nav-elem.mega-pm-loading:hover,
+.password-wrapper button.nav-elem.mega-pm-loading:focus,
+.password-wrapper button.nav-elem.mega-pm-loading:active {
+    color: var(--mobile-text-inverse);
+    background: var(--mobile-button-primary);
+}
+
+.password-wrapper button.nav-elem.icon-only,
+.password-wrapper a.nav-elem.icon-only {
+    padding: 12px;
+    height: 40px;
+}
+.password-wrapper .nav-elem.icon-only {
+    cursor: pointer;
+    padding: 0;
+    width: 36px;
+    height: 36px;
+}
+
+.password-wrapper .nav-elem.normal.link {
+    padding: 0;
+    background: none;
+}
+
+.password-wrapper .nav-elem.normal.link span,
+.password-wrapper .nav-elem.normal.link i {
+    color: var(--mobile-text-primary);
+    text-decoration: underline;
+}
+
+.password-wrapper .nav-elem.normal.link span {
+    font: var(--font-button-label);
+}
+.password-wrapper .nav-elem.normal.link:hover span,
+.password-wrapper .nav-elem.normal.link:active span,
+.password-wrapper .nav-elem.normal.link:hover i,
+.password-wrapper .nav-elem.normal.link:active i {
+    color: var(--mobile-button-primary-pressed);
+}
+
+.password-wrapper button.nav-elem.secondary {
+    background: var(--mobile-button-secondary);
+}
+.password-wrapper button.nav-elem.normal.secondary span.primary-text,
+.password-wrapper button.nav-elem.normal.secondary i,
+.password-wrapper button.nav-elem.icon-only.secondary i {
+    color: var(--mobile-text-primary);
+}
+
+.password-wrapper button.nav-elem.normal.disabled,
+.password-wrapper button.nav-elem.normal:disabled {
+    background: var(--mobile-button-disabled);
+    pointer-events: none;
+}
+
+.password-wrapper button.nav-elem.normal.disabled .primary-text,
+.password-wrapper button.nav-elem.normal:disabled .primary-text {
+    color: var(--mobile-text-on-color-disabled);
+}
+
+.password-wrapper a.nav-elem.secondary {
+    background: var(--mobile-button-secondary);
+    color: var(--mobile-text-primary);
+}
+
+.password-wrapper a.nav-elem.secondary:hover {
+    background: var(--mobile-button-secondary-hover);
+    color: var(--mobile-text-secondary);
+}
+
+.password-wrapper a.nav-elem.secondary:active {
+    background: var(--mobile-button-secondary-hover);
+    color: var(--mobile-text-inverse);
+}
+
+/* Style for highlighted nav buttons */
+.pwm-ui .nav-elem.normal.button.highlighted {
+    background: var(--mobile-button-secondary);
+}
+
+.pwm-ui .nav-elem.normal.button.highlighted span {
+    color: var(--mobile-text-primary);
+    font: var(--font-button-label);
+}
+
+/* Overridden component styles for webclient layout */
+
+.password-wrapper button.nav-elem,
+.password-wrapper button.nav-elem.normal {
+    font: var(--mobile-font-copy-regular);
+}

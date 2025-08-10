@@ -37,6 +37,8 @@ class SharedFileItem extends ContactAwareComponent {
 }
 
 class SharedFilesAccordionPanel extends MegaRenderMixin {
+    domRef = React.createRef();
+
     @utils.SoonFcWrap(350)
     eventuallyRenderThumbnails() {
         if (this.allShownNodes) {
@@ -77,7 +79,7 @@ class SharedFilesAccordionPanel extends MegaRenderMixin {
             }
         }
     }
-    componentWillMount() {
+    UNSAFE_componentWillMount() {
         this.allShownNodes = new MapSet();
     }
     componentWillUnmount() {
@@ -204,7 +206,10 @@ class SharedFilesAccordionPanel extends MegaRenderMixin {
                 </div>;
             }
             contents = <div className="chat-dropdown content have-animation">
-                {sharedNodesContainer}
+                {room.hasMessages() ?
+                    sharedNodesContainer :
+                    <div className="chat-dropdown empty-txt">{l[19985]}</div>
+                }
                 {self.isLoadingMore ?
                     <div className="loading-spinner light small"><div className="main-loader"></div></div> :
                     null
@@ -221,19 +226,31 @@ class SharedFilesAccordionPanel extends MegaRenderMixin {
             </div>;
         }
 
-        return <div className="chat-dropdown container">
-            <div className={"chat-dropdown header " + (this.props.expanded ? "expanded" : "")} onClick={function(e) {
-                self.props.onToggle(e);
-            }}>
-                <span>{this.props.title}</span>
-                <i className="sprite-fm-mono icon-arrow-down" />
+        return (
+            <div
+                ref={this.domRef}
+                className="chat-dropdown container">
+                <div
+                    className={`
+                        chat-dropdown
+                        header
+                        ${this.props.expanded ? 'expanded' : ''}
+                    `}
+                    onClick={this.props.onToggle}>
+                    <span>{this.props.title}</span>
+                    <i className="sprite-fm-mono icon-arrow-down"/>
+                </div>
+                <div
+                    className={`
+                        chat-shared-files-container
+                        ${this.isLoadingMore ? 'is-loading' : ''}
+                    `}>
+                    {contents}
+                </div>
             </div>
-            <div className={"chat-shared-files-container" + (self.isLoadingMore ? "is-loading" : "")}>
-                {contents}
-            </div>
-        </div>;
+        );
     }
-};
+}
 
 
 export {

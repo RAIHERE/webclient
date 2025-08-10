@@ -693,7 +693,7 @@ pro.proplan = {
         }
 
         // Save selected payment period
-        sessionStorage.setItem('pro.period', period);
+        tryCatch(() => sessionStorage.setItem('pro.period', period))();
 
         // If no period is given, we are showing all mini plans regardless of duration
         const multipleDurations = !period;
@@ -737,7 +737,7 @@ pro.proplan = {
             var $planName = $('.pricing-page.plan-title', $currentBox);
             var $planButton = $('.pricing-page.plan-button', $currentBox);
             var basePrice;
-            var baseCurrency;
+            let baseCurrency = 'EUR';
             $currentBox.removeClass('hidden');
 
             if (currentPlan[pro.UTQA_RES_INDEX_LOCALPRICE]) {
@@ -786,6 +786,26 @@ pro.proplan = {
             $price.text(formatCurrency(basePrice, baseCurrency, 'narrowSymbol'));
 
             if (pageType === 'D') {
+
+                const planTaxInfo = pro.taxInfo
+                    && pro.getStandardisedTaxInfo(currentPlan[pro.UTQA_RES_INDEX_EXTRAS].taxInfo);
+
+                const $taxInfo = $('.pricing-plan-tax', $currentBox);
+                if (planTaxInfo) {
+                    if (pro.taxInfo.variant === 0) {
+                        $('.tax-info', $taxInfo).text(l.before_tax);
+                        $('.tax-price', $taxInfo).text(l.p_with_tax
+                            .replace('%1', formatCurrency(planTaxInfo.taxedPrice, baseCurrency, 'narrowSymbol')
+                            + (baseCurrency === 'EUR' ? ' ' : '* ') + baseCurrency))
+                            .removeClass('hidden');
+                    }
+                    else if (pro.taxInfo.variant === 1) {
+                        $('.tax-info', $taxInfo).text(l.t_may_appy.replace('%1', pro.taxInfo.taxName));
+                    }
+
+                    $taxInfo.removeClass('hidden');
+                }
+
                 const $onlySection = $('.pricing-page.plan-only', $currentBox);
                 const $currencyAndPeriod = $('.pricing-page.currency-and-period', $currentBox);
                 const periodIsYearly = months === 12;
@@ -1065,7 +1085,7 @@ pro.proplan = {
         }
         loadingDialog.show();
         delete mega.discountInfo;
-        api.req({a: 'dci', dc: mega.discountCode}).then(({result: res}) => {
+        api.req({a: 'dci', dc: mega.discountCode, extra: true}).then(({result: res}) => {
             loadingDialog.hide();
             if (res && res.al && res.pd) {
                 DiscountPromo.storeDiscountInfo(res);
@@ -1469,6 +1489,10 @@ function showLoginDialog(email, password) {
 
         closeDialog();
 
+        if (page.startsWith('propay_')) {
+            return loadSubPage('pro');
+        }
+
         return false;
     };
 
@@ -1755,6 +1779,12 @@ function showRegisterDialog(aPromise) {
             else {
                 $('.mega-dialog.registration-page-success').removeClass('hidden');
                 fm_showoverlay();
+            }
+        },
+
+        onDialogClosed: () => {
+            if (page.includes('propay')) {
+                loadSubPage('pro');
             }
         }
     }, aPromise);

@@ -1,12 +1,11 @@
 import React from 'react';
-import { MegaRenderMixin } from '../../../mixins';
 import ModalDialogsUI from '../../../../ui/modalDialogs.jsx';
 import Button from '../button.jsx';
 import Preview from './preview.jsx';
 import Link from '../../link.jsx';
 import { Emoji } from '../../../../ui/utils';
 
-export class Start extends MegaRenderMixin {
+export class Start extends React.Component {
     static NAMESPACE = 'start-meeting';
     static dialogName = `${Start.NAMESPACE}-dialog`;
 
@@ -28,8 +27,7 @@ export class Start extends MegaRenderMixin {
         video: false,
         editing: false,
         previousTopic: undefined,
-        topic: undefined,
-        mounted: false
+        topic: undefined
     };
 
     constructor(props) {
@@ -98,13 +96,14 @@ export class Start extends MegaRenderMixin {
     };
 
     componentDidMount() {
-        super.componentDidMount();
         this.bindEvents();
-        M.safeShowDialog(Start.dialogName, () => this.setState({ mounted: true }));
+        if ($.dialog === 'onboardingDialog') {
+            closeDialog();
+        }
+        M.safeShowDialog(Start.dialogName, () => $(`#${Start.NAMESPACE}`));
     }
 
     componentWillUnmount() {
-        super.componentWillUnmount();
         $(document).unbind(`.${Start.NAMESPACE}`);
         if ($.dialog === Start.dialogName) {
             closeDialog();
@@ -118,7 +117,8 @@ export class Start extends MegaRenderMixin {
         return (
             <ModalDialogsUI.ModalDialog
                 {...this.state}
-                name={NAMESPACE}
+                id={NAMESPACE}
+                dialogName={NAMESPACE}
                 className={NAMESPACE}
                 stopKeyPropagation={editing}
                 onClose={() => this.props.onClose()}>
@@ -166,3 +166,7 @@ export class Start extends MegaRenderMixin {
         );
     }
 }
+
+window.StartMeetingDialogUI = {
+    Start
+};

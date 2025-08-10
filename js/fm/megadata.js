@@ -50,6 +50,9 @@
  * @property {Number} lastChatActivity
  *     UNIX epoch time stamp as an integer in seconds for the last chat
  *     activity.
+ * @property {Object} b
+ *     Business user only object. If the sub-property `m` === 1 user is the master user, otherwise sub user
+ *     undefined for non-business accounts and business accounts that are not part of the same business.
  */
 
 mBroadcaster.once('boot_done', function() {
@@ -57,6 +60,7 @@ mBroadcaster.once('boot_done', function() {
 
     const value = freeze({
         "u": undefined,
+        "b": undefined,
         "c": undefined,
         "m": undefined,
         // "m2": undefined,
@@ -132,7 +136,9 @@ function MegaData() {
         'label': this.sortByLabel.bind(this),
         'sharedwith': this.sortBySharedWith.bind(this),
         'versions': this.sortByVersion.bind(this),
-        'playtime': this.sortByPlaytime.bind(this)
+        'playtime': this.sortByPlaytime.bind(this),
+        'numFolders': this.sortByNumFolders.bind(this),
+        'hbtime': this.sortByHeartbeatTime.bind(this)
     };
     Object.setPrototypeOf(sortRules, null);
     Object.defineProperty(this, 'sortRules', {value: Object.freeze(sortRules)});
@@ -233,9 +239,3 @@ function MegaData() {
 
 MegaData.prototype = new MegaUtils();
 MegaData.prototype.constructor = MegaData;
-
-// Initialize affiliate dataset on-demand
-lazy(MegaData.prototype, 'affiliate', () => {
-    'use strict';
-    return new AffiliateData();
-});

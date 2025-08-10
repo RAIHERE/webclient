@@ -3,17 +3,8 @@ class MegaInteractable extends MegaComponent {
     constructor(options) {
         super(options);
 
-        // Map of types to interactable classes
-        const interactableTypes = {
-            normal: 'normal',
-            fullwidth: 'full-width',
-            icon: 'icon-only',
-            text: 'text-only'
-        };
-
-        // Cache the interactableElement for future use
-        this.domNode.classList.add(
-            'nav-elem', interactableTypes[options.type] || 'normal');
+        this.domNode.classList.add('nav-elem');
+        this.interactableType = options.type;
 
         if (options.icon) {
 
@@ -37,7 +28,7 @@ class MegaInteractable extends MegaComponent {
             }
         }
 
-        if (options.rightIcon && options.type === 'fullwidth') {
+        if (options.rightIcon) {
 
             this.rightIcon = options.rightIcon;
 
@@ -51,18 +42,41 @@ class MegaInteractable extends MegaComponent {
             }
         }
 
+        if (options.rightBadge) {
+            this.rightBadge = options.rightBadge;
+        }
+
         // Disable and enable the interactable
         this.disabled = options.disabled;
-        this.loading = false;
 
-        if (options.loadSpinner) {
-            this.on('click', e => {
-                e.currentTarget.loading = !e.currentTarget.loading;
-            });
+        if (options.loaderColor) {
+            this.loaderColor = options.loaderColor;
         }
 
         if (options.onClick) {
-            this.on('click', options.onClick);
+            this.on('click.onclick', options.onClick);
+        }
+
+        if (options.onContextmenu) {
+            this.on('contextmenu', options.onContextmenu);
+        }
+
+        if (options.dataset) {
+            this.dataset = options.dataset;
+        }
+
+        if (options.simpletip) {
+            this.dataset.simpletip = options.simpletip;
+            this.addClass('simpletip');
+
+            if (options.simpletipPos) {
+                this.dataset.simpletipposition = options.simpletipPos;
+            }
+        }
+
+        if (options.eventLog) {
+            this.eventLog = options.eventLog;
+            this.on('click.eventLog', () => eventlog(options.eventLog));
         }
     }
 
@@ -81,35 +95,36 @@ class MegaInteractable extends MegaComponent {
     }
 
     get loading() {
-        return !!this.domNode.querySelector('.loading');
+        return this.domNode.classList.contains('loading');
     }
 
     set loading(stateBool) {
-        stateBool |= 0;
-        if (this.loading === stateBool) {
+        if (this.loading === !!stateBool) {
             return;
         }
 
-        if (stateBool) {
-            for (let i = 0; i < this.domNode.childNodes.length; i++) {
-                this.domNode.childNodes[i].style.display = "none";
-            }
+        const sprite = this.loaderColor === 'w' ? 'uni' : 'theme';
 
-            const loading_elem = document.createElement('i');
-            loading_elem.className = 'notification-loading-spinner sprite-mobile-fm-mono icon-loader-thin-outline '
-                + 'loading';
-            this.domNode.appendChild(loading_elem);
+        if (stateBool) {
+            this.addClass('loading', `sprite-fm-${sprite}-after`, 'icon-loader-throbber-light-outline-after');
         }
         else {
-            let elem;
-            for (let i = 0; i < this.domNode.childNodes.length; i++) {
-                elem = this.domNode.childNodes[i];
-                elem.removeAttribute('style');
-                if (elem.classList.contains("loading")) {
-                    elem.remove();
-                }
-            }
+            this.removeClass(
+                'loading',
+                'sprite-fm-theme-after',
+                'sprite-fm-uni-after',
+                'icon-loader-throbber-light-outline-after'
+            );
         }
+    }
+
+    get interactableType() {
+        return Object.values(MegaInteractable.interactableTypes).find(cls => this.domNode.classList.contains(cls));
+    }
+
+    set interactableType(type) {
+        this.removeClass(...Object.values(MegaInteractable.interactableTypes));
+        this.addClass(MegaInteractable.interactableTypes[type] || 'normal');
     }
 
     get icon() {
@@ -170,7 +185,7 @@ class MegaInteractable extends MegaComponent {
     }
 
     get rightIcon() {
-        return this.domNode.rightIcon.c;
+        return this.domNode.rightIcon && this.domNode.rightIcon.c;
     }
 
     set rightIcon(iconClass) {
@@ -228,6 +243,34 @@ class MegaInteractable extends MegaComponent {
         }
 
         this.domNode.rightIcon.s = size;
+    }
+
+    get rightBadge() {
+        const elm = this.domNode.querySelector('.right-badge');
+        if (!elm) {
+            return false;
+        }
+        return {
+            badgeClass: elm.className.replace('right-badge', '').replace('right-icon', '').trim(),
+            text: elm.textContent
+        };
+    }
+
+    set rightBadge(options) {
+        let elm = this.domNode.querySelector('.right-badge');
+
+        if (!elm) {
+            elm = document.createElement('div');
+            this.domNode.appendChild(elm);
+        }
+
+        const { text, badgeClass } = options;
+        if (!text) {
+            elm.remove();
+            return;
+        }
+        elm.className = `${badgeClass} right-badge right-icon`;
+        elm.textContent = text;
     }
 
     get text() {
@@ -304,9 +347,25 @@ class MegaInteractable extends MegaComponent {
             this.domNode.classList.remove('active');
         }
     }
+
+    get dataset() {
+        return this.domNode.dataset;
+    }
+
+    set dataset(data) {
+        Object.assign(this.domNode.dataset, data);
+    }
 }
 
+MegaInteractable.interactableTypes = Object.freeze({
+    normal: 'normal',
+    fullwidth: 'full-width',
+    icon: 'icon-only',
+    text: 'text-only'
+});
+
 MegaInteractable.iconSizesClass = Object.freeze({
+    8: 'icon-size-8',
     16: 'icon-size-16',
     20: 'icon-size-20',
     22: 'icon-size-22',

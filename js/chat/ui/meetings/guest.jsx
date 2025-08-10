@@ -1,14 +1,12 @@
 import React from 'react';
-import { MegaRenderMixin } from '../../mixins';
 import Button from './button.jsx';
 
-export default class Guest extends MegaRenderMixin {
+export default class Guest extends React.Component {
     state = {
         copy: ''
     };
 
     componentDidMount() {
-        super.componentDidMount();
         this.setState({ copy: `${l.free_storage_info__call.replace('%s', bytesToSize(mega.bstrg, 0))}` });
     }
 
@@ -31,7 +29,7 @@ export default class Guest extends MegaRenderMixin {
                     <Button
                         className="mega-button positive register-button"
                         onClick={() => loadSubPage('register')}>
-                        {l[968] /* `Create Account` */}
+                        {l.sign_up_btn /* `Create Account` */}
                     </Button>
                 </div>
             </div>

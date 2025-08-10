@@ -339,22 +339,6 @@
             </div>
         </footer>
     </div>
-    
-    <!-- Dialog: acs4-invalid-ac -->
-    <div class="mega-dialog dialog-template-message acs4-invalid-ac fullsize-on-mobile hidden" role="dialog" aria-labelledby="acs4-invalid-ac-title" aria-modal="true">
-        <header>
-            <div class="info-container">
-                <h3 id="acs4-invalid-ac-title" class="title"></h3>
-                <p class="message"></p>
-            </div>
-        </header>
-
-        <footer>
-            <div class="footer-container">
-                <button class="mega-button positive confirm"><span>[$activate_s4_ac_invalid_join]</span></button>
-            </div>
-        </footer>
-    </div>
 
 </section>
 
@@ -366,17 +350,22 @@
 
         <div class="content">
 
-            <header>
-                <div class="info">
-                    <h3 id="cookie-banner-title">[$cookie_manage_cookies]</h3>
-                    <p class="current hidden">
-                        [$cookie_banner_txt]
-                    </p>
-                    <p class="experiment hidden">
-                        [$cookie_banner_txt_upd_cookies]
-                    </p>
+            <div class="header-container">
+                <header>
+                    <div class="info">
+                        <h3 id="cookie-banner-title">[$cookie_manage_cookies]</h3>
+                        <p class="current hidden">
+                            [$cookie_banner_txt]
+                        </p>
+                        <p class="experiment hidden">
+                            [$cookie_banner_txt_upd_cookies]
+                        </p>
+                    </div>
+                </header>
+                <div class="reject-all hidden">
+                    [$cookie_banner_reject_all]
                 </div>
-            </header>
+            </div>
 
             <div class="buttons">
                 <button class="mega-button cookie-settings">

@@ -37,6 +37,18 @@ mBroadcaster.once('boot_done', function() {
             return value;
         });
     }
+
+    if (!Intl.NumberFormat.prototype.formatToParts) {
+        // weak silly polyfill -- Safari < 13
+        Object.defineProperty(Intl.NumberFormat.prototype, 'formatToParts', {
+            value(n) {
+                const [i, f] = this.format(n).split(/[,.]/);
+                return [
+                    {type: 'integer', value: i | 0}, {type: 'decimal', value: '.'}, {type: 'fraction', value: f | 0}
+                ];
+            }
+        });
+    }
 });
 
 if (typeof window.queueMicrotask !== "function") {
@@ -178,28 +190,6 @@ if (Object.hasOwn === undefined) {
         };
     }
 
-    if (!Array.prototype.flat) {
-        const reduce = Array.prototype.reduce;
-        const concat = Array.prototype.concat.bind([]);
-        Object.defineProperty(Array.prototype, 'flat', {
-            configurable: !!window.is_karma,
-            value: function flat(depth = 1) {
-                return depth < 2 ? depth ? concat(...this) : this
-                    : reduce.call(this, (a, o) =>
-                        (Array.isArray(o) && a.push(...flat.call(o, depth - 1)) || a.push(o)) && a, []);
-            }
-        });
-    }
-
-    if (!Array.prototype.flatMap) {
-        Object.defineProperty(Array.prototype, 'flatMap', {
-            configurable: !!window.is_karma,
-            value(cb, s) {
-                return this.map(cb.bind(s || this)).flat();
-            }
-        });
-    }
-
     if (!Array.prototype.findLast) {
         Object.defineProperty(Array.prototype, 'findLast', {
             configurable: !!window.is_karma,
@@ -209,6 +199,19 @@ if (Object.hasOwn === undefined) {
                         return this[i];
                     }
                 }
+            }
+        });
+    }
+
+    if (!Blob.prototype.arrayBuffer) {
+        Object.defineProperty(Blob.prototype, 'arrayBuffer', {
+            value() {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onerror = reject;
+                    reader.onload = (ev) => resolve(ev.target.result);
+                    reader.readAsArrayBuffer(this);
+                });
             }
         });
     }
@@ -330,7 +333,7 @@ mBroadcaster.once('startMega', tryCatch(() => {
     const {mecmatst} = sessionStorage;
     const {buildOlderThan10Days, eventlog = nop, is_karma, is_extension} = window;
 
-    if (is_karma || is_extension !== false) {
+    if (is_karma || is_extension !== false || self.is_transferit) {
         return;
     }
     scriptTest(
@@ -754,6 +757,40 @@ lazy(self, 'deepFreeze', () => {
         refs = null;
         return rv || false;
     };
+});
+
+/**
+ * Simplistic module loader.
+ * @todo deprecate secureboot.js, move to SRI, and use import(map) statements.
+ * @name factory
+ * @global
+ */
+lazy(self, 'factory', () => {
+    'use strict';
+    const nil = freeze({});
+    const cache = Object.create(null);
+    const modules = Object.create(null);
+
+    return freeze({
+        define(name, module) {
+            console.assert(!modules[name], `overriding module '${name}'`);
+            modules[name] = tryCatch(module);
+        },
+        lazy(target, module, name) {
+            return lazy(target, name, () => factory.require(module)[name]);
+        },
+        require(name) {
+            if (cache[name] === undefined) {
+                if (typeof modules[name] !== 'function') {
+                    throw new SyntaxError(`No module named ${name}`);
+                }
+                cache[name] = false;
+                cache[name] = modules[name](factory) || cache[name];
+                delete modules[name];
+            }
+            return cache[name] || nil;
+        }
+    });
 });
 
 // }}} END: Helpers, with direct dependency on polyfills or latest ECMAScript

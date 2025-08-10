@@ -146,8 +146,8 @@ function sharedUInode(nodeHandle, force) {
     var UiExportLink = new mega.UI.Share.ExportLink();
     var share = new mega.Share();
     var target;
-    const iconSize = M.viewmode ? 90 : 24;
-    const iconSpriteClass = `item-type-icon${M.viewmode ? '-90' : ''}`;
+    const iconSize = M.onIconView ? 90 : 24;
+    const iconSpriteClass = `item-type-icon${M.onIconView ? '-90' : ''}`;
 
     // Is there a full share or pending share available
     if ((M.d[nodeHandle] && M.d[nodeHandle].shares) || M.ps[nodeHandle]) {
@@ -189,7 +189,6 @@ function sharedUInode(nodeHandle, force) {
         target = document.getElementById(nodeHandle);
 
         if (target) {
-
             // Update right panel selected node with appropriate icon
             target = target.querySelector(`.${iconSpriteClass}`);
 
@@ -212,7 +211,6 @@ function sharedUInode(nodeHandle, force) {
         target = document.getElementById(nodeHandle);
 
         if (target) {
-
             // Right panel
             target = target.querySelector(`.${iconSpriteClass}`);
 
@@ -221,15 +219,36 @@ function sharedUInode(nodeHandle, force) {
             }
         }
 
-        // Remove the share node selection on incoming and outgoing shares pages
-        if (typeof nodeHandle !== 'undefined' && (M.currentdirid === 'out-shares' || M.currentdirid === 'shares')) {
-            selectionManager.remove_from_selection(nodeHandle);
+        if (window.selectionManager) {
+            // Remove the share node selection on incoming and outgoing shares pages
+            if (nodeHandle !== undefined && (M.currentdirid === 'out-shares' || M.currentdirid === 'shares')
+                || !M.getNodeRoot(nodeHandle) && M.search
+            ) {
+                selectionManager.remove_from_selection(nodeHandle);
+            }
+            else if (selectionManager.selected_list.includes(nodeHandle)) {
+                selectionManager.updateSelectionNotification();
+            }
         }
+    }
+    else if (window.selectionManager && selectionManager.selected_list.includes(nodeHandle)) {
+        selectionManager.updateSelectionNotification();
     }
 
     // If no export link is available, remove export link from left and right panels (list and block view)
     if (!bExportLink) {
         UiExportLink.removeExportLinkIcon(nodeHandle);
+    }
+
+    if (M.recentsRender) {
+        M.recentsRender.nodeChanged(nodeHandle);
+    }
+
+    if (mega.devices.ui) {
+        mega.devices.ui.onUpdateSharedNode(nodeHandle);
+    }
+    if (mega.ui.secondaryNav) {
+        mega.ui.secondaryNav.updateCard(nodeHandle);
     }
 }
 
@@ -367,6 +386,7 @@ function initAddDialogMultiInputPlugin() {
  * Handle add new contact dialog UI
  * @param {String} title Dialog title
  * @param {String} username User name/email
+ * @param {String} msg Dialog message
  * @param {Boolean} close Dialog parameter
  */
 function contactsInfoDialog(title, username, msg, close) {
@@ -395,11 +415,14 @@ function contactsInfoDialog(title, username, msg, close) {
         $msg.text(msg);
     }
 
-    M.safeShowDialog('contact-info', $d);
-
     $('button.js-close, button.ok', $d).rebind('click', function() {
         contactsInfoDialog(undefined, undefined, undefined, 1);
     });
+
+    // Set dialog name - used in overall closeDialog() logic
+    $.contactInfoDialog = 'contact-info';
+
+    M.safeShowDialog('contact-info', $d);
 }
 
 /**
@@ -596,59 +619,29 @@ function ephemeralDialog(msg) {
 }
 
 function fmtopUI() {
-
     "use strict";
 
     var $sharesTabBlock = $('.shares-tabs-bl');
     var $galleryTabBlock = $('.gallery-tabs-bl');
     const $galleryTabLink = $('.gallery-tab-lnk');
     const $header = $('.fm-right-header', '.fmholder');
-    const $fmShareButton = $('.fm-share-folder').off('click.shareFolder').addClass('hidden');
 
-    if ($fmShareButton.length) {
-        // Show share button unless for root id, out shares, s4, etc
-        const pages = ['s4', 'out-shares', 'shares', 'file-requests', 'faves', M.RubbishID];
-        const dirPages = [M.BackupsId, M.RootID, M.currentrootid];
-        const showButton = !pages.includes(M.currentrootid) && !dirPages.includes(M.currentdirid)
-            && M.currentrootid !== (M.BackupsId && M.getNodeByHandle(M.BackupsId).p);
+    let primary = false;
+    let secondary = false;
+    let contextMenuItem = false;
 
-        if (showButton) {
-            const h = String(M.currentdirid).split('/').pop();
-            const n = M.getNodeByHandle(h);
-
-            if (M.getNodeRights(n.h) > 1) {
-                $fmShareButton.removeClass('hidden').rebind('click.shareFolder', () => {
-                    $.selected = [n.h];
-                    M.openSharingDialog($.selected[0]);
-                    eventlog(500034);
-                    return false;
-                });
-            }
-        }
+    const id = String(M.currentdirid || '').split('/').pop();
+    if (mega.rewind
+        && M.getSelectedSourceRoot() === M.RootID
+        && M.currentrootid === M.RootID
+        && !pfid && M.onDeviceCenter !== M.RootID
+    ) {
+        contextMenuItem = id;
     }
 
-    /**
-     * Initialise the Rewind header button functionality in case of Rewindable folders
-     * Retries management in case mega.rewind not yet loaded
-     * @param {Number} cur - current attempt number
-     * @param {Number} max - max number of attempts before giving up
-     */
-    const initRewindHeaderButton = (cur = 0, max = 3) => {
-        if (mega.rewind) {
-            if (M.getSelectedSourceRoot() === M.RootID && M.currentrootid === M.RootID) {
-                mega.rewind.bindHeaderButton();
-            }
-            else {
-                mega.rewind.unbindHeaderButton();
-            }
-        }
-        else if (cur < max) {
-            // this is needed on first webclient load of rewindable empty folders
-            delay('fm-header:rewind-btn', () => initRewindHeaderButton(cur + 1, max), 1e3);
-        }
-    };
-
-    initRewindHeaderButton();
+    const $rewindNotifBanner =
+        $('.fm-notification-block.new-feature-rewind-notification', '.fm-right-files-block');
+    $rewindNotifBanner.addClass('hidden');
 
     $('.shares-tab-lnk.active', $sharesTabBlock).removeClass('active');
     $('.gallery-tab-lnk.active', $galleryTabBlock).removeClass('active');
@@ -656,57 +649,39 @@ function fmtopUI() {
     $('.fm-s4-settings, .fm-s4-new-bucket, .fm-s4-new-key, .fm-s4-new-user, .fm-s4-new-group', $header)
         .addClass('hidden');
 
-    $('.fm-clearbin-button,.fm-add-user,.fm-new-folder,.fm-file-upload,.fm-folder-upload,.fm-uploads')
-        .add('.fm-new-shared-folder,.fm-new-link')
-        .add('.fm-new-file-request')
-        .addClass('hidden');
-    $('.fm-new-folder').removeClass('filled-input');
+    if (M.currentrootid !== 'shares' && !M.onDeviceCenter) {
+        mega.ui.secondaryNav.hideCard();
+        mega.ui.secondaryNav.hideActionButtons();
+    }
+    mega.ui.secondaryNav.updateLayoutButton(
+        M.currentdirid === 'shares' ||
+        M.currentdirid === 'out-shares' ||
+        M.currentdirid === 'file-requests'
+    );
+    mega.ui.secondaryNav.updateInfoPanelButton(id && M.d[id] && M.d[id].t);
+    mega.ui.secondaryNav.showBreadcrumb();
     $('.fm-right-files-block').removeClass('visible-notification rubbish-bin');
-    $('.fm-breadcrumbs-block').removeClass('hidden');
-    $('button.link-button.accept-all').addClass('hidden');
 
-    var showUploadBlock = function _showUploadBlock() {
-
-        if (M.InboxID && (M.currentrootid === M.InboxID
-            || M.getNodeRoot(M.currentdirid.split('/').pop()) === M.InboxID)) {
-            return false;
-        }
-
-        $('.fm-new-folder').removeClass('hidden');
-        $('.fm-file-upload').removeClass('hidden');
-        $('.fm-uploads').removeClass('hidden');
-
-        if ($.hasWebKitDirectorySupport === undefined) {
-            $.hasWebKitDirectorySupport = 'webkitdirectory' in document.createElement('input');
-        }
-
-        if ($.hasWebKitDirectorySupport) {
-            $('.fm-folder-upload').removeClass('hidden');
-        }
-        else {
-            $('.fm-file-upload').addClass('last-button');
-        }
-    };
-
+    const isSearchResult = String(M.currentdirid).substring(0, 6) === 'search';
     if (M.currentrootid === M.RubbishID) {
         if (M.v.length) {
-            $('.fm-clearbin-button').removeClass('hidden');
+            primary = '.fm-clearbin-button';
         }
 
-        const $rewindNotification = $('.fm-notification-block.new-feature-rewind-notification');
         if (mega.config.get('dsmRubRwd')) {
-            $rewindNotification.addClass('hidden');
+            $rewindNotifBanner.addClass('hidden');
         }
         else {
+            $rewindNotifBanner.removeClass('hidden');
             delay('rubbish-bin:rewind-prom', () => eventlog(500530, true), 4e3);
 
-            $('.fm-notification-close', $rewindNotification).rebind('click', () => {
+            $('.fm-notification-close', $rewindNotifBanner).rebind('click.rewindnotifbanner', () => {
                 eventlog(500529);
                 mega.config.set('dsmRubRwd', 1);
-                $rewindNotification.addClass('hidden');
+                $rewindNotifBanner.addClass('hidden');
             });
 
-            $('.learn-more a', $rewindNotification).rebind('click.rnb-lm', () => eventlog(500528));
+            $('.learn-more a', $rewindNotifBanner).rebind('click.rnb-lm', () => eventlog(500528));
         }
 
         $('.fm-right-files-block').addClass('rubbish-bin visible-notification');
@@ -727,8 +702,18 @@ function fmtopUI() {
             $sharesTabBlock.find('.in-shares').addClass('active');
             $('.fm-right-files-block').addClass('visible-notification');
 
-            if (M.currentdirid !== 'shares' && M.getNodeRights(M.currentdirid) > 0) {
-                showUploadBlock();
+            if (M.currentdirid !== 'shares' && !M.d[M.currentdirid].su) {
+                if (M.getNodeRights(M.currentdirid) > 0) {
+                    primary = '.fm-new-menu';
+                    secondary = '.fm-download';
+                }
+                else {
+                    primary = '.fm-download';
+                }
+                contextMenuItem = contextMenuItem || M.currentdirid;
+            }
+            else if (M.currentdirid !== 'shares') {
+                mega.ui.secondaryNav.hideBreadcrumb();
             }
         }
         else if (M.currentrootid === 'out-shares') {
@@ -738,34 +723,51 @@ function fmtopUI() {
             $('.out-shares', $sharesTabBlock).addClass('active');
             $('.fm-right-files-block').addClass('visible-notification');
 
-            if (M.currentdirid !== M.currentrootid) {
-                showUploadBlock();
+            if (M.currentdirid === M.currentrootid) {
+                primary = '.fm-new-shared-folder';
+                mega.ui.secondaryNav.hideBreadcrumb();
+            }
+            else if (M.getNodeShareUsers(M.d[M.currentdirid.replace('out-shares/', '')], 'EXP').length) {
+                primary = '.fm-new-menu';
+                secondary = '.fm-manage-share-folder';
+                contextMenuItem = contextMenuItem || id;
             }
             else {
-                $('.fm-new-shared-folder').removeClass('hidden');
-                $sharesTabBlock.removeClass('hidden');
+                primary = '.fm-new-menu';
+                contextMenuItem = contextMenuItem || id;
             }
         }
         else if (M.currentrootid === 'public-links') {
 
             M.sharesUI();
+            $sharesTabBlock.removeClass('hidden');
+            $('.public-links', $sharesTabBlock).addClass('active');
             $('.fm-right-files-block').addClass('visible-notification');
 
             if (M.currentdirid === M.currentrootid) {
-                $('.fm-new-link').removeClass('hidden');
+                primary = '.fm-new-link';
+                mega.ui.secondaryNav.hideBreadcrumb();
             }
             else {
-                showUploadBlock();
+                primary = '.fm-new-menu';
+                secondary = '.fm-manage-link';
+                contextMenuItem = contextMenuItem || id;
             }
         }
         else if (M.currentrootid === 'file-requests') {
+            M.sharesUI();
+            $sharesTabBlock.removeClass('hidden');
+            $('.file-requests', $sharesTabBlock).addClass('active');
             $('.fm-right-files-block', document).addClass('visible-notification');
 
             if (M.currentdirid === M.currentrootid) {
-                $('.fm-new-file-request', document).removeClass('hidden');
+                primary = '.fm-new-file-request';
+                mega.ui.secondaryNav.hideBreadcrumb();
             }
             else {
-                showUploadBlock();
+                primary = '.fm-new-menu';
+                secondary = mega.fileRequest.storage.getPuHandleByNodeHandle(id) ? '.fm-manage-file-request' : false;
+                contextMenuItem = contextMenuItem || id;
             }
         }
         else if (M.isGalleryPage()) {
@@ -783,42 +785,95 @@ function fmtopUI() {
                 $(`.gallery-tab-lnk-${mega.gallery[M.currentdirid].mode}`, $galleryTabBlock).addClass('active');
             }
         }
-        else if (M.currentrootid === 's4') {
-            const {subType, original} = M.currentCustomView;
+        else if (M.currentrootid === 's4' && M.currentCustomView) {
+            const {subType, original, nodeID, containerID} = M.currentCustomView;
+            mega.ui.secondaryNav.updateLayoutButton(!subType.startsWith('bucket'));
             if (subType === 'container') {
-                $('.fm-s4-new-bucket, .fm-s4-settings', '.fm-header-buttons').removeClass('hidden');
+                primary = '.fm-s4-new-bucket';
+                secondary = '.fm-s4-settings';
             }
             else if (subType === 'bucket') {
-                $('.fm-new-folder').removeClass('hidden');
-                $('.fm-uploads').removeClass('hidden');
-                $('.fm-file-upload').removeClass('hidden');
-                $('.fm-folder-upload').removeClass('hidden');
+                if (M.d[nodeID].p === containerID) {
+                    mega.ui.secondaryNav.showCard(
+                        nodeID,
+                        {
+                            text: l.add_item_btn,
+                            icon: 'sprite-fm-mono icon-plus-light-solid',
+                            id: `newctx_${nodeID}`,
+                            onClick: (ev) => {
+                                mega.ui.secondaryNav.openNewMenu(ev);
+                            }
+                        },
+                        {
+                            text: l.s4_bkt_settings,
+                            onClick: () => {
+                                s4.ui.showDialog(s4.buckets.dialogs.settings, s4.ui.bucket);
+                                eventlog(500745);
+                            }
+                        },
+                        (ev) => {
+                            mega.ui.secondaryNav.openContextMenu(ev);
+                        }
+                    );
+                }
+                else {
+                    primary = '.fm-new-menu';
+                    contextMenuItem = contextMenuItem || nodeID;
+                }
             }
             else if (subType === 'keys') {
-                $('.fm-files-view-icon').addClass('hidden');
-                $('.fm-s4-new-key').removeClass('hidden');
+                primary = '.fm-s4-new-key';
             }
             else if (subType === 'policies') {
-                $('.fm-files-view-icon').addClass('hidden');
             }
             else if (subType === 'users') {
-                $('.fm-files-view-icon').addClass('hidden');
                 if (original.endsWith('users')) {
-                    $('.fm-s4-new-user').removeClass('hidden');
+                    primary = '.fm-s4-new-user';
                 }
             }
             else if (subType === 'groups') {
-                $('.fm-files-view-icon').addClass('hidden');
                 if (original.endsWith('groups')) {
-                    $('.fm-s4-new-group').removeClass('hidden');
+                    primary = '.fm-s4-new-group';
                 }
             }
+            $('.fm-right-files-block').addClass('visible-notification');
+        }
+        else if (M.onDeviceCenter) {
+            if (M.currentdirid === M.currentrootid && mega.devices.ui.hasDevices && mega.devices.ui.isCustomRender()) {
+                primary = '.fm-add-backup';
+                secondary = '.fm-add-syncs';
+            }
+            if (mega.devices.ui.isCustomRender()) {
+                mega.ui.secondaryNav.updateLayoutButton(true);
+            }
+            else {
+                const h = M.currentCustomView.nodeID;
+                const { device } = mega.devices.ui.getCurrentDirData();
+                const isBackup = mega.devices.ui.isBackupRelated(h);
+                if (device && !device.folders[h]) {
+                    primary = isBackup ? '.fm-share-folder' : '.fm-new-menu';
+                    secondary = isBackup ? false : '.fm-share-folder';
+                    contextMenuItem = contextMenuItem || h;
+                }
+            }
+
+            $('.fm-right-files-block', document).addClass('visible-notification');
+            mega.devices.ui.handleAddBtnVisibility();
         }
         else if (String(M.currentdirid).length === 8
             && M.getNodeRights(M.currentdirid) > 0) {
 
             $('.fm-right-files-block').addClass('visible-notification');
-            showUploadBlock();
+            primary = '.fm-new-menu';
+            secondary = M.currentdirid === M.RootID ? false : '.fm-share-folder';
+            contextMenuItem = contextMenuItem || id;
+        }
+        else if (folderlink) {
+            primary = '.fm-import-to-cloudrive';
+            secondary = '.fm-download';
+        }
+        else if (isSearchResult) {
+            mega.ui.secondaryNav.hideBreadcrumb();
         }
     }
     $('.fm-clearbin-button').rebind('click', function() {
@@ -827,12 +882,19 @@ function fmtopUI() {
         }
 
         doClearbin(true);
+        eventlog(500740);
     });
 
     if (M.currentrootid === 'file-requests') {
         mega.fileRequest.rebindTopMenuCreateIcon();
     }
     $.tresizer();
+
+    if (isSearchResult) {
+        return;
+    }
+    // do not call when isSearchResult
+    mega.ui.secondaryNav.showActionButtons(primary, secondary, contextMenuItem);
 }
 
 /**
@@ -845,10 +907,7 @@ function initTreeScroll() {
     var treeClass = 'js-myfiles-panel';
     var scrollBlock;
 
-    if (M.currentTreeType === 'gallery') {
-        treeClass = 'js-gallery-panel';
-    }
-    else if (folderlink || M.currentTreeType !== 'cloud-drive') {
+    if (folderlink || !mega.ui.topmenu.activeItem) {
         treeClass = 'js-other-tree-panel';
 
         $('.js-other-tree-panel .section-title')
@@ -873,53 +932,13 @@ function initTreeScroll() {
     }
 }
 
-function fmLeftMenuUI() {
-
-    "use strict";
-
-    // handle the Inbox section use cases
-    if (M.InboxID && M.currentdirid === M.InboxID) {
-        M.openFolder(M.RootID);
-    }
-
-    // handle the Backups button changes
-    if (!M.BackupsId) {
-        $('.js-lp-myfiles .js-backups-btn', '.fmholder').addClass('hidden');
-    }
-
-    // handle the RubbishBin icon changes
-    var $icon = $('.fm-left-panel .rubbish-bin');
-    var rubNodes = Object.keys(M.c[M.RubbishID] || {});
-
-    if (rubNodes.length) {
-
-        if (!$icon.hasClass('filled')) {
-            $icon.addClass('filled');
-        }
-        else if (!$icon.hasClass('glow')) {
-            $icon.addClass('glow');
-        }
-        else {
-            $icon.removeClass('glow');
-        }
-    }
-    else {
-        $icon.removeClass('filled glow');
-    }
-}
-
 function doClearbin(all) {
     "use strict";
 
     msgDialog('clear-bin', l[14], l[15], l[1007], function(e) {
 
         if (e) {
-            M.clearRubbish(all).catch(dump).finally(() => {
-                if (mega.rewind) {
-                    eventlog(500531);
-                    mega.rewind.showRewindPromoDialog();
-                }
-            });
+            M.clearRubbish(all).catch(dump);
         }
     });
 }
@@ -1093,7 +1112,9 @@ function FMShortcuts() {
             !selectionManager ||
             M.currentrootid === 'chat' || // prevent shortcut for chat
             M.currentrootid === undefined || // prevent shortcut for file transfer, dashboard, settings
-            M.isGalleryPage()
+            M.isAlbumsPage() ||
+            (M.isGalleryPage() && mega.gallery.photos && mega.gallery.photos.mode !== 'a') ||
+            (M.isMediaDiscoveryPage() && mega.gallery.discovery && mega.gallery.discovery.mode !== 'a')
         ) {
             return true;
         }
@@ -1113,7 +1134,7 @@ function FMShortcuts() {
         var charTyped = String.fromCharCode(charCode).toLowerCase();
 
         if (charTyped === "a" && (e.ctrlKey || e.metaKey)) {
-            if (typeof selectionManager != 'undefined' && selectionManager && !M.gallery && !M.isAlbumsPage()) {
+            if (typeof selectionManager != 'undefined' && selectionManager) {
                 selectionManager.select_all();
             }
             return false; // stop prop.
@@ -1121,7 +1142,9 @@ function FMShortcuts() {
         else if (
             (charTyped === "c" || charTyped === "x") &&
             (e.ctrlKey || e.metaKey) &&
-            !isShareRoot
+            !isShareRoot &&
+            !M.gallery &&
+            !M.albums
         ) {
             var items = clone(selectionManager.get_selected());
             if (items.length === 0) {
@@ -1142,7 +1165,9 @@ function FMShortcuts() {
         else if (
             charTyped === "v" &&
             (e.ctrlKey || e.metaKey) &&
-            !isShareRoot
+            !isShareRoot &&
+            !M.gallery &&
+            !M.albums
         ) {
             if (!current_operation || (M.getNodeRights(M.currentdirid || '') | 0) < 1) {
                 return false; // stop prop.
@@ -1163,7 +1188,9 @@ function FMShortcuts() {
         }
         else if (
             charCode === 8 &&
-            !isShareRoot
+            !isShareRoot &&
+            !M.gallery &&
+            !M.albums
         ) {
             if (M.isInvalidUserStatus() || $.msgDialog === 'remove') {
                 return;
@@ -1171,7 +1198,7 @@ function FMShortcuts() {
 
             var remItems = selectionManager.get_selected();
             if (remItems.length === 0 || (M.getNodeRights(M.currentdirid || '') | 0) < 2 ||
-                M.currentrootid === M.InboxID || M.currentdirid === 'devices') {
+                M.currentrootid === M.InboxID) {
                 return; // dont do anything.
             }
 
@@ -1331,7 +1358,7 @@ function renameDialog() {
     "use strict";
 
     if ($.selected.length > 0) {
-        var n = M.d[$.selected[0]] || false;
+        const n = M.getNodeByHandle($.selected[0]);
         var ext = fileext(n.name);
         var $dialog = $('.mega-dialog.rename-dialog');
         var $input = $('input', $dialog);
@@ -1364,7 +1391,6 @@ function renameDialog() {
                             errMsg = l[23219];
                         }
                         else if (!s4Folder || !(errMsg = s4.ui.getInvalidNodeNameError(n, value))) {
-
                             M.rename(n.h, value).catch(tell);
                         }
                     }
@@ -1698,7 +1724,9 @@ function msgDialog(type, title, msg, submsg, callback, checkboxSetting) {
                 || checkboxSetting === 'skipcdtos4'
                 || checkboxSetting === 'skips4tocd'
                 || checkboxSetting === 'skips4tos4'
-                || checkboxSetting === 'rwReinstate', checkboxSetting);
+                || checkboxSetting === 'rwReinstate'
+                || checkboxSetting === 'dcPause', checkboxSetting);
+
 
             $('#msgDialog .checkbox-block .checkdiv,' +
                 '#msgDialog .checkbox-block input')
@@ -1857,7 +1885,7 @@ function closeMsg() {
     var $dialog = $('#msgDialog').addClass('hidden');
     $dialog.parent().removeClass('msg-dialog-container');
 
-    if ($.dialog && !(M.chat && $.dialog === 'onboardingDialog')) {
+    if ($.dialog && !((M.chat && $.dialog === 'onboardingDialog') || $.dialog === 'Mega-Onboarding')) {
         $('.mega-dialog').removeClass('arrange-to-back');
         $('.mega-dialog-container.common-container').removeClass('arrange-to-back');
     }
@@ -1920,9 +1948,6 @@ function openContactInfoLink(contactLink) {
 
                     return false;
                 });
-
-                // This contact link is valid to be affilaited
-                M.affiliate.storeAffiliate(contactLink, 4);
             }
         }
         else {
@@ -1936,11 +1961,6 @@ function openContactInfoLink(contactLink) {
                 mBroadcaster.once('fm:initialized', function () {
                     openContactInfoLink(contactLink);
                 });
-
-                // This contact link is not checked but stored for register case
-                // and also user click `add contact` anyway so it's user's call
-                M.affiliate.storeAffiliate(contactLink, 4);
-
                 login_next = page;
                 login_txt = l[1298];
                 return loadSubPage('login');
@@ -1964,448 +1984,6 @@ function openContactInfoLink(contactLink) {
             console.error(ex);
             msgDialog('warningb', l[8531], l[17865]);
         });
-}
-
-/**
- * shareDialogContentCheck
- *
- * Taking care about share dialog buttons enabled/disabled and scroll
- *
- */
-function shareDialogContentCheck() {
-
-    var dc = document.querySelector('.mega-dialog.share-dialog');
-    var itemsNum = $('.share-dialog-access-list .share-dialog-access-node', dc).length;
-    var $doneBtn = $('.done-share', dc);
-    var $removeBtn = $('.remove-share', dc);
-
-    // Taking care about the sharing access list scrolling
-    initPerfectScrollbar($('.share-dialog-access-list', dc));
-
-    // Taking care about the Remove Share button enabled/disabled
-    if (itemsNum > 1) {
-        $removeBtn.removeClass('disabled');
-    }
-    else {
-        $removeBtn.addClass('disabled');
-    }
-
-    // Taking care about the Done button enabled/disabled
-    if (Object.keys($.addContactsToShare).length
-        || Object.keys($.changedPermissions).length
-        || Object.keys($.removedContactsFromShare).length) {
-        $doneBtn.removeClass('disabled');
-    }
-    else {
-        $doneBtn.addClass('disabled');
-    }
-
-    if (!dc) {
-        return;
-    }
-
-    const cvw = dc.querySelector('.contact-verify-warning');
-    const cvn = dc.querySelector('.contact-verify-notification');
-
-    cvw.classList.add('hidden');
-    cvn.classList.add('hidden');
-
-    const cv = mega.keyMgr.getWarningValue('cv') !== false;
-
-    if (!cv && u_attr.since < 1697184000 && !mega.keyMgr.getWarningValue('cvb')) {
-        cvn.classList.remove('hidden');
-        // Set warning value for contact verificaiton banner
-        mega.keyMgr.setWarningValue('cvb', '1');
-        const cvnText = cvn.querySelector('span');
-        $(cvnText).safeHTML(
-            escapeHTML(l.contact_verification_notif_banner)
-                .replace(
-                    '[D]',
-                    '<div class="contact-verification-settings">'
-                )
-                .replace('[/D]', '</div>')
-        );
-    }
-
-    // if any unverified contact
-    if (cv && dc.querySelector('.unverified-contact')) {
-        cvw.classList.remove('hidden');
-    }
-}
-
-/**
- * Generate the html DOM element for a single share contact of the folder
- *
- * @param {string} userEmail contact email
- * @param {string} type  type of contact e.g. type 1 indicates the owner of the folder
- * @param {string} id    contact handle
- * @param {string} av    contact avatar
- * @param {string} userName  contact name
- * @param {string} permClass permission classname
- *
- * @returns {string}
- */
-function renderContactRowContent(userEmail, type, id, av, userName, permClass) {
-    "use strict";
-    var html = '';
-    var presence = type === '1' ? M.onlineStatusClass(M.u[id].presence)[1] : '';
-    if (M.d[id] && M.d[id].presence) {
-        presence = M.onlineStatusClass(M.d[id].presence === 'unavailable' ? 1 : M.d[id].presence)[1];
-    }
-
-    let extraClass = '';
-    if (type === '1') {
-        userName += ` (${l[8885]})`;
-        permClass = 'owner';
-        extraClass = ' owner';
-    }
-    else if (type === '2') {
-        userName = l.contact_request_pending.replace('%1', userName);
-    }
-    else if (mega.keyMgr.getWarningValue('cv') === '1') {
-        const ed = authring.getContactAuthenticated(id, 'Ed25519');
-
-        if (!(ed && ed.method >= authring.AUTHENTICATION_METHOD.FINGERPRINT_COMPARISON)) {
-            extraClass += ' unverified-contact';
-        }
-    }
-
-    html =  `<div class="share-dialog-access-node${extraClass}" id="${id}">
-                <div class="access-node-info-block">
-                    ${av}
-                    <div class="access-node-username">
-                        ${htmlentities(userName)}
-                    </div>
-                </div>
-                <div class="access-node-contact-verify">
-                    <div class='contact-verify'>${l.verify_credentials}</div>
-                </div>
-                <div class="access-node-permission-wrapper">
-                    <button
-                        class="mega-button action icon round access-node-permission ${permClass}
-                        ${permClass === 'full-access' ? ' simpletip' : ''}"
-                        data-simpletip="${l[23709]}" data-simpletipposition="top"
-                        data-simpletipwrapper=".mega-dialog-container"
-                        data-simpletipoffset="5" data-simpletip-class="medium-width center-align">
-                        <i class="owner sprite-fm-uni icon-owner"></i>
-                        <i class="full-access sprite-fm-mono icon-star"></i>
-                        <i class="read-and-write sprite-fm-mono icon-permissions-write"></i>
-                        <i class="read-only sprite-fm-mono icon-read-only"></i>
-                    </button>
-                </div>
-                <i class="access-node-remove sprite-fm-mono icon-remove"></i>
-            </div>`;
-
-    return html;
-}
-
-/**
- * Generate the html content
- *
- * @param {Boolean} readonly Sets read-only for new users and doesn't allow to change it (Optional)
- * @returns {void}
- */
-function fillShareDialogWithContent(readonly) {
-
-    "use strict";
-
-    let pendingShares = {};
-    const nodeHandle = String($.selected[0]);
-    const node = M.getNodeByHandle(nodeHandle);
-    const seen = {};
-    let userHandles   = M.getNodeShareUsers(node, 'EXP');
-    $.sharedTokens = [];// GLOBAL VARIABLE, Hold items currently visible in share folder content (above multi-input)
-
-    if (M.ps[nodeHandle]) {
-        pendingShares = Object(M.ps[nodeHandle]);
-        userHandles   = userHandles.concat(Object.keys(pendingShares));
-    }
-
-    // Fill the owner of the folder on the top of the access list
-    if (u_attr) {
-        generateShareDialogRow(u_attr.name, u_attr.email, 2, u_attr.u);
-    }
-
-    // Remove items in the removed contacts list
-    for (var rmContact in $.removedContactsFromShare) {
-        const rmContactIndex = userHandles.indexOf(rmContact);
-        if (rmContactIndex > -1) {
-            userHandles.splice(rmContactIndex, 1);
-        }
-    }
-
-    // Existing contacts in shares
-    userHandles.forEach(function(handle) {
-        const user = M.getUser(handle) || Object(M.opc[handle]);
-
-        if (!user.m) {
-            console.warn('Unknown user "%s"!', handle);
-        }
-        else if (!seen[user.m]) {
-            const name  = M.getNameByHandle(handle) || user.m;
-            const share = M.getNodeShare(node, handle) || Object(pendingShares[handle]);
-
-            generateShareDialogRow(
-                name,
-                user.m,
-                share.r | 0,
-                handle,
-                handle in pendingShares,
-                readonly
-            );
-            seen[user.m] = 1;
-        }
-    });
-
-    // New added contacts
-    for (var newContact in $.addContactsToShare) {
-
-        let newContactName;
-        const newContactEmail = $.addContactsToShare[newContact].u;
-
-        // Backup folder can be only shared as Read-Only
-        if (readonly) {
-            $.addContactsToShare[newContact].r = 0;
-        }
-
-        if (!seen[newContactEmail]) {
-            let pendingContact;
-            if (newContact.startsWith('#new_')) {
-                newContactName = $.addContactsToShare[newContact].u;
-                pendingContact = true;
-            }
-            else {
-                newContactName  = M.getNameByHandle(newContact) || newContactEmail;
-                pendingContact = !!M.findOutgoingPendingContactIdByEmail(newContactEmail);
-            }
-            const shareRights = $.addContactsToShare[newContact].r;
-            generateShareDialogRow(
-                newContactName,
-                newContactEmail,
-                shareRights,
-                newContact,
-                pendingContact,
-                readonly
-            );
-            seen[newContactEmail] = 1;
-        }
-    }
-}
-
-/**
- * Generates and inserts a share or pending share row into the share dialog
- * @param {String} displayNameOrEmail
- * @param {String} email
- * @param {Number} shareRights
- * @param {String} userHandle Optional
- * @param {boolean} isPending if true, shows text 'contact request pending'
- * @param {Boolean} disabled Doesn't not allow to change the permissions (Optional)
- */
-function generateShareDialogRow(displayNameOrEmail, email, shareRights, userHandle, isPending, disabled) {
-    'use strict';
-    var rowId = '',
-        html = '',
-        av =  useravatar.contact(userHandle || email, 'access-node-avatar'),
-        perm = '',
-        permissionLevel = 0;
-
-    if (typeof shareRights != 'undefined') {
-        permissionLevel = shareRights;
-    }
-
-    // Restore the latest changed permission
-    if ($.changedPermissions
-        && $.changedPermissions[userHandle]) {
-
-        permissionLevel = $.changedPermissions[userHandle].r;
-    }
-
-    // Permission level
-    if (permissionLevel === 1) {
-        perm = 'read-and-write';
-    }
-    else if (permissionLevel === 2) {
-        perm = 'full-access';
-    }
-    else {
-        perm = 'read-only';
-    }
-
-    // Do not allow to change permissions
-    if (disabled) {
-        perm += ' disabled';
-    }
-
-    // Add contact
-    $.sharedTokens.push(email.toLowerCase());
-
-    rowId = (userHandle) ? userHandle : email;
-    if (u_attr && userHandle === u_attr.u) {
-        html = renderContactRowContent(email, '1', rowId, av, displayNameOrEmail, perm);
-    }
-    else {
-        html = renderContactRowContent(email, isPending ? '2' : '', rowId, av, displayNameOrEmail, perm);
-    }
-
-    $('.share-dialog .share-dialog-access-list').safeAppend(html);
-}
-
-/**
- * Hide the permission menu in the share dialog
- */
-function hideShareDialogPermMenu() {
-    "use strict";
-    var $shareDialog = $('.mega-dialog.share-dialog');
-    var $permissionMenu = $('.share-dialog-permissions-menu', $shareDialog).addClass('o-hidden');
-
-    $('.option', $permissionMenu).removeClass('active');
-    $('.share-dialog-access-node', $shareDialog).removeClass('active');
-
-    setTimeout(() => {
-        $permissionMenu.addClass('hidden');
-    }, 200);
-}
-
-/**
- * Show the permission menu in the share dialog with the position x and y
- *
- * @param {Object} $this    The selected contact element in the DOM
- * @param {Number} x        The x position of showing the menu
- * @param {Number} y        The y position of showing the menu
- */
-function showShareDialogPermMenu($this, x, y) {
-
-    "use strict";
-
-    const $shareDialog = $('.mega-dialog.share-dialog', '.mega-dialog-container');
-    const $permissionMenu = $('.share-dialog-permissions-menu', $shareDialog)
-        .removeClass('hidden').addClass('o-hidden');
-    const permissionLevel = checkMultiInputPermission($this);
-
-    if ($this.is('.disabled')) {
-        return false;
-    }
-
-    $('.option', $permissionMenu).removeClass('active');
-    $('.option.' + permissionLevel[0], $permissionMenu).addClass('active');
-    $permissionMenu.css('right', x + 'px');
-    $permissionMenu.css('top', y + 'px');
-    onIdle(() => {
-        $permissionMenu.removeClass('o-hidden');
-    });
-
-    $permissionMenu.rebind('mouseover.showTipMsg', () => {
-        $('.share-dialog-bottom-msg span', $shareDialog).removeClass('v-hidden');
-    });
-
-    $permissionMenu.rebind('mouseout.hideTipMsg', () => {
-        $('.share-dialog-bottom-msg span', $shareDialog).addClass('v-hidden');
-    });
-}
-
-/**
- * Bind events to various components in the access list of share dialog after rendering
- */
-function shareDialogAccessListBinds() {
-    "use strict";
-    var $shareDialog = $('.mega-dialog.share-dialog');
-
-    // Open the permissions menu
-    $('.access-node-permission-wrapper', $shareDialog).rebind('click', function(e) {
-        e.stopPropagation();
-        var $this = $(this);
-        var $selectedContact = $this.parent('.share-dialog-access-node');
-
-        if ($selectedContact.is('.owner')) {
-            return false;
-        }
-
-        var $scrollBlock = $('.share-dialog-access-list', $shareDialog);
-        var scrollPos = 0;
-        var x = 0;
-        var y = 0;
-
-        if ($scrollBlock.length) {
-            scrollPos = $scrollBlock.position().top;
-        }
-
-        if ($selectedContact.is('.active')) {
-            hideShareDialogPermMenu();
-            $selectedContact.removeClass('active');
-        }
-        else {
-            $('.share-dialog-access-node', $shareDialog).removeClass('active');
-            x = 45;
-            y = $this.position().top + $this.outerHeight() + 5 + scrollPos;
-
-            showShareDialogPermMenu($('.access-node-permission', $(this)), x, y);
-            $selectedContact.addClass('active');
-        }
-    });
-
-    // Remove the specific contact from share
-    $('.access-node-remove', $shareDialog).rebind('click', function() {
-        var $deletedContact = $(this).parent('.share-dialog-access-node');
-
-        if ($deletedContact.is('.owner')) {
-            return false;
-        }
-
-        var userHandle = $deletedContact.attr('id');
-        var selectedNodeHandle = $.selected[0];
-
-        $deletedContact.remove();
-
-        if (userHandle !== '') {
-            var userEmail = '';
-            if ($.addContactsToShare[userHandle]) {
-                userEmail = $.addContactsToShare[userHandle].u;
-                delete $.addContactsToShare[userHandle];
-            }
-            else {
-                // Due to pending shares, the id could be an email instead of a handle
-                var userEmailOrHandle = Object(M.opc[userHandle]).m || userHandle;
-                userEmail = Object(M.opc[userHandle]).m || M.getUserByHandle(userHandle).m;
-
-                $.removedContactsFromShare[userHandle] = {
-                    'selectedNodeHandle': selectedNodeHandle,
-                    'userEmailOrHandle': userEmailOrHandle,
-                    'userHandle': userHandle
-                };
-
-                // Remove the permission change if exists
-                if ($.changedPermissions[userHandle]) {
-                    delete $.changedPermissions[userHandle];
-                }
-            }
-
-            // Remove it from multi-input tokens
-            var sharedIndex = $.sharedTokens.indexOf(userEmail.toLowerCase());
-            if (sharedIndex > -1) {
-                $.sharedTokens.splice(sharedIndex, 1);
-            }
-        }
-
-        shareDialogContentCheck();
-    });
-
-    // Hide the permission menu once scrolling
-    $('.share-dialog-access-list', $shareDialog).rebind('scroll.closeMenu', () => {
-        hideShareDialogPermMenu();
-    });
-
-    $('.access-node-contact-verify .contact-verify', $shareDialog).rebind('click', function() {
-
-        const contact = this.closest('.unverified-contact');
-
-        if (contact) {
-            fingerprintDialog(this.closest('.unverified-contact').id);
-        }
-    });
-
-    $('.contact-verification-settings', $shareDialog).rebind('click', () => {
-        M.openFolder('account/contact-chats/contact-verification-settings', true);
-    });
 }
 
 /**
@@ -2480,354 +2058,6 @@ function checkIfContactExists(email) {
     }
 
     return userIsAlreadyContact;
-}
-
-/**
- * sharedPermissionLevel
- *
- * Translate class name to numeric permission level.
- * @param {String} value Permission level as a string i.e. 'read-and-write', 'full-access', 'read-only'.
- * @returns {Number} integer value of permission level.
- */
-function sharedPermissionLevel(value) {
-
-    var permissionLevel = 0;
-
-    if (value === 'read-and-write') {
-        permissionLevel = 1; // Read and Write access
-    }
-    else if (value === 'full-access') {
-        permissionLevel = 2; // Full access
-    }
-    else {
-        permissionLevel = 0; // read-only
-    }
-
-    return permissionLevel;
-}
-
-/**
- * Initialize share dialog multi input plugin
- *
- * @param {array} alreadyAddedContacts  Array of already added contacts
- */
-function initShareDialogMultiInput(alreadyAddedContacts) {
-    "use strict";
-
-    var $scope = $('.share-add-dialog');
-    var $input = $('.share-multiple-input', $scope);
-    var listedContacts = []; // All listed contact emails
-
-    var errorMsg = function(msg) {
-        var $warning = $('.multiple-input-warning span', $scope);
-
-        $warning.text(msg);
-        $scope.addClass('error');
-
-        setTimeout(function() {
-            $scope.removeClass('error');
-        }, 3000);
-    };
-
-    Object.values(M.getContactsEMails(true)).forEach(function(item) {
-        listedContacts.push(item.id);
-    });
-
-    // Clear old values in case the name/nickname updated since last opening
-    $input.tokenInput('destroy');
-
-    $input.tokenInput([], {
-        theme: "mega",
-        placeholder: l[23711],
-        searchingText: "",
-        noResultsText: "",
-        addAvatar: true,
-        autocomplete: null,
-        searchDropdown: false,
-        emailCheck: true,
-        preventDoublet: false,
-        tokenValue: "id",
-        propertyToSearch: "id",
-        resultsLimit: 5,
-        minChars: 1,
-        accountHolder: (M.u[u_handle] || {}).m || '',
-        scrollLocation: 'share',
-        initFocused: false,
-        // Exclude from dropdownlist only emails/names which exists in multi-input (tokens)
-        excludeCurrent: true,
-        onEmailCheck: function() {
-            errorMsg(l[2465]); // Please enter a valid email address
-        },
-        onReady: function() {
-        },
-        onDoublet: function() {
-            errorMsg(l[23714]); // This folder has already been shared with this email address
-        },
-        onHolder: function() {
-            errorMsg(l[23715]); // It is not necessary to share this folder with yourself
-        },
-        onAdd: function(email) {
-            if (listedContacts.indexOf(email.id) > -1) {
-                // If the entered email is one of existing contacts in the picker, select it automatically for users
-                const $listedItemHandle = M.getUserByEmail(email.id).h;
-                const $listedItemEle = $(`.contacts-search-subsection .${$listedItemHandle}`, $scope);
-                const $scrollBlock = $('.contacts-search-scroll', $scope);
-
-                if ($scrollBlock.is('.ps')) {
-                    // Auto-scroll to the selected element
-                    scrollToElement($scrollBlock, $listedItemEle);
-                }
-
-                if ($.contactPickerSelected
-                    && !$.contactPickerSelected.includes($listedItemHandle)) {
-
-                    $listedItemEle.trigger('click');
-                }
-
-                $('.token-input-token-mega .' + $listedItemHandle, $scope)
-                    .siblings('.token-input-delete-token-mega').trigger('click');
-            }
-            else {
-                if (typeof M.findOutgoingPendingContactIdByEmail(email.id) === 'undefined') {
-                    // Show a text area where the user can add a custom message to the pending share request
-                    $('.share-message', $scope).removeClass('hidden');
-                    initTextareaScrolling($('.share-message-textarea textarea', $scope));
-                }
-
-                $('.add-share', $scope).removeClass('disabled');
-            }
-        },
-        onDelete: function() {
-            var $scope = $('.share-add-dialog');
-            var $newEmails = $('.token-input-list-mega .token-input-token-mega', $scope);
-            var newEmailsNum = $newEmails.length;
-            var noNewContacts = true;
-
-            onIdle(() => {
-                $('.token-input-input-token-mega input', $scope).trigger("blur");
-            });
-
-            for (var i = 0; i < newEmailsNum; i++) {
-                var newEmail = $($newEmails[i]).contents().eq(1).text();
-                if (!M.findOutgoingPendingContactIdByEmail(newEmail)) {
-                    noNewContacts = false;
-                    break;
-                }
-            }
-
-            // If no new email that hasn't been sent contact request, clear and hide the personal message input box
-            if (noNewContacts) {
-                $('.share-message', $scope).addClass('hidden');
-                $('.share-message textarea', $scope).val('');
-            }
-
-            // If no new email is in multiInput box and contact picker, disable the button
-            if (newEmailsNum === 0) {
-                const sel = $.contactPickerSelected;
-
-                if (Array.isArray(sel) && JSON.stringify(sel.sort()) === JSON.stringify(alreadyAddedContacts.sort())) {
-                    $('.add-share', $scope).addClass('disabled');
-                }
-            }
-        }
-    });
-}
-
-/**
- * Render the content of access list in share dialog
- */
-function renderShareDialogAccessList() {
-    "use strict";
-
-    const $shareDialog = $('.mega-dialog.share-dialog', '.mega-dialog-container');
-    const $warning = $('.mega-banner', $shareDialog).eq(2);
-    let readonly = false;
-
-    // Remove all contacts from the access list
-    $('.share-dialog-access-node').remove();
-
-    // Clear and hide warning
-    $warning.addClass('hidden').text('');
-
-    if (M.currentrootid === M.InboxID || M.getNodeRoot($.selected[0]) === M.InboxID) {
-
-        $warning.safeHTML(l.backup_read_only_wrng).removeClass('hidden');
-        $('span', $warning).text('').attr({
-            'class': 'sprite-fm-mono icon-info-filled simpletip',
-            'data-simpletip': l.backup_read_only_info,
-            'data-simpletip-class': 'backup-tip short',
-            'data-simpletipposition': 'top',
-            'data-simpletipoffset': 6
-        }).trigger('simpletipUpdated');
-
-        readonly = true;
-    }
-
-    // Fill the shared folder's access list
-    fillShareDialogWithContent(readonly);
-
-    // Take care about share button enabled/disabled and the access list scrolling
-    shareDialogContentCheck();
-
-    // Bind events to components in the access list after rendering
-    shareDialogAccessListBinds();
-}
-
-/**
- * Initializes the share dialog
- */
-function initShareDialog() {
-    "use strict";
-
-    var $dialog = $('.share-dialog');
-
-    $dialog.rebind('click', function(e) {
-        var $target = $(e.target);
-
-        // Hide the permission menu once click outside range of it
-        if (!$target.is('.share-dialog-permissions-menu')
-           &&  !$target.closest('.share-dialog-permissions-menu').length) {
-
-            hideShareDialogPermMenu();
-        }
-    });
-
-    var $shareAddFooterElement = null;
-
-    // Close the share dialog
-    $('button.js-close', $dialog).rebind('click', function() {
-        showLoseChangesWarning().done(closeDialog);
-    });
-
-    // Change the permission for the specific contact or group
-    $('.share-dialog-permissions-menu .option', $dialog).rebind('click', function(e) {
-        var $this = $(this);
-        const {shares} = M.getNodeByHandle($.selected[0]);
-        var newPermLevel = checkMultiInputPermission($this);
-        var newPerm = sharedPermissionLevel(newPermLevel[0]);
-        var $selectedContact =  $('.share-dialog-access-node.active', $dialog);
-
-        hideShareDialogPermMenu();
-
-        var pushNewPermissionIn = function(id) {
-            if (!shares || !shares[id] || shares[id].r !== newPerm) {
-                // If it's a pending contact, provide the email
-                var userEmailOrHandle = Object(M.opc[id]).m || id;
-
-                $.changedPermissions[id] = {u: userEmailOrHandle, r: newPerm};
-            }
-        };
-
-        if (e.shiftKey) {
-            // Change the permission for all listed contacts
-
-            for (var key in $.addContactsToShare) {
-                $.addContactsToShare[key].r = newPerm;
-            }
-
-            $.changedPermissions = {};
-
-            $('.share-dialog-access-node:not(.owner)', $dialog).get().forEach(function(item) {
-                var itemId = $(item).attr('id');
-                if (itemId !== undefined && itemId !== '' && !$.addContactsToShare[itemId]) {
-                    pushNewPermissionIn(itemId);
-                }
-            });
-
-            const $nodes = $('.share-dialog-access-node:not(.owner) .access-node-permission', $dialog);
-            $nodes.removeClass('full-access read-and-write read-only simpletip')
-                .addClass(newPermLevel[0]);
-
-            if (newPermLevel[0] === 'full-access') {
-                $nodes.addClass('simpletip');
-            }
-        }
-        else {
-            // Change the permission for the specific contact
-            var userHandle = $selectedContact.attr('id');
-
-            if (userHandle !== undefined && userHandle !== '') {
-                if ($.addContactsToShare[userHandle]) {
-                    // Change the permission for new added share contacts
-                    $.addContactsToShare[userHandle].r = newPerm;
-                }
-                else {
-                    // Change the permission for existing share contacts
-                    if ($.changedPermissions[userHandle]) {
-                        // Remove the previous permission change if exists
-                        delete $.changedPermissions[userHandle];
-                    }
-
-                    pushNewPermissionIn(userHandle);
-                }
-            }
-
-            const $node = $('.access-node-permission', $selectedContact);
-            $node.removeClass('full-access read-and-write read-only simpletip')
-                .addClass(newPermLevel[0]);
-
-            if (newPermLevel[0] === 'full-access') {
-                $node.addClass('simpletip');
-            }
-        }
-
-        // Share button enable/disable control
-        if (Object.keys($.changedPermissions).length > 0) {
-            $('.done-share', $dialog).removeClass('disabled');
-        }
-        else if (Object.keys($.removedContactsFromShare).length === 0
-            && Object.keys($.addContactsToShare).length === 0) {
-            $('.done-share', $dialog).addClass('disabled');
-        }
-
-        return false;
-    });
-
-    // Open the share add dialog
-    $('.share-dialog-access-add', $dialog).rebind('click', function() {
-        var alreadyAddedContacts = [];
-
-        $('.share-dialog-access-node:not(.owner)', $dialog).get().forEach(function(item) {
-            var itemId = $(item).attr('id');
-            if (!itemId.startsWith('#new_') && M.u[itemId]) {
-                alreadyAddedContacts.push(itemId);
-            }
-        });
-
-        if(!$shareAddFooterElement) {
-            $shareAddFooterElement = $(document.querySelector('.share-add-dialog-bottom-template')
-                .content.firstElementChild.cloneNode(true));
-        }
-        M.initShareAddDialog(alreadyAddedContacts, $shareAddFooterElement);
-    });
-
-    $('.done-share', $dialog).rebind('click', function() {
-        if (!$(this).is('.disabled')) {
-            addNewContact($(this), false).done(function() {
-                var share = new mega.Share();
-
-                share.updateNodeShares();
-                eventlog(500037);
-            });
-        }
-
-        return false;
-    });
-
-    $('.remove-share', $dialog).rebind('click', function() {
-        if (!$(this).is('.disabled')) {
-            msgDialog(`remove:!^${l[23737]}!${l[82]}`, '', l.remove_share_title, l.remove_share_msg, res => {
-                if (res) {
-                    loadingDialog.show();
-                    new mega.Share().removeSharesFromSelected().always(() => {
-                        loadingDialog.hide();
-                        closeDialog();
-                    });
-                }
-            }, 1);
-        }
-        return false;
-    });
 }
 
 /**
@@ -2935,31 +2165,84 @@ function closeDialog(ev) {
         }
     }
 
-    if ($.dialog === 'prd') {
-        // PasswordReminderDialog manages its own states, so don't do anything.
-        return;
-    }
-
     if ($.dialog === 'terms' && $.registerDialog) {
         $('.mega-dialog.bottom-pages-dialog').addClass('hidden');
     }
     else if ($.dialog === 'createfolder' && ($.copyDialog || $.moveDialog || $.selectFolderDialog || $.saveAsDialog)) {
-        $('.mega-dialog.create-folder-dialog').addClass('hidden');
+        $('.mega-dialog.create-folder-dialog, .mega-dialog.s4-create-bucket-dialog').addClass('hidden');
         $('.mega-dialog.create-folder-dialog .create-folder-size-icon').removeClass('hidden');
+    }
+    else if ($.dialog === 'start-group-chat' && ($.copyDialog || $.sendToChatDialog)) {
+        $('.mega-dialog.fm-picker-dialog').removeClass('arrange-to-back');
+        fm_showoverlay();
+        delete $.dialog;
     }
     else if (($.dialog === 'slideshow') && $.copyrightsDialog) {
         $('.copyrights-dialog').addClass('hidden');
 
         delete $.copyrightsDialog;
     }
-    else if ($.dialog === 'share-add') {
-        $('.mega-dialog.share-add-dialog').addClass('hidden');
+    else if ($.dialog === 'fingerprint-dialog' && $.shareCollaboratorsDialog && $.shareDialog) {
+
+        // Update rendering to account for new contact verified status
+        mega.ui.mShareCollaboratorsDialog.render();
+
+        // Close FP fialog, put Share Collaborators dialog back to the front and Share dialog should be behind it
+        $('.fingerprint-dialog').addClass('hidden');
+        $('.share-access-contacts-dialog').removeClass('arrange-to-back hidden');
+        $('.share-dialog').addClass('arrange-to-back');
     }
-    else if ($.dialog === 'fingerprint-dialog' && document.querySelector('.share-dialog.arrange-to-back')) {
+    else if ($.dialog === 'fingerprint-dialog' && $.shareWithUnverifiedDialog && $.shareDialog) {
+
+        // Close FP fialog, put Unverified Contacts dialog back to front and Share dialog should be behind it
+        $('.fingerprint-dialog').addClass('hidden');
+        $('.share-with-unverified-contacts').removeClass('arrange-to-back hidden');
+        $('.share-dialog').addClass('arrange-to-back');
+    }
+    else if ($.dialog === 'fingerprint-dialog' && $.shareDialog) {
         document.querySelector('.fingerprint-dialog').classList.add('hidden');
     }
     else if ($.dialog === 'fingerprint-admin-dlg' && window.closeDlgMute) {
         return false;
+    }
+    else if ($.dialog === 'share' && $('#msgDialog').not('.hidden').length === 1) {
+
+        // If they were on the Share With Non-Contact confirm dialog, bring the Share dialog back to the forefront
+        $('#msgDialog').addClass('hidden');
+        $('.share-dialog').removeClass('arrange-to-back hidden');
+    }
+    else if ($.dialog === 'contact-info' && $.shareDialog) {
+
+        // Close the Contact/s Invited dialog and show the Share dialog again
+        $('.contact-info').addClass('hidden');
+        $('.share-dialog').removeClass('arrange-to-back hidden');
+
+        // Update the Access list
+        mega.ui.mShareDialog.renderAccessList();
+
+        delete $.contactInfoDialog;
+    }
+    else if ($.dialog === 'share-access-contacts-dialog' && $.shareDialog) {
+
+        // Hide the Share Collaborators dialog and bring the Share dialog back to the front
+        $('.mega-dialog.share-access-contacts-dialog').addClass('hidden');
+        $('.share-dialog').removeClass('arrange-to-back hidden');
+
+        // Update the Access list
+        mega.ui.mShareDialog.renderAccessList();
+
+        delete $.shareCollaboratorsDialog;
+    }
+    else if ($.dialog === 'share-with-unverified-contacts' && $.shareDialog) {
+
+        // When returning to the main Share dialog (render any avatar updates made in the meantime)
+        mega.ui.mShareUnverifiedsDialog.close();
+
+        // Hide the Unverified Contacts dialog and bring the Share dialog back to the front
+        $('.mega-dialog.share-with-unverified-contacts').addClass('hidden');
+        $('.share-dialog').removeClass('arrange-to-back hidden');
+
+        delete $.shareWithUnverifiedDialog;
     }
     else {
         if ($.dialog === 'properties') {
@@ -2975,7 +2258,6 @@ function closeDialog(ev) {
 
         // add contact popup
         $('.add-user-popup').addClass('hidden');
-        $('.fm-add-user').removeClass('active');
 
         $('.add-contact-multiple-input').tokenInput("clearOnCancel");
         $('.share-multiple-input').tokenInput("clearOnCancel");
@@ -2983,7 +2265,7 @@ function closeDialog(ev) {
         if ($.dialog === 'share') {
             // share dialog
             $('.share-dialog-access-node').remove();
-            hideShareDialogPermMenu();
+            mega.ui.mShareDialog.hidePermissionsMenu();
 
             delete $.sharedTokens;
             delete $.contactPickerSelected;
@@ -3004,12 +2286,15 @@ function closeDialog(ev) {
         delete $.saveAsDialog;
         delete $.nodeSaveAs;
         delete $.shareDialog;
+        delete $.fileRequestNew;
 
         /* copy/move dialog - save to */
         delete $.saveToDialogCb;
         delete $.saveToDialogNode;
         delete $.saveToDialog;
         delete $.chatAttachmentShare;
+        delete $.sendToChatDialog;
+        delete $.dialogSelChats;
 
         if ($.saveToDialogPromise) {
             if (typeof $.saveToDialogPromise === 'function') {
@@ -3040,10 +2325,13 @@ function closeDialog(ev) {
             ) {
                 mega.ui.onboarding.$hotSpotNode.removeClass('onboarding-hotspot-animation-rect');
             }
-            if (M.chat) {
-                megaChat.plugins.chatOnboarding.occurrenceDialogShown = false;
-            }
         }
+
+        if ($.cpdGroupChat && megaChat) {
+            megaChat.off('onNewGroupChatRequest.cpd');
+            megaChat.off('onRoomInitialized.cpd');
+        }
+        delete $.cpdGroupChat;
     }
     $('.mega-dialog, .overlay.arrange-to-back, .mega-dialog-container.common-container').removeClass('arrange-to-back');
     // $('.mega-dialog .dialog-sorting-menu').remove();
@@ -3080,14 +2368,31 @@ function closeDialog(ev) {
         $.dialog = $.propertiesDialog;
     }
 
-    if ($.copyDialog || $.moveDialog || $.selectFolderDialog || $.saveAsDialog) {
-        // the createfolder dialog was closed
+    if ($.copyDialog || $.moveDialog || $.selectFolderDialog || $.saveAsDialog || $.sendToChatDialog) {
+        // the createfolder/create group chat dialog was closed
         // eslint-disable-next-line local-rules/hints
-        $.dialog = $.copyDialog || $.moveDialog || $.selectFolderDialog || $.saveAsDialog;
+        $.dialog = $.copyDialog || $.moveDialog || $.selectFolderDialog || $.saveAsDialog || $.sendToChatDialog;
     }
 
-    if ($.shareDialog) {
-        // if the share-add dialog was closed from the share dialog
+    if ($.fingerprintDialog && $.shareCollaboratorsDialog && $.shareDialog) {
+
+        // Fingerprint dialog will be closed, then Share Collaborators dialog put to front and Share dialog behind it
+        delete $.fingerprintDialog;
+
+        // eslint-disable-next-line local-rules/hints
+        $.dialog = $.shareCollaboratorsDialog;
+    }
+    else if ($.fingerprintDialog && $.shareWithUnverifiedDialog && $.shareDialog) {
+
+        // Fingerprint dialog will be closed, then Unverified Contacts dialog put to front and Share dialog behind it
+        delete $.fingerprintDialog;
+
+        // eslint-disable-next-line local-rules/hints
+        $.dialog = $.shareWithUnverifiedDialog;
+    }
+    else if ($.shareDialog) {
+
+        // If the Share Collaborators / Unverified Contacts / Contact Info dialog were closed, return to share dialog
         // eslint-disable-next-line local-rules/hints
         $.dialog = $.shareDialog;
     }
@@ -3120,7 +2425,7 @@ function createFolderDialog(close) {
 
     var doCreateFolder = function(v) {
         var errorMsg = '';
-        if (v.trim() === '' || v.trim() === l[157]) {
+        if (v.trim() === '') {
             errorMsg = l.EmptyName;
         }
         else if (v.length > 250) {
@@ -3166,8 +2471,18 @@ function createFolderDialog(close) {
                     return awaitingPromise;
                 }
 
+                const {type, original} = M.currentCustomView;
+                let id = type === mega.devices.rootId ? original : Object(M.d[h]).p || target;
+                if (
+                    M.currentrootid === 'out-shares' ||
+                    M.currentrootid === 'file-requests' ||
+                    M.currentrootid === 'public-links'
+                ) {
+                    id = `${M.currentrootid}/${id}`;
+                }
+
                 // By default, auto-select the newly created folder as long no awaiting promise
-                return M.openFolder(Object(M.d[h]).p || target)
+                return M.openFolder(id)
                     .always(() => {
                         $.selected = [h];
                         reselect(1);
@@ -3297,7 +2612,7 @@ function createFileDialog(close, action, params) {
                         // to redraw if element was out of viewport.
                         $($.selectddUIgrid + ' ' + $.selectddUIitem).removeClass('ui-selected');
                         $newElement.addClass('ui-selected');
-                        $.gridLastSelected = $newElement;
+                        $.gridLastSelected = $newElement[0];
                         selectionManager.clear_selection();
                         selectionManager.add_to_selection(nh);
 
@@ -3563,31 +2878,28 @@ function fm_resize_handler(force) {
         console.time('fm_resize_handler');
     }
 
-    if (M.currentdirid !== 'transfers') {
+    // Only for old left pane pages
+    if (mega.ui.topmenu.activeItem) {
+        mega.ui.topmenu.menuNode.Ps.update();
+    }
+    else {
         initTreeScroll();
     }
 
     if (M.currentdirid === 'shares') {
-        if (M.viewmode) {
-            initPerfectScrollbar($('.shared-blocks-scrolling', '.shared-blocks-view'));
-        }
-        else {
-            initPerfectScrollbar($('.grid-scrolling-table', '.shared-grid-view'));
-        }
+        initPerfectScrollbar($('.grid-scrolling-table', '.shared-grid-view'));
     }
     else if (M.currentdirid === 'out-shares') {
-        if (M.viewmode) {
-            initPerfectScrollbar($('.out-shared-blocks-scrolling', '.out-shared-blocks-view'));
-        }
-        else {
-            initPerfectScrollbar($('.grid-scrolling-table', '.out-shared-grid-view'));
-        }
+        initPerfectScrollbar($('.grid-scrolling-table', '.out-shared-grid-view'));
+    }
+    else if (M.onDeviceCenter && M.onListView && mega.devices.ui.isCustomRender()) {
+        initPerfectScrollbar($('.grid-scrolling-table', mega.devices.ui.gridWrapperSelector));
     }
     else if (M.currentdirid === 'transfers') {
         fm_tfsupdate(); // this will call $.transferHeader();
     }
     else if (M.currentdirid && M.currentdirid.substr(0, 7) === 'account') {
-        var $accountContent = $('.fm-account-main', '.fm-main');
+        var $accountContent = $('.fm-account-main', '.pm-main');
 
         $accountContent.removeClass('low-width');
 
@@ -3599,7 +2911,7 @@ function fm_resize_handler(force) {
         accountUI.initAccountScroll();
     }
     else if (M.currentdirid && M.currentdirid.substr(0, 9) === 'dashboard') {
-        var $dashboardContent = $('.fm-right-block.dashboard', '.fm-main');
+        var $dashboardContent = $('.fm-right-block.dashboard', '.pm-main');
 
         $dashboardContent.removeClass('low-width');
 
@@ -3620,12 +2932,10 @@ function fm_resize_handler(force) {
         if (M.currentdirid && M.currentdirid.includes('search/')) {
             delay('render:search_breadcrumbs', () => M.renderSearchBreadcrumbs());
         }
-        if (M.viewmode) {
-
+        if (M.onIconView) {
             initPerfectScrollbar($('.file-block-scrolling:visible'));
         }
         else {
-
             initPerfectScrollbar($('.grid-scrolling-table:visible'));
             if ($.gridHeader) {
                 $.gridHeader();
@@ -3637,8 +2947,6 @@ function fm_resize_handler(force) {
 
     if (M.currentdirid !== 'transfers') {
         var treePaneWidth = Math.round($('.fm-left-panel:visible').outerWidth());
-        var leftPaneWidth = Math.round($('.nw-fm-left-icons-panel:visible').outerWidth());
-        const margin = (treePaneWidth + leftPaneWidth) + "px";
 
         if (megaChatIsReady && megaChat.resized) {
             megaChat.resized();
@@ -3648,7 +2956,7 @@ function fm_resize_handler(force) {
     }
 
     if (M.currentrootid === 'shares') {
-        var $sharedDetailsBlock = $('.shared-details-block', '.fm-main');
+        var $sharedDetailsBlock = $('.shared-details-block', '.pm-main');
         var sharedHeaderHeight = Math.round($('.shared-top-details', $sharedDetailsBlock).outerHeight());
 
         $('.files-grid-view, .fm-blocks-view', $sharedDetailsBlock).css({
@@ -3674,91 +2982,65 @@ function sharedFolderUI() {
         $('.shared-details-block .files-grid-view, .shared-details-block .fm-blocks-view').removeAttr('style');
         $('.shared-details-block .shared-folder-content').unwrap();
         $('.shared-folder-content').removeClass('shared-folder-content');
-        $('.shared-top-details').remove();
         browsingSharedContent = true;
     }
 
     // are we in an inshare?
+    if (M.currentrootid === 'shares' || M.currentrootid === 'out-shares') {
+        mega.ui.secondaryNav.hideCard();
+    }
     while (nodeData && !nodeData.su) {
         nodeData = M.d[nodeData.p];
     }
 
     if (nodeData) {
 
-        var rights = l[55];
         var rightPanelView = '.files-grid-view.fm';
 
-        // Handle of initial share owner
-        var ownersHandle = nodeData.su;
-        var folderName = M.getNameByHandle((M.d[M.currentdirid] || nodeData).h);
-        var displayName = escapeHTML(M.getNameByHandle(ownersHandle));
-        var avatar = useravatar.contact(M.d[ownersHandle]);
-        $('.shared-blocks-view', '.fm-right-files-block').addClass('hidden');
-
-        if (Object(M.u[ownersHandle]).m) {
-            displayName += '<span>' + escapeHTML(M.u[ownersHandle].m) + '</span>';
-        }
-
-        // Access rights
-        if (nodeData.r === 1) {
-            rights = l[56];
-        }
-        else if (nodeData.r === 2) {
-            rights = l[57];
-        }
-
-        if (M.viewmode === 1) {
+        if (M.onIconView) {
             rightPanelView = '.fm-blocks-view.fm';
         }
 
         $(rightPanelView).wrap('<div class="shared-details-block"></div>');
 
-        $('.shared-details-block').prepend(
-            '<div class="shared-top-details">'
-                + '<i class="shared-details-icon item-type-icon-90 icon-folder-incoming-90"></i>'
-                + '<div class="shared-details-info-block">'
-                    + '<div class="shared-details-pad">'
-                        + '<div class="shared-details-folder-name">' + escapeHTML(folderName) + '</div>'
-                        + '<div class="shared-folder-access">'
-                            + '<span>' + escapeHTML(rights) + '</span>'
-                        + '</div>'
-                        + '<a href="javascript:;" class="grid-url-arrow">'
-                        + '<i class="sprite-fm-mono icon-options"></i></a>'
-                        + '<div class="clear"></div>'
-                        + avatar
-                        + '<div class="fm-chat-user-info">'
-                            + '<div class="fm-chat-user">' + displayName + '</div>'
-                        + '</div>'
-                    + '</div>'
-                    + '<div class="shared-details-buttons">'
-                        + '<button class="mega-button fm-share-download">'
-                            + '<span class="fm-chatbutton-arrow inshare-dl-button0">' + escapeHTML(l[58]) + '</span>'
-                        + '</button>'
-                        + '<button class="mega-button fm-share-copy">'
-                            + '<span>'
-                                + escapeHTML(l[63])
-                            + '</span>'
-                        + '</button>'
-                        + '<button class="mega-button negative fm-leave-share">'
-                            + '<span>'
-                                + escapeHTML(l[5866])
-                            + '</span>'
-                        + '</button>'
-                    + '</div>'
-                    + '<div class="clear"></div>'
-                + '</div>'
-            + '</div>');
-
-        $(rightPanelView).addClass('shared-folder-content');
-
-        if (mega.keyMgr.getWarningValue('cv') === '1') {
-            const ed = authring.getContactAuthenticated(ownersHandle, 'Ed25519');
-
-            if (!(ed && ed.method >= authring.AUTHENTICATION_METHOD.FINGERPRINT_COMPARISON)) {
-                $('.shared-details-block .shared-details-icon')
-                    .addClass('sprite-fm-uni-after icon-warning-after');
+        const { r } = nodeData;
+        const downloadButton = {
+            text: l[58],
+            onClick(ev) {
+                mega.ui.secondaryNav.openDownloadMenu(ev);
+                eventlog(500733);
+            }
+        };
+        const newButton = {
+            text: l.add_item_btn,
+            icon: 'sprite-fm-mono icon-plus-light-solid',
+            id: `newctx_${nodeData.h}`,
+            onClick(ev) {
+                mega.ui.secondaryNav.openNewMenu(ev);
+            }
+        };
+        const onContextMenu = (ev) => {
+            mega.ui.secondaryNav.openContextMenu(ev);
+        };
+        if (nodeData.h === M.currentdirid) {
+            mega.ui.secondaryNav.hideBreadcrumb();
+            if (r === 1 || r === 2) {
+                mega.ui.secondaryNav.showCard(M.currentdirid, newButton, downloadButton, onContextMenu);
+            }
+            else {
+                mega.ui.secondaryNav.showCard(
+                    M.currentdirid,
+                    downloadButton,
+                    { componentClassname: 'hidden' },
+                    onContextMenu
+                );
             }
         }
+        else {
+            mega.ui.secondaryNav.showBreadcrumb();
+        }
+
+        $(rightPanelView).addClass('shared-folder-content');
 
         if (M.d[M.currentdirid] !== nodeData || M.d[nodeData.p]) {
             // hide leave-share under non-root shares
@@ -3845,6 +3127,7 @@ function fingerprintDialog(userid, isAdminVerify, callback) {
     eventlog(99601, !!isAdminVerify);
 
     const $dialog = $('.fingerprint-dialog');
+    const $backgroundOverlay = $('.fm-dialog-overlay', 'body');
 
     $dialog.toggleClass('e-modal', isAdminVerify === null);
     $dialog.toggleClass('admin-verify', isAdminVerify === true);
@@ -3875,11 +3158,14 @@ function fingerprintDialog(userid, isAdminVerify, callback) {
     $('.fingerprint-code .contact-fingerprint-title', $dialog).text(credentialsTitle);
 
     const closeFngrPrntDialog = () => {
+
         window.closeDlgMute = null;
         closeDialog();
         $('button.js-close', $dialog).off('click');
-        $('.dialog-approve-button').off('click');
-        $('.dialog-skip-button').off('click');
+        $('.dialog-approve-button', $dialog).off('click');
+        $('.dialog-skip-button', $dialog).off('click');
+        $backgroundOverlay.off('click.closeMsgDialog');
+
         if (!isAdminVerify) {
             callback = callback || mega.ui.CredentialsWarningDialog.rendernext;
             callback(userid);
@@ -3924,12 +3210,21 @@ function fingerprintDialog(userid, isAdminVerify, callback) {
         });
     });
 
-    $('button.js-close, .dialog-skip-button', $dialog).rebind('click', function() {
+    // The Skip or Close functionality
+    const skipOrCloseFunction = () => {
+
+        // Run the regular behaviour for Skip (or Close button)
         if (isAdminVerify) {
             return;
         }
         closeFngrPrntDialog();
-    });
+        return false;
+    };
+
+    $('button.js-close, .dialog-skip-button', $dialog).rebind('click', skipOrCloseFunction);
+
+    // On clicking the background overlay
+    $backgroundOverlay.rebind('click.closeMsgDialog', skipOrCloseFunction);
 
     $('.dialog-approve-button', $dialog).rebind('click', () => {
 
@@ -3993,7 +3288,7 @@ function fingerprintDialog(userid, isAdminVerify, callback) {
                             contact.querySelector('.avatar-wrapper').classList.add('verified');
                         }
 
-                        shareDialogContentCheck();
+                        mega.ui.mShareDialog.contentCheck();
                     }
                 }
             })
@@ -4015,6 +3310,8 @@ function fingerprintDialog(userid, isAdminVerify, callback) {
                 loadingDialog.hide();
             });
     });
+
+    $.fingerprintDialog = 'fingerprint-dialog';
 
     M.safeShowDialog(isAdminVerify ? 'fingerprint-admin-dlg' : 'fingerprint-dialog', $dialog);
 }
@@ -4109,6 +3406,14 @@ function FMResizablePane(element, opts) {
             $element.removeClass('small-left-panel');
         }
 
+        // Temporary RTL hack for chat left pane resize to adjust new header
+        if (document.body.classList.contains('rtl') && M.chat) {
+            mega.ui.header.domNode.style.paddingInlineEnd = `${width}px`;
+        }
+        else {
+            mega.ui.header.domNode.style.paddingInlineEnd = '';
+        }
+
         if (d > 1) {
             console.warn([this], width);
         }
@@ -4165,6 +3470,7 @@ function FMResizablePane(element, opts) {
             maxWidth: opts.maxWidth,
             start: function(e, ui) {
                 $(self.element).addClass('resizable-pane-active');
+                $.hideContextMenu();
             },
             resize: function(e, ui) {
                 var css_attrs = {
@@ -4218,7 +3524,7 @@ Object.defineProperty(FMResizablePane, 'refresh', {
         'use strict';
         if (M.fmTabPages) {
             // @todo revamp if we ever use other than '.fm-left-panel' for these
-            const cl = $('.fm-left-panel:visible').data('fmresizable');
+            const cl = $('.fm-left-panel:visible, .mega-top-menu.ui-resizable:not(.hidden)').data('fmresizable');
 
             if (cl) {
 
@@ -4238,6 +3544,7 @@ function initDownloadDesktopAppDialog() {
 
     $('.download-app', $dialog).rebind('click.downloadDesktopAppDialog', () => {
 
+        eventlog(500806);
         switch (ua.details.os) {
             case "Apple":
                 window.location = megasync.getMegaSyncUrl('mac');
@@ -4259,7 +3566,10 @@ function initDownloadDesktopAppDialog() {
     $('aside a', $dialog).rebind('click.downloadDesktopAppDialog', closeDialog);
 
     // Close the share dialog
-    $('button.js-close', $dialog).rebind('click.downloadDesktopAppDialog', closeDialog);
+    $('button.js-close', $dialog).rebind('click.downloadDesktopAppDialog', (ev) => {
+        eventlog(500805);
+        return closeDialog(ev);
+    });
 
     M.safeShowDialog('onboardingDesktopAppDialog', $dialog);
 }
